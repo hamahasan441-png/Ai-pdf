@@ -8,6 +8,7 @@ import '../../features/document/presentation/document_detail_screen.dart';
 import '../../features/document/presentation/document_upload_screen.dart';
 import '../../features/form/presentation/form_review_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
+import '../../features/editor/presentation/pdf_editor_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -45,6 +46,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/document/:id/form',
         name: 'formReview',
         builder: (context, state) => FormReviewScreen(
+          documentId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/document/:id/editor',
+        name: 'pdfEditor',
+        builder: (context, state) => PdfEditorScreen(
           documentId: state.pathParameters['id']!,
         ),
       ),

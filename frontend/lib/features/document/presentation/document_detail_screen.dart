@@ -95,6 +95,13 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
               ),
               tooltip: 'Review Form Fields',
             ),
+          IconButton(
+            icon: const Icon(Icons.draw),
+            onPressed: () => context.push(
+              '/document/${widget.documentId}/editor',
+            ),
+            tooltip: 'Edit PDF',
+          ),
         ],
       ),
       body: Padding(
@@ -129,6 +136,16 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
                 icon: const Icon(Icons.auto_awesome),
                 label: const Text('Analyze with AI'),
               ),
+            const SizedBox(height: 12),
+            // Pro Edit Button
+            OutlinedButton.icon(
+              onPressed: () => context.push('/document/${widget.documentId}/editor'),
+              icon: const Icon(Icons.draw),
+              label: const Text('Edit PDF (Pro Editor)'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              ),
+            ),
           ],
         ),
       ),
