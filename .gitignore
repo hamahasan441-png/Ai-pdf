@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
+backend/uploads/
+frontend/build/
+frontend/.dart_tool/
+.DS_Store
+*.log
