@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/services/user_profile_service.dart';
 import '../../tools/models/filled_field.dart';
 import '../../tools/presentation/pick_edit_screen.dart';
 import '../../tools/widgets/result_sheet.dart';
@@ -61,22 +62,42 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool _loadingDoc = false;
   String? _error;
 
+  String _profileBlock = ''; // the user's saved details, injected for form-fill
+
   bool get _isForm => widget.mode == AiChatMode.fillForm;
 
   String get _title => _isForm ? 'Fill Form with AI' : 'Understand with AI';
 
-  String get _systemPrompt => _isForm
-      ? 'You are an expert form-filling assistant. The user shares a form as page '
+  String get _systemPrompt {
+    if (_isForm) {
+      final profile = _profileBlock.isNotEmpty
+          ? '\n\nThe user has this saved profile — use it to PRE-FILL any matching '
+              'fields automatically, and do NOT ask again for information already '
+              'present here:\n$_profileBlock'
+          : '';
+      return 'You are an expert form-filling assistant. The user shares a form as page '
           'images. Steps: (1) Read the form carefully and identify every field or '
-          'blank that needs a value. (2) Ask the user for the specific information '
-          'you need, grouped logically and in plain language. Only ask for what the '
-          'form requires. (3) As the user replies, map their answers to the correct '
-          'fields. (4) When you have enough, output the completed form as a clean, '
-          'copyable list of "Field: Value" lines, and point out any field still '
-          'missing. Be friendly, concise, and never invent personal data.'
-      : 'You are a precise, helpful document assistant. The user shares a document '
-          'as page images. Answer questions accurately based only on the document. '
-          'If something is not in the document, say so clearly. Be concise.';
+          'blank that needs a value. (2) Pre-fill everything you already know from '
+          'the profile below. (3) Ask the user only for the remaining fields, grouped '
+          'logically and in plain language. (4) When you have enough, output the '
+          'completed form as a clean, copyable list of "Field: Value" lines, and point '
+          'out any field still missing. Be friendly, concise, and never invent '
+          'personal data.$profile';
+    }
+    return 'You are a precise, helpful document assistant. The user shares a document '
+        'as page images. Answer questions accurately based only on the document. '
+        'If something is not in the document, say so clearly. Be concise.';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isForm) {
+      UserProfileService.instance.load().then((_) {
+        if (mounted) setState(() => _profileBlock = UserProfileService.instance.asPromptBlock());
+      });
+    }
+  }
 
   @override
   void dispose() {
