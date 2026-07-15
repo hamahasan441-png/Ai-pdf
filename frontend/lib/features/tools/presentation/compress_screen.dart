@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
+import '../widgets/result_sheet.dart';
 
 /// Compress - fully offline. Shrinks images or PDFs on-device.
 class CompressScreen extends StatefulWidget {
@@ -42,6 +42,12 @@ class _CompressScreenState extends State<CompressScreen> {
           ? await svc.compressPdf(_filePath!)
           : await svc.compressImage(_filePath!, quality: _quality.toInt(), maxWidth: 1920);
       setState(() => _result = result);
+      if (mounted) {
+        await showResultSheet(context,
+            paths: [result.outputPath],
+            title: 'Compressed',
+            subtitle: '${result.reductionPercent.toStringAsFixed(0)}% smaller');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compression failed: $e')));
@@ -51,9 +57,12 @@ class _CompressScreenState extends State<CompressScreen> {
     }
   }
 
-  Future<void> _share() async {
+  Future<void> _saveShare() async {
     if (_result != null) {
-      await Share.shareXFiles([XFile(_result!.outputPath)]);
+      await showResultSheet(context,
+          paths: [_result!.outputPath],
+          title: 'Compressed',
+          subtitle: '${_result!.reductionPercent.toStringAsFixed(0)}% smaller');
     }
   }
 
@@ -133,7 +142,7 @@ class _CompressScreenState extends State<CompressScreen> {
                 ]),
               ),
               const SizedBox(height: 16),
-              FilledButton.icon(onPressed: _share, icon: const Icon(Icons.share), label: const Text('Save / Share')),
+              FilledButton.icon(onPressed: _saveShare, icon: const Icon(Icons.check_circle_outline), label: const Text('Save / Share')),
             ],
 
             const Spacer(),
