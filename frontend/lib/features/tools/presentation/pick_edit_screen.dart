@@ -9,7 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
-import 'package:share_plus/share_plus.dart';
+
+import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
 enum EditTool { pan, draw, highlight, text, signature, eraser }
@@ -68,7 +69,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Color _color = Colors.red;
   double _stroke = 3;
   List<Offset> _drawing = [];
-  _TextBox? _selected;
+
+  /// Keep at most this many rendered pages in memory at once.
+  static const int _maxCachedPages = 3;
 
   final GlobalKey _captureKey = GlobalKey();
 
@@ -133,6 +136,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
     } finally {
       await page.close();
     }
+    _evictFarPages(index);
+  }
+
+  /// Bound memory: drop rendered bytes for pages far from [keep].
+  /// Annotation layers (tiny) are always retained so edits are never lost.
+  void _evictFarPages(int keep) {
+    if (_pageCache.length <= _maxCachedPages) return;
+    final toRemove = _pageCache.keys
+        .where((k) => (k - keep).abs() > 1)
+        .toList()
+      ..sort((a, b) => (b - keep).abs().compareTo((a - keep).abs()));
+    for (final k in toRemove) {
+      if (_pageCache.length <= _maxCachedPages) break;
+      _pageCache.remove(k);
+    }
   }
 
   Future<void> _goToPage(int index) async {
@@ -141,7 +159,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     await _renderPage(index);
     setState(() {
       _current = index;
-      _selected = null;
       _loading = false;
     });
   }
@@ -291,7 +308,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final dir = await getApplicationDocumentsDirectory();
       final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
       await File(outPath).writeAsBytes(await doc.save());
-      await Share.shareXFiles([XFile(outPath)], text: 'Edited with AI PDF');
+      if (mounted) {
+        setState(() => _loading = false);
+        await showResultSheet(context,
+            paths: [outPath],
+            title: 'Export Complete',
+            subtitle: '$_pageCount page(s) saved');
+      }
     } catch (e) {
       _showError('Export failed: $e');
     } finally {
@@ -518,7 +541,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
-        onTap: () => setState(() { _tool = tool; _selected = null; }),
+        onTap: () => setState(() { _tool = tool; }),
         borderRadius: BorderRadius.circular(10),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

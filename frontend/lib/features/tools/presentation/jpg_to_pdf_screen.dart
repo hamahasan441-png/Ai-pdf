@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
+import '../widgets/result_sheet.dart';
 
 /// JPG to PDF - fully offline. Pick images, convert, save/share.
 class JpgToPdfScreen extends StatefulWidget {
@@ -36,9 +36,10 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
       final path = await OfflinePdfService.instance.imagesToPdf(_images);
       setState(() => _outputPath = path);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PDF created successfully!')),
-        );
+        await showResultSheet(context,
+            paths: [path],
+            title: 'PDF Created',
+            subtitle: '${_images.length} image(s) converted');
       }
     } catch (e) {
       if (mounted) {
@@ -51,12 +52,6 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
     }
   }
 
-  Future<void> _share() async {
-    if (_outputPath != null) {
-      await Share.shareXFiles([XFile(_outputPath!)], text: 'PDF from AI PDF');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -65,7 +60,11 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
         title: const Text('JPG to PDF'),
         actions: [
           if (_outputPath != null)
-            IconButton(icon: const Icon(Icons.share), onPressed: _share, tooltip: 'Save / Share'),
+            IconButton(
+              icon: const Icon(Icons.check_circle_outline),
+              tooltip: 'Save / Share',
+              onPressed: () => showResultSheet(context, paths: [_outputPath!], title: 'PDF Ready'),
+            ),
         ],
       ),
       body: Column(

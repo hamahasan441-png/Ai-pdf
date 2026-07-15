@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
+import '../widgets/result_sheet.dart';
 
 enum PdfToolMode { merge, split }
 
@@ -57,8 +56,13 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
           final outs = await svc.splitPdf(_files.first);
           setState(() => _outputs = outs);
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Done!')));
+      if (mounted && _outputs.isNotEmpty) {
+        await showResultSheet(context,
+            paths: _outputs,
+            title: widget.mode == PdfToolMode.merge ? 'Merged' : 'Split Complete',
+            subtitle: widget.mode == PdfToolMode.merge
+                ? '${_files.length} PDFs combined'
+                : '${_outputs.length} page(s) created');
       }
     } catch (e) {
       if (mounted) {
@@ -71,7 +75,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
 
   Future<void> _shareAll() async {
     if (_outputs.isNotEmpty) {
-      await Share.shareXFiles(_outputs.map((p) => XFile(p)).toList());
+      await showResultSheet(context, paths: _outputs, title: 'Your Files');
     }
   }
 
