@@ -24,13 +24,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup Android project
+      - name: Generate missing platform files
         working-directory: frontend
         run: |
+          # flutter create fills in gitignored files (local.properties, etc.)
+          # It won't overwrite committed files, but we restore ours anyway to be safe.
           flutter create --project-name ai_pdf --org com.aidocassistant --platforms android .
           git checkout -- lib/ pubspec.yaml analysis_options.yaml || true
-          git checkout -- android/app/src/main/AndroidManifest.xml || true
-          git checkout -- android/app/build.gradle || true
+          git checkout -- android/ || true
 
       - name: Install dependencies
         working-directory: frontend

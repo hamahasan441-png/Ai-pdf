@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -24,17 +24,18 @@ dependencies:
   intl: ^0.19.0
 
   # File selection (choose, not upload)
-  file_picker: ^6.1.1
+  # file_picker 8.x fixes the AGP 8 namespace build error present in 6.x
+  file_picker: ^8.1.6
   image_picker: ^1.1.2
 
   # OFFLINE document tools (all work on-device, no network)
   pdf: ^3.11.1              # Create PDFs offline (JPG to PDF)
   printing: ^5.13.3        # Preview, save, share PDFs offline
   image: ^4.3.0            # Image compress/resize (pure Dart, offline)
-  syncfusion_flutter_pdf: ^27.1.48  # PDF merge/split/compress offline
+  syncfusion_flutter_pdf: ^27.2.17  # PDF merge/split/compress offline (pure Dart)
 
   # UI helpers
-  share_plus: ^7.2.2       # Share exported files
+  share_plus: ^10.1.2      # Share exported files
 
 dev_dependencies:
   flutter_test:
