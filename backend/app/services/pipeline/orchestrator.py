@@ -75,16 +75,43 @@ class PipelineOrchestrator:
     ) -> PipelineResult:
         """Run the full document processing pipeline.
 
-        Args:
-            file_path: Path to the uploaded file
-            mime_type: MIME type of the file
-            profile_data: User's decrypted profile (for auto-fill)
-
-        Returns:
-            PipelineResult with all extracted data
+        Checks cache first. If the exact same file was analyzed before,
+        returns cached result instantly (no AI call).
         """
         start_time = time.time()
         result = PipelineResult(stage=PipelineStage.UPLOADED, success=False)
+
+        # Check cache first
+        from app.services.cache.document_cache import document_cache
+        file_hash = document_cache.compute_hash(file_path)
+        cached = document_cache.get(file_hash)
+        if cached:
+            result = PipelineResult(
+                stage=PipelineStage.READY_TO_EXPORT,
+                success=True,
+                document_type=cached.get("document_type", "unknown"),
+                language=cached.get("language", "en"),
+                page_count=cached.get("page_count", 1),
+                text_content=cached.get("text_content", ""),
+                summary=cached.get("summary", ""),
+                fields=cached.get("fields", []),
+                tables=cached.get("tables", []),
+                entities=cached.get("entities", {}),
+                stages_completed=["cache_hit"],
+                processing_time_ms=int((time.time() - start_time) * 1000),
+            )
+            # Still do profile mapping if profile provided
+            if profile_data and result.fields:
+                from app.services.ai.form_filler import form_filler
+                fill_result = await form_filler.fill_form(
+                    form_fields=result.fields,
+                    profile_data=profile_data,
+                    document_context=result.document_type,
+                    document_language=result.language,
+                )
+                result.filled_fields = fill_result.get("filled_fields", [])
+                result.stages_completed.append("auto_fill")
+            return result
 
         try:
             # Stage 1: Virus Scan
@@ -161,6 +188,19 @@ class PipelineOrchestrator:
             # Done
             result.stage = PipelineStage.READY_TO_EXPORT
             result.success = True
+
+            # Cache the result for future identical uploads
+            from app.services.cache.document_cache import document_cache
+            document_cache.set(file_hash, {
+                "document_type": result.document_type,
+                "language": result.language,
+                "page_count": result.page_count,
+                "text_content": result.text_content,
+                "summary": result.summary,
+                "fields": result.fields,
+                "tables": result.tables,
+                "entities": result.entities,
+            })
 
         except Exception as e:
             logger.error(f"Pipeline failed at stage {result.stage}: {e}")
