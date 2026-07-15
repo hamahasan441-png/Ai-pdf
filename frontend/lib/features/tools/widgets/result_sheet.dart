@@ -3,16 +3,25 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 
+import '../../../core/services/recent_files_service.dart';
 import '../services/output_actions.dart';
 
 /// Shows a professional result sheet after a tool finishes.
 /// Offers Preview, Save to device, and Share for the output file(s).
+///
+/// Every output is automatically recorded in Recent Files and mirrored to the
+/// browsable "AI PDF" folder on device storage.
 Future<void> showResultSheet(
   BuildContext context, {
   required List<String> paths,
   String title = 'Done!',
   String? subtitle,
 }) {
+  // Track + persist every produced file (fire-and-forget, non-blocking).
+  for (final p in paths) {
+    RecentFilesService.instance.add(p, action: title);
+    OutputActions.mirrorToPublicFolder(p);
+  }
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
