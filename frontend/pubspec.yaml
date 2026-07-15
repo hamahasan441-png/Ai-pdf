@@ -29,11 +29,12 @@ dependencies:
   image_picker: ^1.1.2
 
   # OFFLINE document tools (all work on-device, no network)
-  # Uses the stable printing raster engine + pdf package for merge/split/
-  # compress - no dependency on frequently-changing PDF-manipulation APIs.
-  pdf: ^3.11.1             # Create PDFs offline (JPG to PDF, merge, split)
-  printing: ^5.13.3        # Rasterize, preview, save, share PDFs offline
-  image: ^4.3.0            # Image compress/resize (pure Dart, offline)
+  # pdfx: PDFium-based rendering with EXPLICIT width/height control, so page
+  # rasters are capped in size -> bounded memory -> no OutOfMemoryError.
+  # It also provides a memory-efficient pinch-zoom viewer (PdfViewPinch).
+  pdfx: ^2.6.0             # Render (capped) + pro pinch viewer
+  pdf: ^3.11.1             # Create output PDFs (JPG to PDF, merge, split)
+  image: ^4.3.0            # Image compress/downscale (pure Dart, offline)
 
   # UI helpers
   share_plus: ^10.1.2      # Share exported files

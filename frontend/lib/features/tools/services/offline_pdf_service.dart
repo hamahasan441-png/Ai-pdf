@@ -3,27 +3,29 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
+import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'package:pdfx/pdfx.dart' as pdfx;
 
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
 ///
-/// Architecture decision: These tools require NO backend and NO internet.
-/// The user picks files locally, everything is processed on the phone.
-/// Only AI features (understanding, form fill) go online.
+/// MEMORY SAFETY (the key design goal):
+///   PDF pages are rendered with pdfx at an EXPLICIT, CAPPED pixel size.
+///   This bounds every allocation regardless of the source page's physical
+///   size, eliminating the OutOfMemoryError that occurred with dpi-based
+///   rasterization (which produced 100 MB+ bitmaps for large pages).
 ///
-/// Engineering note: We use the raster engine from `printing` + the `pdf`
-/// package instead of Syncfusion. Rationale:
-///   - `printing` + `pdf` have stable, long-lived APIs (no breaking changes)
-///   - No dependency on Syncfusion's frequently-changing API surface
-///   - 100% offline, pure rendering pipeline
-/// Trade-off: merged/split pages are rasterized (not vector text). For a
-/// mobile utility this is the standard, reliable approach and also yields
-/// excellent compression.
+/// No backend, no internet. The user picks files locally; everything is
+/// processed on the phone. Only AI features (understanding, form fill) go
+/// online.
 class OfflinePdfService {
   OfflinePdfService._();
   static final instance = OfflinePdfService._();
+
+  // Resolution caps (long edge, in pixels). Bounded memory usage.
+  static const int _mergeMaxEdge = 1600;
+  static const int _compressMaxEdge = 1100;
+  static const int _imageMaxEdge = 2000;
 
   Future<String> _outputPath(String name) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -35,22 +37,54 @@ class OfflinePdfService {
     return '${outDir.path}/${name}_$ts';
   }
 
+  /// Render a single PDF page to encoded JPEG bytes at a CAPPED resolution.
+  /// This is the core memory-safety primitive.
+  Future<Uint8List> _renderPageCapped(
+    pdfx.PdfPage page, {
+    required int maxEdge,
+  }) async {
+    final longEdge = page.width > page.height ? page.width : page.height;
+    final scale = longEdge > maxEdge ? maxEdge / longEdge : 1.0;
+    final renderW = (page.width * scale).clamp(1, maxEdge.toDouble());
+    final renderH = (page.height * scale).clamp(1, maxEdge.toDouble());
+
+    final rendered = await page.render(
+      width: renderW.toDouble(),
+      height: renderH.toDouble(),
+      format: pdfx.PdfPageImageFormat.jpeg,
+      backgroundColor: '#FFFFFF',
+    );
+    if (rendered == null) {
+      throw Exception('Failed to render PDF page');
+    }
+    return rendered.bytes;
+  }
+
   // ==========================================================
-  // JPG / IMAGES → PDF (offline)
+  // JPG / IMAGES -> PDF (offline, with downscale guard)
   // ==========================================================
 
   Future<String> imagesToPdf(List<String> imagePaths) async {
     final doc = pw.Document();
     for (final path in imagePaths) {
-      final bytes = await File(path).readAsBytes();
+      var bytes = await File(path).readAsBytes();
+
+      // Downscale very large images to avoid large allocations.
+      final decoded = img.decodeImage(bytes);
+      if (decoded != null &&
+          (decoded.width > _imageMaxEdge || decoded.height > _imageMaxEdge)) {
+        final resized = decoded.width >= decoded.height
+            ? img.copyResize(decoded, width: _imageMaxEdge)
+            : img.copyResize(decoded, height: _imageMaxEdge);
+        bytes = Uint8List.fromList(img.encodeJpg(resized, quality: 85));
+      }
+
       final image = pw.MemoryImage(bytes);
       doc.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(16),
-          build: (context) => pw.Center(
-            child: pw.Image(image, fit: pw.BoxFit.contain),
-          ),
+          build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
         ),
       );
     }
@@ -75,7 +109,6 @@ class OfflinePdfService {
     if (decoded == null) {
       throw Exception('Could not decode image');
     }
-
     if (maxWidth != null && decoded.width > maxWidth) {
       decoded = img.copyResize(decoded, width: maxWidth);
     }
@@ -92,87 +125,108 @@ class OfflinePdfService {
   }
 
   // ==========================================================
-  // PDF MERGE (offline, raster engine)
+  // PDF MERGE (offline, capped render)
   // ==========================================================
 
-  /// Merge multiple PDFs into one by rendering every page and rebuilding.
   Future<String> mergePdfs(List<String> pdfPaths) async {
-    final doc = pw.Document();
-
+    final out = pw.Document();
     for (final path in pdfPaths) {
-      final bytes = await File(path).readAsBytes();
-      await for (final page in Printing.raster(bytes, dpi: 150)) {
-        final png = await page.toPng();
-        final image = pw.MemoryImage(png);
-        doc.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
-          ),
-        );
+      final doc = await pdfx.PdfDocument.openFile(path);
+      try {
+        for (var i = 1; i <= doc.pagesCount; i++) {
+          final page = await doc.getPage(i);
+          try {
+            final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+            final image = pw.MemoryImage(bytes);
+            out.addPage(
+              pw.Page(
+                pageFormat: PdfPageFormat.a4,
+                build: (_) =>
+                    pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+              ),
+            );
+          } finally {
+            await page.close();
+          }
+        }
+      } finally {
+        await doc.close();
       }
     }
-
     final outPath = await _outputPath('merged.pdf');
-    await File(outPath).writeAsBytes(await doc.save());
+    await File(outPath).writeAsBytes(await out.save());
     return outPath;
   }
 
   // ==========================================================
-  // PDF SPLIT (offline, raster engine)
+  // PDF SPLIT (offline, capped render)
   // ==========================================================
 
-  /// Split a PDF into individual single-page PDFs. Returns list of paths.
   Future<List<String>> splitPdf(String pdfPath) async {
-    final bytes = await File(pdfPath).readAsBytes();
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
     final outputs = <String>[];
-    var index = 0;
-
-    await for (final page in Printing.raster(bytes, dpi: 150)) {
-      final png = await page.toPng();
-      final single = pw.Document();
-      final image = pw.MemoryImage(png);
-      single.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
-        ),
-      );
-      final outPath = await _outputPath('page_${index + 1}.pdf');
-      await File(outPath).writeAsBytes(await single.save());
-      outputs.add(outPath);
-      index++;
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final single = pw.Document();
+          final image = pw.MemoryImage(bytes);
+          single.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (_) =>
+                  pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+            ),
+          );
+          final outPath = await _outputPath('page_$i.pdf');
+          await File(outPath).writeAsBytes(await single.save());
+          outputs.add(outPath);
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
     }
-
     return outputs;
   }
 
   // ==========================================================
-  // PDF COMPRESS (offline, raster at low DPI + JPEG re-encode)
+  // PDF COMPRESS (offline, low-res capped render + JPEG re-encode)
   // ==========================================================
 
   Future<CompressResult> compressPdf(String pdfPath) async {
-    final originalBytes = await File(pdfPath).readAsBytes();
-    final originalSize = originalBytes.length;
-
-    final doc = pw.Document();
-    await for (final page in Printing.raster(originalBytes, dpi: 96)) {
-      final png = await page.toPng();
-      // Re-encode each page as compressed JPEG to shrink size
-      final decoded = img.decodeImage(png);
-      final jpg = decoded != null
-          ? Uint8List.fromList(img.encodeJpg(decoded, quality: 60))
-          : png;
-      final image = pw.MemoryImage(jpg);
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
-        ),
-      );
+    final originalSize = await File(pdfPath).length();
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final raw = await _renderPageCapped(page, maxEdge: _compressMaxEdge);
+          // Re-encode at lower JPEG quality for extra size reduction.
+          final decoded = img.decodeImage(raw);
+          final jpg = decoded != null
+              ? Uint8List.fromList(img.encodeJpg(decoded, quality: 55))
+              : raw;
+          final image = pw.MemoryImage(jpg);
+          out.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (_) =>
+                  pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
     }
 
-    final outBytes = await doc.save();
+    final outBytes = await out.save();
     final outPath = await _outputPath('compressed.pdf');
     await File(outPath).writeAsBytes(outBytes);
 
@@ -184,16 +238,13 @@ class OfflinePdfService {
   }
 
   // ==========================================================
-  // PDF PAGE COUNT (offline helper)
+  // PAGE COUNT (offline helper)
   // ==========================================================
 
   Future<int> getPageCount(String pdfPath) async {
-    final bytes = await File(pdfPath).readAsBytes();
-    var count = 0;
-    // Low DPI just to enumerate pages cheaply
-    await for (final _ in Printing.raster(bytes, dpi: 12)) {
-      count++;
-    }
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final count = doc.pagesCount;
+    await doc.close();
     return count;
   }
 }
