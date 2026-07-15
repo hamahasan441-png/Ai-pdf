@@ -24,8 +24,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           # 3.29+ provides SurfaceProducer.Callback.onSurfaceCleanup(), which
-          # pdfx 2.9.x implements. On 3.27 pdfx fails to compile (it references
-          # onSurfaceCleanup, which only exists from Flutter 3.29).
+          # pdfx 2.9.x implements. On 3.27 pdfx fails to compile.
           flutter-version: '3.29.0'
           channel: stable
           cache: true
@@ -33,42 +32,55 @@ jobs:
       - name: Generate missing platform files
         working-directory: frontend
         run: |
-          # flutter create fills in gitignored files (local.properties, etc.)
-          # It won't overwrite committed files, but we restore ours anyway to be safe.
-          flutter create --project-name ai_pdf --org com.aidocassistant --platforms android .
+          flutter create --project-name ai_pdf --org com.aidocassistant --platforms android . 2>&1 | tee -a build.log || true
           git checkout -- lib/ pubspec.yaml analysis_options.yaml || true
           git checkout -- android/ || true
-          # This project uses Groovy Gradle files. Newer `flutter create` may
-          # emit Kotlin-DSL (*.gradle.kts) files; having both breaks Gradle, so
-          # remove any generated .kts so only our committed .gradle files remain.
+          # This project uses Groovy Gradle files; remove any generated Kotlin
+          # DSL files so we never end up with both (which breaks Gradle).
           find android -name "*.gradle.kts" -delete 2>/dev/null || true
 
       - name: Install dependencies
         working-directory: frontend
-        run: flutter pub get
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee -a build.log
 
       - name: Build release APK
         working-directory: frontend
-        # OPENROUTER_API_KEY is optional. Add it under
-        # Settings -> Secrets and variables -> Actions to bake AI into the APK.
-        # If unset, the app still works and you can paste your key in-app.
         run: |
           set -o pipefail
           flutter build apk --release \
             --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
-            2>&1 | tee build.log || {
-              echo ""
-              echo "================= BUILD ERROR SUMMARY (copy this) ================="
-              grep -iE "error:|^e: |FAILURE:|What went wrong|Caused by|Exception|not found|Unresolved|Could not|incompatible|Namespace|minSdk|compileSdk|Duplicate|AAPT|Execution failed" build.log | tail -60
-              echo "==================================================================="
-              exit 1
-            }
+            2>&1 | tee -a build.log
+
+      # Runs whenever any previous step failed, so the exact error is always the
+      # LAST thing in the log and easy to copy — regardless of which step broke.
+      - name: Show error summary on failure
+        if: failure()
+        working-directory: frontend
+        run: |
+          echo ""
+          echo "================= BUILD ERROR SUMMARY (send me this) ================="
+          if [ -f build.log ]; then
+            grep -iE "error:|^e: |FAILURE:|What went wrong|Caused by|Exception|not found|Unresolved|Could not|incompatible|Namespace|minSdk|compileSdk|Duplicate|AAPT|Execution failed|version solving|Because" build.log | tail -60 || tail -80 build.log
+          else
+            echo "No build.log produced — failure happened before the build started."
+          fi
+          echo "====================================================================="
+
+      # Keep the full log as an artifact for deeper inspection if needed.
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: frontend/build.log
+          if-no-files-found: ignore
 
       - name: Rename APK
         working-directory: frontend
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/AI-PDF.apk
 
-      # Always keep the artifact (useful for PR builds).
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,23 +89,19 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # On main: publish a Release so the APK has a permanent, no-login,
-      # direct download link that works straight from a phone browser:
+      # Publish a GitHub Release with the APK via the GitHub CLI (pre-installed,
+      # uses the built-in token — more reliable than third-party actions).
+      # This gives a permanent, no-login download link:
       #   https://github.com/<owner>/<repo>/releases/latest/download/AI-PDF.apk
       - name: Publish APK release
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: AI PDF (build ${{ github.run_number }})
-          make_latest: true
-          files: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
-          body: |
-            **AI PDF — ready to install on your phone.**
-
-            1. On your Android phone, tap **AI-PDF.apk** below to download.
-            2. Open the downloaded file. If asked, allow "Install unknown apps".
-            3. Done — open AI PDF. All file tools work offline, no login needed.
-
-            Latest direct link (always newest build):
-            `https://github.com/${{ github.repository }}/releases/latest/download/AI-PDF.apk`
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.${{ github.run_number }}" \
+            "build/app/outputs/flutter-apk/AI-PDF.apk" \
+            --repo "${{ github.repository }}" \
+            --title "AI PDF (build ${{ github.run_number }})" \
+            --notes "Install AI-PDF.apk on your Android phone. If asked, allow installing from unknown sources. Uninstall any older AI PDF first." \
+            --latest
