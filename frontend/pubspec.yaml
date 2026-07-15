@@ -39,9 +39,6 @@ dependencies:
   # UI helpers
   share_plus: ^10.1.2      # Share exported files
 
-  # Runtime permissions (storage / photos-gallery / camera)
-  permission_handler: ^11.3.1
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
