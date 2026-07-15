@@ -8,12 +8,20 @@ class FilledField {
   final double y;
   final String text;
 
+  /// Human-readable field label (e.g. "First name") for the review step.
+  final String field;
+
   const FilledField({
     required this.page,
     required this.x,
     required this.y,
     required this.text,
+    this.field = '',
   });
+
+  /// Copy with an overridden value (used after the user edits it in review).
+  FilledField withText(String newText) =>
+      FilledField(page: page, x: x, y: y, text: newText, field: field);
 
   /// Parse from a loosely-typed JSON map returned by the AI. Tolerant of
   /// missing/oddly-typed fields so a single bad entry never crashes filling.
@@ -21,6 +29,7 @@ class FilledField {
     if (json is! Map) return null;
     final text = (json['text'] ?? json['value'] ?? '').toString().trim();
     if (text.isEmpty) return null;
+    final label = (json['field'] ?? json['label'] ?? json['name'] ?? '').toString().trim();
     int page = _toInt(json['page']) ?? 1;
     if (page < 1) page = 1;
     double x = _toDouble(json['x']) ?? 0.15;
@@ -30,7 +39,7 @@ class FilledField {
     if (y > 1.0) y = y / 100.0;
     x = x.clamp(0.0, 0.97);
     y = y.clamp(0.0, 0.97);
-    return FilledField(page: page, x: x, y: y, text: text);
+    return FilledField(page: page, x: x, y: y, text: text, field: label);
   }
 
   static int? _toInt(dynamic v) {
