@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
 
-enum PdfToolMode { merge, split, extract }
+enum PdfToolMode { merge, split }
 
-/// Merge / Split / Extract Text - all fully offline.
+/// Merge / Split PDFs - all fully offline.
 class PdfToolsScreen extends StatefulWidget {
   final PdfToolMode mode;
   const PdfToolsScreen({super.key, required this.mode});
@@ -18,12 +18,10 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
   final List<String> _files = [];
   bool _busy = false;
   List<String> _outputs = [];
-  String? _extractedText;
 
   String get _title => switch (widget.mode) {
         PdfToolMode.merge => 'Merge PDFs',
         PdfToolMode.split => 'Split PDF',
-        PdfToolMode.extract => 'Extract Text',
       };
 
   Future<void> _pick() async {
@@ -42,7 +40,6 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
             ..add(result.files.first.path!);
         }
         _outputs = [];
-        _extractedText = null;
       });
     }
   }
@@ -59,9 +56,6 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
         case PdfToolMode.split:
           final outs = await svc.splitPdf(_files.first);
           setState(() => _outputs = outs);
-        case PdfToolMode.extract:
-          final text = await svc.extractText(_files.first);
-          setState(() => _extractedText = text.isEmpty ? '(No text found)' : text);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Done!')));
@@ -108,35 +102,31 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                             style: const TextStyle(fontWeight: FontWeight.w600)),
                       ]),
                     )
-                  : _extractedText != null
-                      ? SingleChildScrollView(
-                          child: SelectableText(_extractedText!, style: const TextStyle(fontSize: 14)),
-                        )
-                      : ListView(
-                          children: [
-                            ..._files.asMap().entries.map((e) => Card(
-                                  child: ListTile(
-                                    leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                                    title: Text(e.value.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () => setState(() => _files.removeAt(e.key)),
-                                    ),
-                                  ),
-                                )),
-                            if (_outputs.isNotEmpty) ...[
-                              const Divider(height: 32),
-                              Text('Results (${_outputs.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              ..._outputs.map((o) => Card(
-                                    color: cs.primaryContainer.withOpacity(0.3),
-                                    child: ListTile(
-                                      leading: const Icon(Icons.check_circle, color: Color(0xFF10B981)),
-                                      title: Text(o.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    ),
-                                  )),
-                            ],
-                          ],
-                        ),
+                  : ListView(
+                      children: [
+                        ..._files.asMap().entries.map((e) => Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                                title: Text(e.value.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => setState(() => _files.removeAt(e.key)),
+                                ),
+                              ),
+                            )),
+                        if (_outputs.isNotEmpty) ...[
+                          const Divider(height: 32),
+                          Text('Results (${_outputs.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ..._outputs.map((o) => Card(
+                                color: cs.primaryContainer.withOpacity(0.3),
+                                child: ListTile(
+                                  leading: const Icon(Icons.check_circle, color: Color(0xFF10B981)),
+                                  title: Text(o.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                              )),
+                        ],
+                      ],
+                    ),
             ),
             Row(children: [
               Expanded(
