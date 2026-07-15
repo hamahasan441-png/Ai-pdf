@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/config/app_settings.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -11,6 +12,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final Map<String, TextEditingController> _c = {};
+  final _serverCtrl = TextEditingController(text: AppSettings.instance.apiBaseUrl);
   bool _saving = false;
   bool _loading = true;
 
@@ -33,7 +35,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() { super.initState(); _load(); }
 
   @override
-  void dispose() { for (final c in _c.values) c.dispose(); super.dispose(); }
+  void dispose() {
+    for (final c in _c.values) c.dispose();
+    _serverCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveServer() async {
+    await AppSettings.instance.setApiBaseUrl(_serverCtrl.text);
+    ref.read(apiClientProvider).updateBaseUrl(AppSettings.instance.apiBaseUrl);
+    _serverCtrl.text = AppSettings.instance.apiBaseUrl;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI server updated')));
+    }
+  }
 
   Future<void> _load() async {
     try {
@@ -91,6 +107,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             Expanded(child: Text('Your data is encrypted and used to auto-fill forms.',
               style: TextStyle(fontSize: 13))),
           ]),
+        ),
+        const SizedBox(height: 16),
+        // AI server configuration (only needed for online AI features).
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: const [
+                Icon(Icons.cloud_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('AI Server (optional)', style: TextStyle(fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 6),
+              const Text(
+                'File tools work offline with no server. To enable AI features '
+                '(understand documents, auto-fill forms), paste your backend URL.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _serverCtrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Backend URL',
+                  hintText: 'https://your-server.com/api/v1',
+                  prefixIcon: Icon(Icons.link, size: 20),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonalIcon(
+                  onPressed: _saveServer,
+                  icon: const Icon(Icons.save, size: 18),
+                  label: const Text('Save server'),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         ..._fields.map((f) => Padding(

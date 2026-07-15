@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -41,10 +44,36 @@ jobs:
         working-directory: frontend
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Rename APK
+        working-directory: frontend
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/AI-PDF.apk
+
+      # Always keep the artifact (useful for PR builds).
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v5
         with:
           name: AI-PDF-Release
-          path: frontend/build/app/outputs/flutter-apk/app-release.apk
+          path: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
           if-no-files-found: error
           retention-days: 90
+
+      # On main: publish a Release so the APK has a permanent, no-login,
+      # direct download link that works straight from a phone browser:
+      #   https://github.com/<owner>/<repo>/releases/latest/download/AI-PDF.apk
+      - name: Publish APK release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: AI PDF (build ${{ github.run_number }})
+          make_latest: true
+          files: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
+          body: |
+            **AI PDF — ready to install on your phone.**
+
+            1. On your Android phone, tap **AI-PDF.apk** below to download.
+            2. Open the downloaded file. If asked, allow "Install unknown apps".
+            3. Done — open AI PDF. All file tools work offline, no login needed.
+
+            Latest direct link (always newest build):
+            `https://github.com/${{ github.repository }}/releases/latest/download/AI-PDF.apk`

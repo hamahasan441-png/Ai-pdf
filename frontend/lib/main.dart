@@ -4,10 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config/router.dart';
+import 'core/config/app_settings.dart';
 import 'core/theme/app_theme.dart';
 
 void main() {
-  runZonedGuarded(() {
+  runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     // Never show the red crash screen to users. Log in debug, show a
@@ -17,6 +18,9 @@ void main() {
       if (kDebugMode) debugPrint('Caught FlutterError: ${details.exception}');
     };
     ErrorWidget.builder = (details) => const _FriendlyErrorWidget();
+
+    // Load persisted settings (e.g. AI server URL) before the app starts.
+    await AppSettings.instance.load();
 
     runApp(const ProviderScope(child: AiPdfApp()));
   }, (error, stack) {
