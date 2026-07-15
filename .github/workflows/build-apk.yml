@@ -14,9 +14,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -55,7 +55,7 @@ jobs:
 
       # Always keep the artifact (useful for PR builds).
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
