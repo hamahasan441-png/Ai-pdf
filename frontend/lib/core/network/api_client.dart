@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
+import '../config/app_settings.dart';
 import '../constants/app_constants.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
@@ -12,7 +13,7 @@ class ApiClient {
 
   ApiClient() {
     dio = Dio(BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
+      baseUrl: AppSettings.instance.apiBaseUrl,
       connectTimeout: AppConfig.requestTimeout,
       receiveTimeout: AppConfig.requestTimeout,
       headers: {'Content-Type': 'application/json'},
@@ -41,11 +42,16 @@ class ApiClient {
     ));
   }
 
+  /// Point the client at a new server at runtime (used by Settings).
+  void updateBaseUrl(String url) {
+    dio.options.baseUrl = url;
+  }
+
   Future<bool> _refresh() async {
     try {
       final rt = await _storage.read(key: AppConstants.refreshTokenKey);
       if (rt == null) return false;
-      final r = await Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl))
+      final r = await Dio(BaseOptions(baseUrl: AppSettings.instance.apiBaseUrl))
           .post(AppConstants.refreshEndpoint, data: {'refresh_token': rt});
       if (r.statusCode == 200) {
         await _storage.write(key: AppConstants.accessTokenKey, value: r.data['access_token']);

@@ -1,5 +1,4 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
