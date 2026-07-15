@@ -11,44 +11,67 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.3'
           channel: stable
           cache: true
 
-      - name: Setup Android project
+      - name: Generate Android project files
         working-directory: frontend
         run: |
+          # Let Flutter generate ALL android files (local.properties, gradlew, etc.)
           flutter create --project-name ai_pdf --org com.aidocassistant --platforms android .
-          git checkout -- lib/ pubspec.yaml analysis_options.yaml || true
+          
+          # Now restore ONLY our custom source files (not gradle configs)
+          git checkout -- lib/ || true
+          git checkout -- pubspec.yaml || true
+          git checkout -- analysis_options.yaml || true
           git checkout -- android/app/src/main/AndroidManifest.xml || true
-          git checkout -- android/app/build.gradle || true
-          git checkout -- android/build.gradle || true
-          git checkout -- android/settings.gradle || true
-          git checkout -- android/gradle.properties || true
-          git checkout -- android/gradle/wrapper/gradle-wrapper.properties || true
           git checkout -- android/app/src/main/kotlin/ || true
-          git checkout -- android/app/src/main/res/ || true
+          git checkout -- android/app/src/main/res/values/styles.xml || true
+          git checkout -- android/app/src/main/res/drawable/launch_background.xml || true
+          
+          # Keep Flutter-generated gradle files (they work correctly with the SDK)
+          # Only override app/build.gradle for our package name and SDK settings
+          git checkout -- android/app/build.gradle || true
 
       - name: Install dependencies
         working-directory: frontend
         run: flutter pub get
 
-      - name: Check for errors
-        working-directory: frontend
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
-
       - name: Build release APK
         working-directory: frontend
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release 2>&1 | tee build_output.txt
+          if [ $? -ne 0 ]; then
+            echo "BUILD FAILED"
+            cat build_output.txt
+            exit 1
+          fi
+
+      - name: Verify APK exists
+        working-directory: frontend
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "APK found: $(ls -lh $APK_PATH)"
+          else
+            echo "ERROR: APK not found at $APK_PATH"
+            echo "Searching for APK files..."
+            find build -name "*.apk" 2>/dev/null || echo "No APK files found anywhere"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -56,3 +79,4 @@ jobs:
           name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          retention-days: 90
