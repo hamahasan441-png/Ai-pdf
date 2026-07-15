@@ -40,6 +40,13 @@ class Settings(BaseSettings):
         "mistralai/mistral-7b-instruct:free",
     ]
 
+    # Vision models (for image/scan understanding) - must support image input
+    AI_VISION_MODELS: List[str] = [
+        "google/gemini-2.0-flash-exp:free",
+        "meta-llama/llama-3.2-11b-vision-instruct:free",
+        "google/gemma-4-26b-a4b-it:free",
+    ]
+
     # JWT
     JWT_SECRET_KEY: str = "change-me-jwt-secret"
     JWT_ALGORITHM: str = "HS256"

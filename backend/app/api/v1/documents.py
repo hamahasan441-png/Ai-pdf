@@ -1,5 +1,6 @@
 """Document management endpoints."""
 
+import logging
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from app.schemas.document import (
     DocumentUploadResponse,
     ExportRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -134,7 +137,16 @@ async def analyze_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Trigger AI analysis on an uploaded document."""
+    """Trigger AI analysis on an uploaded document.
+    
+    This uses multimodal AI to understand ANY document:
+    - PDFs (text + scanned) 
+    - Images (photos, scans, screenshots)
+    - DOCX files
+    
+    The AI extracts: text, fields, entities, structure, summary.
+    For images/scans, it uses vision models (Gemini Flash free).
+    """
     result = await db.execute(
         select(Document).where(
             Document.id == document_id,
@@ -145,11 +157,105 @@ async def analyze_document(
     if not document:
         raise NotFoundError("Document")
 
-    # TODO: Trigger async processing pipeline
     document.status = DocumentStatus.PROCESSING
     await db.flush()
 
-    return {"status": "processing", "document_id": str(document_id)}
+    try:
+        # Use the understanding service to analyze the document
+        from app.services.ai.understanding import understanding_service
+
+        analysis = await understanding_service.understand(
+            file_path=document.file_path,
+            mime_type=document.mime_type,
+        )
+
+        # Update document with AI results
+        document.status = DocumentStatus.ANALYZED
+        document.ai_summary = analysis.get("summary", "")
+        document.language = analysis.get("language", "en")
+        document.page_count = analysis.get("page_count", 1)
+        document.document_category = analysis.get("document_type", "other")
+        document.extracted_text = analysis.get("extracted_text", "")
+
+        # Store detected form fields
+        form_fields = analysis.get("form_fields", []) or analysis.get("fields", [])
+        if form_fields:
+            from app.models.document import FormField
+            for f in form_fields:
+                field = FormField(
+                    document_id=document.id,
+                    field_name=f.get("label") or f.get("name", "unknown"),
+                    field_label=f.get("label") or f.get("name", ""),
+                    field_type=f.get("type", "text"),
+                    suggested_value=f.get("value"),
+                    confidence_score=analysis.get("confidence", 0.8),
+                )
+                db.add(field)
+
+        await db.flush()
+
+        return {
+            "status": "analyzed",
+            "document_id": str(document_id),
+            "document_type": analysis.get("document_type", "other"),
+            "language": analysis.get("language", "en"),
+            "summary": analysis.get("summary", ""),
+            "fields_detected": len(form_fields),
+            "method": analysis.get("method", "unknown"),
+            "key_entities": analysis.get("key_entities", {}),
+        }
+
+    except Exception as e:
+        document.status = DocumentStatus.ERROR
+        await db.flush()
+        logger.error(f"Document analysis failed: {e}")
+        return {"status": "error", "document_id": str(document_id), "error": str(e)}
+
+
+@router.post("/{document_id}/ask")
+async def ask_document(
+    document_id: uuid.UUID,
+    question: str = "",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask any question about a document using AI.
+    
+    Examples:
+    - "What is the total amount?"
+    - "Who signed this document?"
+    - "What is the deadline?"
+    - "Summarize this in Arabic"
+    - "What fields are empty?"
+    - "Is this document valid?"
+    """
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.owner_id == current_user.id,
+        )
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise NotFoundError("Document")
+
+    if not question:
+        from app.core.exceptions import ValidationError
+        raise ValidationError("Please provide a question")
+
+    from app.services.ai.understanding import understanding_service
+
+    answer = await understanding_service.ask_about_document(
+        file_path=document.file_path,
+        mime_type=document.mime_type,
+        question=question,
+    )
+
+    return {
+        "document_id": str(document_id),
+        "question": question,
+        "answer": answer,
+    }
 
 
 @router.delete("/{document_id}", status_code=204)
