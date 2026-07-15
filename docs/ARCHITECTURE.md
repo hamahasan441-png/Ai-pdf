@@ -8,7 +8,7 @@ AI Document Assistant is a full-stack application with:
 - **API Layer**: FastAPI with versioned routes (`/api/v1/`)
 - **Service Layer**: Business logic separated into services
 - **Data Layer**: SQLAlchemy async ORM with PostgreSQL
-- **AI Integration**: FreeTheAI API (OpenAI-compatible)
+- **AI Integration**: OpenRouter API (OpenAI-compatible, 400+ models)
 
 ### Frontend (Flutter)
 - **State Management**: Riverpod

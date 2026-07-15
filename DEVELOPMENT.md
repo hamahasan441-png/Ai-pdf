@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**AI PDF** is a production-grade Android application that uses AI to understand, edit, fill, validate, and export PDF/DOCX documents. It combines a Flutter mobile frontend with a FastAPI Python backend, connected to the FreeTheAI API (free, OpenAI-compatible, 80+ models).
+**AI PDF** is a production-grade Android application that uses AI to understand, edit, fill, validate, and export PDF/DOCX documents. It combines a Flutter mobile frontend with a FastAPI Python backend, connected to the OpenRouter API (OpenAI-compatible, 400+ free models).
 
 ---
 
@@ -20,7 +20,7 @@
 └──────┬────────────────┬─────────────────┬───────────┘
        │                │                 │
 ┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐
-│ PostgreSQL  │  │    Redis    │  │  FreeTheAI  │
+│ PostgreSQL  │  │    Redis    │  │  OpenRouter  │
 │  Database   │  │    Cache    │  │   API (AI)  │
 └─────────────┘  └─────────────┘  └─────────────┘
 ```
@@ -39,7 +39,7 @@
 | File Picker | file_picker | ^6.1.1 | Document selection |
 | Backend | FastAPI | 0.115.0 | Async REST API |
 | ORM | SQLAlchemy (async) | 2.0.35 | Database access |
-| AI Provider | FreeTheAI | - | GPT-4o, Claude, Qwen |
+| AI Provider | OpenRouter | - | GPT-4o, Claude, Qwen |
 | Database | PostgreSQL | 16 | Data persistence |
 | Cache | Redis | 7 | Session cache |
 | PDF Processing | PyMuPDF | 1.24.10 | Parse/edit PDFs |
@@ -83,7 +83,7 @@ Ai-Pdf/
 │   │   │       └── documents.py   # Upload, process, validate, export
 │   │   └── services/
 │   │       ├── ai/
-│   │       │   ├── provider.py    # FreeTheAI client (fallback chain)
+│   │       │   ├── provider.py    # OpenRouter client (fallback chain)
 │   │       │   ├── field_mapper.py # Semantic field classification
 │   │       │   └── form_filler.py # Auto-fill + validation
 │   │       ├── document/
@@ -158,9 +158,9 @@ Ai-Pdf/
 
 ## AI Integration
 
-### Provider: FreeTheAI
+### Provider: OpenRouter
 
-- **Base URL**: `https://api.freetheai.xyz/v1`
+- **Base URL**: `https://openrouter.ai/api/v1`
 - **Compatibility**: OpenAI API format (`/chat/completions`)
 - **Free**: Join Discord, run `/signup`, get API key
 - **Models available**: 80+ (GPT-4o, Claude, Qwen, Gemma, etc.)
@@ -355,7 +355,7 @@ cd frontend && flutter pub get && flutter run
 | Dio over http package | Interceptors, form data, progress |
 | Fernet over AES-GCM | Simpler API, sufficient for profile data |
 | PyMuPDF over pdfplumber | Faster, better form field support |
-| FreeTheAI over OpenAI direct | Free, same API, 80+ models |
+| OpenRouter over OpenAI direct | Free, same API, 400+ models |
 | No code generation (freezed) | Simpler builds, fewer CI failures |
 | No ProGuard/R8 shrink | Prevents production crashes from minification |
 | Flutter 3.22.3 pinned | Known stable, avoids breaking changes |

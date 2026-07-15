@@ -61,7 +61,7 @@ docker-compose exec backend alembic upgrade head
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| AI_API_BASE_URL | FreeTheAI API base URL | https://api.freetheai.xyz/v1 |
+| AI_API_BASE_URL | OpenRouter API base URL | https://openrouter.ai/api/v1 |
 | AI_API_KEY | API key for AI service | - |
 | AI_MODEL | AI model to use | gpt-4o-mini |
 | DATABASE_URL | PostgreSQL connection string | - |
