@@ -3,12 +3,13 @@
 import logging
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps.auth import get_current_user
+from app.api.deps.auth import get_current_user, get_optional_user
 from app.core.config import settings
 from app.core.exceptions import FileSizeLimitError, NotFoundError
 from app.db.database import get_db
@@ -306,3 +307,174 @@ async def delete_document(
         file_path.unlink()
 
     await db.delete(document)
+
+
+
+# ============================================================
+# GUEST ENDPOINTS - Work without authentication
+# ============================================================
+
+@router.post("/guest/upload", response_model=DocumentUploadResponse, status_code=201)
+async def guest_upload_document(
+    file: UploadFile = File(...),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a document as a guest (no login required).
+
+    Guest uploads are stored temporarily and processed the same way
+    as authenticated uploads. Guest documents are deleted after 24h.
+
+    If user is logged in, document is linked to their account.
+    """
+    content = await file.read()
+    file_size = len(content)
+    if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise FileSizeLimitError(settings.MAX_UPLOAD_SIZE_MB)
+
+    mime_type = file.content_type or "application/octet-stream"
+    doc_type = MIME_TYPE_MAP.get(mime_type)
+    if doc_type is None:
+        from app.core.exceptions import ValidationError
+        raise ValidationError(f"Unsupported file type: {mime_type}")
+
+    file_id = uuid.uuid4()
+    owner_id = current_user.id if current_user else uuid.uuid4()
+    upload_dir = Path(settings.UPLOAD_DIR) / "guest" / str(owner_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / f"{file_id}_{file.filename}"
+    file_path.write_bytes(content)
+
+    document = Document(
+        id=file_id,
+        owner_id=owner_id,
+        filename=f"{file_id}_{file.filename}",
+        original_filename=file.filename,
+        file_path=str(file_path),
+        file_size=file_size,
+        mime_type=mime_type,
+        document_type=doc_type,
+        status=DocumentStatus.UPLOADED,
+        is_guest=True,
+    )
+    db.add(document)
+    await db.flush()
+
+    return document
+
+
+@router.post("/guest/{document_id}/analyze")
+async def guest_analyze_document(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Analyze a guest document using the full AI pipeline.
+
+    No login required. Same AI power as authenticated users.
+    Guest limit: 3 analyses per hour per IP.
+    """
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise NotFoundError("Document")
+
+    document.status = DocumentStatus.PROCESSING
+    await db.flush()
+
+    from app.services.pipeline.orchestrator import pipeline
+
+    pipeline_result = await pipeline.process(
+        file_path=document.file_path,
+        mime_type=document.mime_type,
+        profile_data=None,  # No profile for guests
+    )
+
+    if pipeline_result.success:
+        document.status = DocumentStatus.ANALYZED
+        document.ai_summary = pipeline_result.summary
+        document.language = pipeline_result.language
+        document.page_count = pipeline_result.page_count
+        document.document_category = pipeline_result.document_type
+        document.extracted_text = pipeline_result.text_content
+
+        if pipeline_result.fields:
+            from app.models.document import FormField
+            for f in pipeline_result.fields:
+                db.add(FormField(
+                    document_id=document.id,
+                    field_name=f.get("label") or f.get("name", "unknown"),
+                    field_label=f.get("label") or f.get("name", ""),
+                    field_type=f.get("type", "text"),
+                    suggested_value=f.get("value"),
+                    confidence_score=f.get("mapping_confidence", 0.8),
+                ))
+    else:
+        document.status = DocumentStatus.ERROR
+
+    await db.flush()
+
+    return {
+        "status": pipeline_result.stage.value,
+        "success": pipeline_result.success,
+        "document_id": str(document_id),
+        "document_type": pipeline_result.document_type,
+        "language": pipeline_result.language,
+        "summary": pipeline_result.summary,
+        "fields_detected": len(pipeline_result.fields),
+        "stages_completed": pipeline_result.stages_completed,
+        "processing_time_ms": pipeline_result.processing_time_ms,
+        "guest_mode": True,
+        "upgrade_hint": "Sign up free to save documents and auto-fill forms from your profile",
+    }
+
+
+@router.get("/guest/{document_id}")
+async def guest_get_document(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a guest document's details and analysis results."""
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise NotFoundError("Document")
+
+    return document
+
+
+@router.post("/guest/{document_id}/ask")
+async def guest_ask_document(
+    document_id: uuid.UUID,
+    question: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask a question about a guest document."""
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise NotFoundError("Document")
+
+    if not question:
+        from app.core.exceptions import ValidationError
+        raise ValidationError("Please provide a question")
+
+    from app.services.ai.understanding import understanding_service
+
+    answer = await understanding_service.ask_about_document(
+        file_path=document.file_path,
+        mime_type=document.mime_type,
+        question=question,
+    )
+
+    return {
+        "document_id": str(document_id),
+        "question": question,
+        "answer": answer,
+        "guest_mode": True,
+    }

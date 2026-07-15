@@ -21,8 +21,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _load() async {
     try {
       final api = ref.read(apiClientProvider);
-      final r = await api.dio.get(AppConstants.documentsEndpoint);
-      setState(() { _docs = (r.data['documents'] as List?) ?? []; _loading = false; });
+      final hasAuth = await api.hasToken();
+      if (hasAuth) {
+        // Authenticated: load user's documents
+        final r = await api.dio.get(AppConstants.documentsEndpoint);
+        setState(() { _docs = (r.data['documents'] as List?) ?? []; _loading = false; });
+      } else {
+        // Guest mode: show empty state with upload prompt
+        setState(() { _docs = []; _loading = false; });
+      }
     } catch (_) { setState(() => _loading = false); }
   }
 

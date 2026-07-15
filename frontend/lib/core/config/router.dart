@@ -10,7 +10,8 @@ import '../../features/profile/presentation/profile_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/login',
+    // START AT HOME - no login required (guest mode)
+    initialLocation: '/home',
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),

@@ -37,8 +37,11 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(_file!.path!, filename: _file!.name),
       });
+      // Use guest endpoint if not logged in, regular endpoint if logged in
+      final hasAuth = await api.hasToken();
+      final endpoint = hasAuth ? AppConstants.uploadEndpoint : '/documents/guest/upload';
       final r = await api.dio.post(
-        AppConstants.uploadEndpoint,
+        endpoint,
         data: formData,
         options: Options(sendTimeout: AppConfig.uploadTimeout, receiveTimeout: AppConfig.uploadTimeout),
         onSendProgress: (s, t) => setState(() => _progress = s / t),
