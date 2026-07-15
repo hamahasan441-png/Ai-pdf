@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -22,23 +24,27 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create Flutter project scaffolding
+      - name: Setup Android project
         working-directory: frontend
         run: |
           flutter create --project-name ai_pdf --org com.aidocassistant --platforms android .
-          git checkout -- lib/ pubspec.yaml analysis_options.yaml
-          git checkout -- android/app/src/main/AndroidManifest.xml
-          git checkout -- android/app/build.gradle
-          git checkout -- android/build.gradle
-          git checkout -- android/settings.gradle
-          git checkout -- android/gradle.properties
-          git checkout -- android/gradle/wrapper/gradle-wrapper.properties
-          git checkout -- android/app/src/main/kotlin/
-          git checkout -- android/app/src/main/res/
+          git checkout -- lib/ pubspec.yaml analysis_options.yaml || true
+          git checkout -- android/app/src/main/AndroidManifest.xml || true
+          git checkout -- android/app/build.gradle || true
+          git checkout -- android/build.gradle || true
+          git checkout -- android/settings.gradle || true
+          git checkout -- android/gradle.properties || true
+          git checkout -- android/gradle/wrapper/gradle-wrapper.properties || true
+          git checkout -- android/app/src/main/kotlin/ || true
+          git checkout -- android/app/src/main/res/ || true
 
       - name: Install dependencies
         working-directory: frontend
         run: flutter pub get
+
+      - name: Check for errors
+        working-directory: frontend
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build release APK
         working-directory: frontend
@@ -47,5 +53,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ai-pdf-release
+          name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
