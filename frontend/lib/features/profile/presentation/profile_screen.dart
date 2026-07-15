@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/config/app_settings.dart';
-import '../../../core/config/app_config.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -14,14 +14,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final Map<String, TextEditingController> _c = {};
   final _serverCtrl = TextEditingController(text: AppSettings.instance.apiBaseUrl);
-  final _aiKeyCtrl = TextEditingController();
-  final _aiModelCtrl = TextEditingController(text: AppSettings.instance.aiModel);
-  final _aiEndpointCtrl = TextEditingController(text: AppSettings.instance.aiEndpoint);
-  late String _modelChoice = AppConfig.aiModels.any((m) => m.$1 == AppSettings.instance.aiModel)
-      ? AppSettings.instance.aiModel
-      : '__custom__';
-  late bool _customEndpoint = !AppSettings.instance.isOpenRouterEndpoint;
-  bool _keySet = false;
   bool _saving = false;
   bool _loading = true;
 
@@ -41,15 +33,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   @override
   void dispose() {
     for (final c in _c.values) c.dispose();
     _serverCtrl.dispose();
-    _aiKeyCtrl.dispose();
-    _aiModelCtrl.dispose();
-    _aiEndpointCtrl.dispose();
     super.dispose();
   }
 
@@ -58,35 +50,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ref.read(apiClientProvider).updateBaseUrl(AppSettings.instance.apiBaseUrl);
     _serverCtrl.text = AppSettings.instance.apiBaseUrl;
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI server updated')));
-    }
-  }
-
-  Future<void> _saveAiKey() async {
-    if (_aiKeyCtrl.text.trim().isNotEmpty) {
-      await AppSettings.instance.setOpenRouterKey(_aiKeyCtrl.text);
-      _aiKeyCtrl.clear();
-    }
-    final model = _modelChoice == '__custom__' ? _aiModelCtrl.text : _modelChoice;
-    await AppSettings.instance.setAiModel(model);
-    await AppSettings.instance
-        .setAiEndpoint(_customEndpoint ? _aiEndpointCtrl.text : AppConfig.openRouterUrl);
-    _aiEndpointCtrl.text = AppSettings.instance.aiEndpoint;
-    final set = await AppSettings.instance.hasOpenRouterKey();
-    if (mounted) {
-      setState(() => _keySet = set);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI key saved on this device')));
-    }
-  }
-
-  Future<void> _clearAiKey() async {
-    await AppSettings.instance.setOpenRouterKey('');
-    if (mounted) {
-      setState(() => _keySet = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI key removed')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Backend server updated')));
     }
   }
 
@@ -99,12 +64,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _c[f.$1] = TextEditingController(text: data[f.$1]?.toString() ?? '');
       }
     } catch (_) {
-      for (final f in _fields) { _c[f.$1] = TextEditingController(); }
+      for (final f in _fields) {
+        _c[f.$1] = TextEditingController();
+      }
     }
-    _keySet = await AppSettings.instance.hasOpenRouterKey();
     setState(() => _loading = false);
   }
-
 
   Future<void> _save() async {
     setState(() => _saving = true);
@@ -115,45 +80,70 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
       final api = ref.read(apiClientProvider);
       await api.dio.put(AppConstants.profileEndpoint, data: data);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile saved!')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Profile saved!')));
+      }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Save failed')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Save failed')));
+      }
     }
     setState(() => _saving = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return Scaffold(appBar: AppBar(title: const Text('Profile')),
-      body: const Center(child: CircularProgressIndicator()));
+    final cs = Theme.of(context).colorScheme;
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Profile')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('My Profile'), actions: [
         IconButton(
-          icon: _saving ? const SizedBox(width: 20, height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
-          onPressed: _saving ? null : _save),
+          icon: _saving
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.save),
+          onPressed: _saving ? null : _save,
+        ),
       ]),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(12)),
+            color: cs.primaryContainer.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: const Row(children: [
             Icon(Icons.info_outline, size: 20),
             SizedBox(width: 10),
-            Expanded(child: Text('Your data is encrypted and used to auto-fill forms.',
-              style: TextStyle(fontSize: 13))),
+            Expanded(
+              child: Text('Your data is stored to help auto-fill forms.',
+                  style: TextStyle(fontSize: 13)),
+            ),
           ]),
         ),
-        const SizedBox(height: 16),
-        // AI server configuration (only needed for online AI features).
+        const SizedBox(height: 12),
+        // Link to the dedicated AI Settings screen.
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.smart_toy_outlined, color: cs.primary),
+            title: const Text('AI Settings'),
+            subtitle: const Text('Provider, API key, model (OpenRouter, OpenAI, Claude…)'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Optional backend server (account-based/legacy flows).
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -162,12 +152,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               Row(children: const [
                 Icon(Icons.cloud_outlined, size: 20),
                 SizedBox(width: 8),
-                Text('AI Server (optional)', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('Backend server (optional)', style: TextStyle(fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 6),
               const Text(
-                'File tools work offline with no server. To enable AI features '
-                '(understand documents, auto-fill forms), paste your backend URL.',
+                'Only for account features. On-device AI and file tools do NOT need this.',
                 style: TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 10),
@@ -193,158 +182,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        // OpenRouter key for direct on-device AI (no backend needed).
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.key, size: 20),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('AI Key (OpenRouter)', style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
-                if (_keySet)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text('Set', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w700)),
-                  ),
-              ]),
-              const SizedBox(height: 6),
-              const Text(
-                'Enables AI directly on your phone — no server. Get a free key at '
-                'openrouter.ai/keys and paste it here. It is stored encrypted on '
-                'this device only (never uploaded or shared).',
-                style: TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 10),
-              // Choose the AI source: OpenRouter online, or a custom/offline
-              // OpenAI-compatible endpoint (e.g. a local server on your Wi-Fi).
-              Wrap(
-                spacing: 8,
-                children: [
-                  ChoiceChip(
-                    label: const Text('OpenRouter (online)'),
-                    selected: !_customEndpoint,
-                    onSelected: (_) => setState(() => _customEndpoint = false),
-                  ),
-                  ChoiceChip(
-                    label: const Text('Custom / offline'),
-                    selected: _customEndpoint,
-                    onSelected: (_) => setState(() => _customEndpoint = true),
-                  ),
-                ],
-              ),
-              if (_customEndpoint) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _aiEndpointCtrl,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'AI endpoint (OpenAI-compatible)',
-                    hintText: 'http://192.168.1.10:1234/v1/chat/completions',
-                    prefixIcon: Icon(Icons.dns_outlined, size: 20),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Point to a local server (Ollama, LM Studio) on your Wi-Fi to use '
-                  'AI offline. No key needed if the server has none.',
-                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ],
-              const SizedBox(height: 10),
-              TextField(
-                controller: _aiKeyCtrl,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: _keySet ? 'Replace key (leave blank to keep)' : 'Paste OpenRouter key (sk-or-...)',
-                  prefixIcon: const Icon(Icons.vpn_key, size: 20),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: _modelChoice,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'AI model',
-                  prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
-                  isDense: true,
-                ),
-                items: [
-                  ...AppConfig.aiModels.map((m) => DropdownMenuItem(
-                        value: m.$1,
-                        child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
-                      )),
-                  const DropdownMenuItem(value: '__custom__', child: Text('Custom model…')),
-                ],
-                onChanged: (v) => setState(() => _modelChoice = v ?? _modelChoice),
-              ),
-              if (_modelChoice == '__custom__') ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _aiModelCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Custom model slug',
-                    hintText: 'provider/model:free',
-                    prefixIcon: Icon(Icons.tune, size: 20),
-                    isDense: true,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 6),
-              Text(
-                'Tip: vision models can read images/PDFs. Free models share a daily '
-                'limit — if one is busy, switch to another.',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (_keySet)
-                    TextButton.icon(
-                      onPressed: _clearAiKey,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Remove'),
-                    ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: _saveAiKey,
-                    icon: const Icon(Icons.save, size: 18),
-                    label: const Text('Save AI key'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
         const SizedBox(height: 16),
         ..._fields.map((f) => Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: TextFormField(
-            controller: _c[f.$1],
-            decoration: InputDecoration(labelText: f.$2, prefixIcon: Icon(f.$3, size: 20)),
-          ),
-        )),
+              padding: const EdgeInsets.only(bottom: 14),
+              child: TextFormField(
+                controller: _c[f.$1],
+                decoration: InputDecoration(labelText: f.$2, prefixIcon: Icon(f.$3, size: 20)),
+              ),
+            )),
         const SizedBox(height: 20),
-        SizedBox(height: 50, child: FilledButton.icon(
-          onPressed: _saving ? null : _save,
-          icon: const Icon(Icons.save),
-          label: const Text('Save Profile'),
-        )),
+        SizedBox(
+          height: 50,
+          child: FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: const Icon(Icons.save),
+            label: const Text('Save Profile'),
+          ),
+        ),
       ]),
     );
   }
