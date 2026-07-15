@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -13,10 +14,16 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
-enum EditTool { pan, draw, highlight, text, signature, eraser }
+enum EditTool { pan, draw, highlight, text, line, arrow, rect, signature, eraser }
+
+/// Shape kinds for the vector shape tools.
+enum ShapeType { line, arrow, rect }
+
+/// Base type for anything drawn on a page (used for undo/redo ordering).
+abstract class _Annotation {}
 
 /// A freehand stroke or highlight (normalized 0..1 coordinates).
-class _Stroke {
+class _Stroke extends _Annotation {
   final List<Offset> points;
   final Color color;
   final double width;
@@ -24,29 +31,44 @@ class _Stroke {
   _Stroke(this.points, this.color, this.width, this.highlight);
 }
 
+/// A straight line, arrow, or rectangle (normalized coordinates).
+class _Shape extends _Annotation {
+  final ShapeType type;
+  Offset start;
+  Offset end;
+  final Color color;
+  final double width;
+  _Shape(this.type, this.start, this.end, this.color, this.width);
+}
+
 /// A text box annotation (normalized position).
-class _TextBox {
+class _TextBox extends _Annotation {
   Offset pos; // normalized 0..1
   String text;
   Color color;
-  double size;
-  _TextBox(this.pos, this.text, this.color, this.size);
+  double size; // normalized to canvas height
+  bool bold;
+  _TextBox(this.pos, this.text, this.color, this.size, this.bold);
 }
 
-/// Per-page annotation layer.
+/// Per-page annotation layer with undo + redo history.
 class _PageLayer {
-  final List<_Stroke> strokes = [];
-  final List<_TextBox> texts = [];
-  final List<_Stroke> _undo = [];
+  final List<_Annotation> items = [];
+  final List<_Annotation> redo = [];
+
+  List<_Stroke> get strokes => items.whereType<_Stroke>().toList();
+  List<_Shape> get shapes => items.whereType<_Shape>().toList();
+  List<_TextBox> get texts => items.whereType<_TextBox>().toList();
 }
 
 /// Professional offline PDF/Image editor.
 ///
-/// Memory-safe: pages are rendered with pdfx at a capped resolution.
-/// Features: multi-page nav, pinch zoom, freehand draw, highlight, text
-/// boxes (tap to place, drag to move), signature, eraser, undo, and export
-/// to a flattened PDF (captured page-by-page so nothing is ever fully
-/// loaded at huge resolution).
+/// Memory-safe: pages are rendered with pdfx at a capped resolution and only
+/// a few pages are cached at once. Features: multi-page nav, pinch zoom,
+/// freehand draw, highlighter, straight line / arrow / rectangle shapes,
+/// movable + editable text boxes (font size, bold, color), signature,
+/// eraser, undo/redo, and export to a flattened PDF captured page-by-page so
+/// nothing is ever loaded at huge resolution.
 class PickEditScreen extends StatefulWidget {
   const PickEditScreen({super.key});
   @override
@@ -55,6 +77,7 @@ class PickEditScreen extends StatefulWidget {
 
 class _PickEditScreenState extends State<PickEditScreen> {
   static const int _renderMaxEdge = 1400;
+  static const int _maxCachedPages = 3;
 
   pdfx.PdfDocument? _doc;
   final Map<int, Uint8List> _pageCache = {}; // page index -> jpeg bytes
@@ -62,16 +85,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
   int _pageCount = 0;
   int _current = 0;
   bool _loading = false;
-  bool _isImage = false;
   String? _fileName;
 
   EditTool _tool = EditTool.draw;
   Color _color = Colors.red;
   double _stroke = 3;
-  List<Offset> _drawing = [];
+  double _textSize = 0.032; // normalized to page height
+  bool _bold = false;
 
-  /// Keep at most this many rendered pages in memory at once.
-  static const int _maxCachedPages = 3;
+  List<Offset> _drawing = [];
+  Offset? _shapeStart; // live shape preview (normalized)
+  Offset? _shapeEnd;
 
   final GlobalKey _captureKey = GlobalKey();
 
@@ -102,12 +126,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       await _doc?.close();
       _doc = null;
       if (path.toLowerCase().endsWith('.pdf')) {
-        _isImage = false;
         _doc = await pdfx.PdfDocument.openFile(path);
         _pageCount = _doc!.pagesCount;
         await _renderPage(0);
       } else {
-        _isImage = true;
         _pageCount = 1;
         _pageCache[0] = await File(path).readAsBytes();
       }
@@ -165,51 +187,72 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _showError(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
+  // ---- Gesture handling (coordinates normalized to canvas) ----
 
-  // ---- Drawing / gesture handling (coordinates normalized to canvas) ----
+  bool get _isFreehand => _tool == EditTool.draw || _tool == EditTool.highlight;
+  bool get _isShape =>
+      _tool == EditTool.line || _tool == EditTool.arrow || _tool == EditTool.rect;
 
   void _onPanStart(Offset local, Size canvas) {
-    if (_tool == EditTool.draw || _tool == EditTool.highlight) {
-      _drawing = [_norm(local, canvas)];
+    final n = _norm(local, canvas);
+    if (_isFreehand) {
+      _drawing = [n];
+      setState(() {});
+    } else if (_isShape) {
+      _shapeStart = n;
+      _shapeEnd = n;
       setState(() {});
     }
   }
 
   void _onPanUpdate(Offset local, Size canvas) {
-    if (_tool == EditTool.draw || _tool == EditTool.highlight) {
-      _drawing = [..._drawing, _norm(local, canvas)];
+    final n = _norm(local, canvas);
+    if (_isFreehand) {
+      _drawing = [..._drawing, n];
+      setState(() {});
+    } else if (_isShape && _shapeStart != null) {
+      _shapeEnd = n;
       setState(() {});
     }
   }
 
   void _onPanEnd() {
-    if ((_tool == EditTool.draw || _tool == EditTool.highlight) &&
-        _drawing.length > 1) {
-      _layer.strokes.add(_Stroke(
+    if (_isFreehand && _drawing.length > 1) {
+      _pushItem(_Stroke(
         List.from(_drawing),
         _tool == EditTool.highlight ? _color.withOpacity(0.35) : _color,
         _tool == EditTool.highlight ? 16 : _stroke,
         _tool == EditTool.highlight,
       ));
-      _layer._undo.clear();
+    } else if (_isShape && _shapeStart != null && _shapeEnd != null) {
+      final type = switch (_tool) {
+        EditTool.line => ShapeType.line,
+        EditTool.arrow => ShapeType.arrow,
+        _ => ShapeType.rect,
+      };
+      if ((_shapeStart! - _shapeEnd!).distance > 0.01) {
+        _pushItem(_Shape(type, _shapeStart!, _shapeEnd!, _color, _stroke));
+      }
     }
     _drawing = [];
+    _shapeStart = null;
+    _shapeEnd = null;
     setState(() {});
   }
 
   void _onTapUp(Offset local, Size canvas) {
     final n = _norm(local, canvas);
     if (_tool == EditTool.text) {
-      _editTextBox(_TextBox(n, '', _color, 0.03), isNew: true);
+      _editTextBox(_TextBox(n, '', _color, _textSize, _bold), isNew: true);
     } else if (_tool == EditTool.eraser) {
-      // Remove nearest stroke/text
       setState(() {
-        if (_layer.strokes.isNotEmpty) _layer.strokes.removeLast();
+        if (_layer.items.isNotEmpty) {
+          _layer.redo.add(_layer.items.removeLast());
+        }
       });
     }
   }
@@ -217,50 +260,117 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Offset _norm(Offset local, Size canvas) =>
       Offset(local.dx / canvas.width, local.dy / canvas.height);
 
+  /// Add an annotation and reset the redo stack.
+  void _pushItem(_Annotation a) {
+    _layer.items.add(a);
+    _layer.redo.clear();
+  }
+
   Future<void> _editTextBox(_TextBox box, {bool isNew = false}) async {
     final ctrl = TextEditingController(text: box.text);
+    double size = box.size;
+    bool bold = box.bold;
+    Color color = box.color;
+
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isNew ? 'Add Text' : 'Edit Text'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'Type text...',
-            border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(isNew ? 'Add Text' : 'Edit Text'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Type text...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                const Text('Size'),
+                Expanded(
+                  child: Slider(
+                    value: size,
+                    min: 0.015,
+                    max: 0.08,
+                    onChanged: (v) => setLocal(() => size = v),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Bold',
+                  isSelected: bold,
+                  icon: const Icon(Icons.format_bold),
+                  onPressed: () => setLocal(() => bold = !bold),
+                ),
+              ]),
+              Row(
+                children: [Colors.red, Colors.blue, Colors.black, Colors.green, Colors.orange, Colors.purple]
+                    .map((c) => GestureDetector(
+                          onTap: () => setLocal(() => color = c),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            margin: const EdgeInsets.only(right: 8, top: 4),
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: color == c ? Colors.blueAccent : Colors.grey.shade400,
+                                width: color == c ? 3 : 1,
+                              ),
+                            ),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ],
           ),
+          actions: [
+            if (!isNew)
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, '__delete__'),
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
+          ],
         ),
-        actions: [
-          if (!isNew)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, '__delete__'),
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
-        ],
       ),
     );
     if (result == null) return;
     setState(() {
       if (result == '__delete__') {
-        _layer.texts.remove(box);
+        _layer.items.remove(box);
       } else if (result.isNotEmpty) {
         box.text = result;
-        box.color = _color;
-        if (isNew) _layer.texts.add(box);
+        box.color = color;
+        box.size = size;
+        box.bold = bold;
+        // Remember last-used style for the next text box.
+        _textSize = size;
+        _bold = bold;
+        _color = color;
+        if (isNew) _pushItem(box);
       }
     });
   }
 
   void _undo() {
     setState(() {
-      if (_layer.texts.isNotEmpty && _layer.strokes.isEmpty) {
-        _layer.texts.removeLast();
-      } else if (_layer.strokes.isNotEmpty) {
-        _layer._undo.add(_layer.strokes.removeLast());
+      if (_layer.items.isNotEmpty) {
+        _layer.redo.add(_layer.items.removeLast());
+      }
+    });
+  }
+
+  void _redoAction() {
+    setState(() {
+      if (_layer.redo.isNotEmpty) {
+        _layer.items.add(_layer.redo.removeLast());
       }
     });
   }
@@ -270,9 +380,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _SignaturePad()),
     );
     if (points != null && points.length > 1) {
-      // Place signature at bottom area, scaled into normalized space
       setState(() {
-        _layer.strokes.add(_Stroke(
+        _pushItem(_Stroke(
           points.map((p) => Offset(0.1 + p.dx / 900, 0.7 + p.dy / 900)).toList(),
           Colors.black,
           2.5,
@@ -335,7 +444,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -348,15 +456,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_fileName ?? 'PDF Editor', style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(_fileName ?? 'PDF Editor',
+                style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (_pageCount > 0)
-              Text('Page ${_current + 1} of $_pageCount', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              Text('Page ${_current + 1} of $_pageCount',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           ],
         ),
         actions: [
           if (bytes != null) ...[
-            IconButton(icon: const Icon(Icons.undo), tooltip: 'Undo', onPressed: _undo),
-            IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Export', onPressed: _loading ? null : _export),
+            IconButton(
+              icon: const Icon(Icons.undo),
+              tooltip: 'Undo',
+              onPressed: _layer.items.isEmpty ? null : _undo,
+            ),
+            IconButton(
+              icon: const Icon(Icons.redo),
+              tooltip: 'Redo',
+              onPressed: _layer.redo.isEmpty ? null : _redoAction,
+            ),
+            IconButton(
+              icon: const Icon(Icons.ios_share),
+              tooltip: 'Export',
+              onPressed: _loading ? null : _export,
+            ),
           ],
         ],
       ),
@@ -364,7 +487,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
           ? _emptyState(cs)
           : Stack(
               children: [
-                // Editor canvas
                 Positioned.fill(
                   bottom: 96,
                   child: InteractiveViewer(
@@ -391,7 +513,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       child: Center(child: CircularProgressIndicator()),
                     ),
                   ),
-                // Bottom toolbar
                 Positioned(left: 0, right: 0, bottom: 0, child: _toolbar(cs)),
               ],
             ),
@@ -425,6 +546,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Widget _buildCanvas(Uint8List bytes) {
     return LayoutBuilder(builder: (context, constraints) {
       final size = Size(constraints.maxWidth, constraints.maxHeight);
+      // Text boxes are draggable when the Move tool is active; otherwise the
+      // drawing gestures own the surface.
+      final canDragText = _tool == EditTool.pan || _tool == EditTool.text;
       return GestureDetector(
         onTapUp: (d) => _onTapUp(d.localPosition, size),
         onPanStart: (d) => _onPanStart(d.localPosition, size),
@@ -435,15 +559,31 @@ class _PickEditScreenState extends State<PickEditScreen> {
           children: [
             Image.memory(bytes, fit: BoxFit.fill),
             CustomPaint(
-              painter: _AnnPainter(_layer.strokes, _drawing, _color, _stroke,
-                  _tool == EditTool.highlight),
+              painter: _AnnPainter(
+                _layer.strokes,
+                _layer.shapes,
+                _drawing,
+                _shapeStart,
+                _shapeEnd,
+                _shapePreviewType(),
+                _color,
+                _stroke,
+                _tool == EditTool.highlight,
+              ),
             ),
-            // Text boxes
             ..._layer.texts.map((t) => Positioned(
                   left: t.pos.dx * size.width,
                   top: t.pos.dy * size.height,
                   child: GestureDetector(
                     onTap: () => _editTextBox(t),
+                    onPanUpdate: canDragText
+                        ? (d) => setState(() {
+                              t.pos = Offset(
+                                (t.pos.dx + d.delta.dx / size.width).clamp(0.0, 0.98),
+                                (t.pos.dy + d.delta.dy / size.height).clamp(0.0, 0.98),
+                              );
+                            })
+                        : null,
                     child: Container(
                       padding: const EdgeInsets.all(2),
                       color: Colors.transparent,
@@ -452,7 +592,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                         style: TextStyle(
                           color: t.color,
                           fontSize: t.size * size.height,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
                         ),
                       ),
                     ),
@@ -462,6 +602,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ),
       );
     });
+  }
+
+  ShapeType? _shapePreviewType() {
+    switch (_tool) {
+      case EditTool.line:
+        return ShapeType.line;
+      case EditTool.arrow:
+        return ShapeType.arrow;
+      case EditTool.rect:
+        return ShapeType.rect;
+      default:
+        return null;
+    }
   }
 
   Widget _emptyState(ColorScheme cs) => Center(
@@ -483,6 +636,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
 
   Widget _toolbar(ColorScheme cs) {
+    final showStyle = _tool == EditTool.draw ||
+        _tool == EditTool.highlight ||
+        _tool == EditTool.text ||
+        _isShape;
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -501,12 +658,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _toolBtn(Icons.edit, 'Draw', EditTool.draw, cs),
                 _toolBtn(Icons.highlight, 'Highlight', EditTool.highlight, cs),
                 _toolBtn(Icons.title, 'Text', EditTool.text, cs),
+                _toolBtn(Icons.horizontal_rule, 'Line', EditTool.line, cs),
+                _toolBtn(Icons.north_east, 'Arrow', EditTool.arrow, cs),
+                _toolBtn(Icons.crop_square, 'Box', EditTool.rect, cs),
                 _actionBtn(Icons.gesture, 'Sign', _addSignature, cs),
                 _toolBtn(Icons.cleaning_services, 'Eraser', EditTool.eraser, cs),
                 _actionBtn(Icons.folder_open, 'Open', _pick, cs),
               ]),
             ),
-            if (_tool == EditTool.draw || _tool == EditTool.highlight || _tool == EditTool.text)
+            if (showStyle)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6, left: 10, right: 10),
                 child: Row(children: [
@@ -514,20 +674,43 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       .map((c) => GestureDetector(
                             onTap: () => setState(() => _color = c),
                             child: Container(
-                              width: 26, height: 26,
+                              width: 26,
+                              height: 26,
                               margin: const EdgeInsets.only(right: 8),
                               decoration: BoxDecoration(
-                                color: c, shape: BoxShape.circle,
+                                color: c,
+                                shape: BoxShape.circle,
                                 border: Border.all(
                                     color: _color == c ? cs.primary : Colors.grey.shade400,
                                     width: _color == c ? 3 : 1),
                               ),
                             ),
                           )),
-                  if (_tool == EditTool.draw)
+                  if (_tool == EditTool.draw || _isShape)
                     Expanded(
-                      child: Slider(value: _stroke, min: 1, max: 12, onChanged: (v) => setState(() => _stroke = v)),
+                      child: Slider(
+                        value: _stroke,
+                        min: 1,
+                        max: 12,
+                        onChanged: (v) => setState(() => _stroke = v),
+                      ),
                     ),
+                  if (_tool == EditTool.text) ...[
+                    Expanded(
+                      child: Slider(
+                        value: _textSize,
+                        min: 0.015,
+                        max: 0.08,
+                        onChanged: (v) => setState(() => _textSize = v),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Bold',
+                      isSelected: _bold,
+                      icon: const Icon(Icons.format_bold),
+                      onPressed: () => setState(() => _bold = !_bold),
+                    ),
+                  ],
                 ]),
               ),
           ],
@@ -541,7 +724,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
-        onTap: () => setState(() { _tool = tool; }),
+        onTap: () => setState(() => _tool = tool),
         borderRadius: BorderRadius.circular(10),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -576,28 +759,48 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 }
 
-/// Painter for freehand strokes + highlights.
+/// Painter for freehand strokes, shapes, and live previews.
 class _AnnPainter extends CustomPainter {
   final List<_Stroke> strokes;
+  final List<_Shape> shapes;
   final List<Offset> current;
+  final Offset? shapeStart;
+  final Offset? shapeEnd;
+  final ShapeType? shapeType;
   final Color curColor;
   final double curWidth;
   final bool curHighlight;
-  _AnnPainter(this.strokes, this.current, this.curColor, this.curWidth, this.curHighlight);
+
+  _AnnPainter(
+    this.strokes,
+    this.shapes,
+    this.current,
+    this.shapeStart,
+    this.shapeEnd,
+    this.shapeType,
+    this.curColor,
+    this.curWidth,
+    this.curHighlight,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final s in strokes) {
-      _drawStroke(canvas, size, s.points, s.color, s.width, s.highlight);
+      _drawStroke(canvas, size, s.points, s.color, s.width);
+    }
+    for (final s in shapes) {
+      _drawShape(canvas, size, s.type, s.start, s.end, s.color, s.width);
     }
     if (current.length > 1) {
       _drawStroke(canvas, size, current,
-          curHighlight ? curColor.withOpacity(0.35) : curColor,
-          curHighlight ? 16 : curWidth, curHighlight);
+          curHighlight ? curColor.withOpacity(0.35) : curColor, curHighlight ? 16 : curWidth);
+    }
+    if (shapeType != null && shapeStart != null && shapeEnd != null) {
+      _drawShape(canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
     }
   }
 
-  void _drawStroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width, bool highlight) {
+  void _drawStroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
     if (pts.length < 2) return;
     final paint = Paint()
       ..color = color
@@ -610,6 +813,46 @@ class _AnnPainter extends CustomPainter {
       path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
     }
     canvas.drawPath(path, paint);
+  }
+
+  void _drawShape(Canvas canvas, Size size, ShapeType type, Offset a, Offset b, Color color, double width) {
+    final p1 = Offset(a.dx * size.width, a.dy * size.height);
+    final p2 = Offset(b.dx * size.width, b.dy * size.height);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    switch (type) {
+      case ShapeType.rect:
+        canvas.drawRect(Rect.fromPoints(p1, p2), paint);
+        break;
+      case ShapeType.line:
+        canvas.drawLine(p1, p2, paint);
+        break;
+      case ShapeType.arrow:
+        canvas.drawLine(p1, p2, paint);
+        _drawArrowHead(canvas, p1, p2, paint);
+        break;
+    }
+  }
+
+  void _drawArrowHead(Canvas canvas, Offset from, Offset to, Paint paint) {
+    final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
+    const headLen = 16.0;
+    const headAngle = math.pi / 7;
+    final p1 = Offset(
+      to.dx - headLen * math.cos(angle - headAngle),
+      to.dy - headLen * math.sin(angle - headAngle),
+    );
+    final p2 = Offset(
+      to.dx - headLen * math.cos(angle + headAngle),
+      to.dy - headLen * math.sin(angle + headAngle),
+    );
+    canvas.drawLine(to, p1, paint);
+    canvas.drawLine(to, p2, paint);
   }
 
   @override
