@@ -19,11 +19,19 @@ class AppConfig {
     defaultValue: '',
   );
 
-  /// Default free, vision-capable model. Changeable in the app (Settings).
+  /// Sentinel for "let the app pick the best model per task".
+  static const String autoModel = 'auto';
+
+  /// Default free, vision-capable model. Also used as the safety fallback if a
+  /// chosen model fails — MUST be a real slug (never 'auto').
   static const String defaultAiModel = String.fromEnvironment(
     'AI_MODEL',
     defaultValue: 'google/gemma-4-27b-it:free',
   );
+
+  /// Best free models the auto-router picks between.
+  static const String autoVisionModel = 'google/gemma-4-27b-it:free';
+  static const String autoTextModel = 'deepseek/deepseek-chat-v3-0324:free';
 
   /// Curated models available through OpenRouter. One API key, all providers.
   /// The free catalog changes over time; users can also enter a custom slug.
@@ -33,6 +41,8 @@ class AppConfig {
 
   /// Combined list for the model picker UI.
   static const List<(String, String, bool)> aiModels = [
+    // --- AUTO ---
+    ('auto', 'Auto — best model for each task', true),
     // --- FREE (no credits needed) ---
     ('google/gemma-4-27b-it:free', 'Gemma 4 27B (vision) — recommended', true),
     ('google/gemma-4-31b-it:free', 'Gemma 4 31B (vision, 256K ctx)', true),

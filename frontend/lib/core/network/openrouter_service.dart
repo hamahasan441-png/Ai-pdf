@@ -31,9 +31,31 @@ class OpenRouterService {
 
   final Dio _dio;
 
+  /// The model slug actually used by the last successful call (after resolving
+  /// 'auto'). Handy for showing "answered via X".
+  String? lastModelUsed;
+
   /// Build a data URL for an image to embed in a request.
   static String dataUrl(Uint8List bytes, {String mime = 'image/jpeg'}) =>
       'data:$mime;base64,${base64Encode(bytes)}';
+
+  /// True if any message carries an image part.
+  static bool _hasImages(List<Map<String, dynamic>> messages) {
+    for (final m in messages) {
+      final c = m['content'];
+      if (c is List && c.any((p) => p is Map && p['type'] == 'image_url')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Resolve 'auto' to a concrete model: a free vision model when the request
+  /// includes images, otherwise a strong free text model. Real slugs pass through.
+  static String _resolveModel(String model, List<Map<String, dynamic>> messages) {
+    if (model != AppConfig.autoModel) return model;
+    return _hasImages(messages) ? AppConfig.autoVisionModel : AppConfig.autoTextModel;
+  }
 
   /// Ask a single question, optionally with images (as data URLs).
   Future<String> ask({
@@ -62,18 +84,26 @@ class OpenRouterService {
     List<Map<String, dynamic>> messages, {
     String? model,
   }) async {
-    final chosenModel = model ?? AppSettings.instance.aiModel;
+    final chosen = model ?? AppSettings.instance.aiModel;
+    final resolved = _resolveModel(chosen, messages);
     try {
-      return await _doChat(messages, chosenModel);
+      final reply = await _doChat(messages, resolved);
+      lastModelUsed = resolved;
+      return reply;
     } on OpenRouterException catch (e) {
-      // Auto-fallback: if model-specific error and we haven't already tried the default
+      // Auto-fallback: if model-specific error, retry once with a known-good
+      // free model (vision or text depending on the request).
       if (e.message.contains('no longer exists') ||
           e.message.contains('not accept images') ||
-          e.message.contains('not available')) {
-        final fallback = AppConfig.defaultAiModel;
-        if (fallback != chosenModel) {
-          // Retry with default free model
-          return await _doChat(messages, fallback);
+          e.message.contains('not available') ||
+          e.message.contains('is not available')) {
+        final fallback = _hasImages(messages)
+            ? AppConfig.autoVisionModel
+            : AppConfig.autoTextModel;
+        if (fallback != resolved) {
+          final reply = await _doChat(messages, fallback);
+          lastModelUsed = fallback;
+          return reply;
         }
       }
       rethrow;

@@ -80,10 +80,13 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       _testResult = null;
     });
     try {
-      final reply = await OpenRouterService().ask(prompt: 'Reply with the single word: OK');
+      final svc = OpenRouterService();
+      final reply = await svc.ask(prompt: 'Reply with the single word: OK');
+      final via = svc.lastModelUsed;
       setState(() {
         _testOk = true;
-        _testResult = 'Success! The AI replied: "${reply.trim()}"';
+        _testResult = 'Success! AI replied: "${reply.trim()}"'
+            '${via != null ? '\nModel used: $via' : ''}';
       });
     } on OpenRouterException catch (e) {
       setState(() {

@@ -24,7 +24,7 @@ class AppSettings {
   final _secure = const FlutterSecureStorage();
 
   String _apiBaseUrl = AppConfig.apiBaseUrl;
-  String _model = AppConfig.defaultAiModel;
+  String _model = AppConfig.autoModel; // default: smart auto-routing
   String _aiEndpoint = AppConfig.openRouterUrl;
 
   /// Current API base URL (e.g. https://my-server.com/api/v1).
