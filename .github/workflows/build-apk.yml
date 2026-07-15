@@ -42,7 +42,12 @@ jobs:
 
       - name: Build release APK
         working-directory: frontend
-        run: flutter build apk --release
+        # OPENROUTER_API_KEY is optional. Add it under
+        # Settings -> Secrets and variables -> Actions to bake AI into the APK.
+        # If unset, the app still works and you can paste your key in-app.
+        run: >
+          flutter build apk --release
+          --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
 
       - name: Rename APK
         working-directory: frontend

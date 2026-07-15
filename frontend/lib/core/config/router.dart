@@ -13,6 +13,7 @@ import '../../features/tools/presentation/compress_screen.dart';
 import '../../features/tools/presentation/pdf_tools_screen.dart';
 import '../../features/tools/presentation/pick_edit_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
+import '../../features/ai/presentation/ask_ai_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -45,6 +46,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Recent files (created / edited / saved on device)
       GoRoute(path: '/recent', builder: (_, __) => const RecentFilesScreen()),
+
+      // On-device AI (direct OpenRouter, no backend)
+      GoRoute(path: '/ai', builder: (_, __) => const AskAiScreen()),
     ],
   );
 });

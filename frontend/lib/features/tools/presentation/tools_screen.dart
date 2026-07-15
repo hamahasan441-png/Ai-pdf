@@ -99,11 +99,11 @@ class ToolsScreen extends ConsumerWidget {
               _ToolCard(
                 icon: Icons.psychology,
                 label: 'Understand',
-                desc: 'AI reads any doc',
+                desc: 'AI reads any doc/image',
                 color: const Color(0xFF7C3AED),
                 badge: 'AI',
                 badgeColor: cs.primary,
-                onTap: () => context.push('/upload'),
+                onTap: () => context.push('/ai'),
               ),
               _ToolCard(
                 icon: Icons.edit_note,

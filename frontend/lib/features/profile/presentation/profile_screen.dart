@@ -13,6 +13,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final Map<String, TextEditingController> _c = {};
   final _serverCtrl = TextEditingController(text: AppSettings.instance.apiBaseUrl);
+  final _aiKeyCtrl = TextEditingController();
+  final _aiModelCtrl = TextEditingController(text: AppSettings.instance.aiModel);
+  bool _keySet = false;
   bool _saving = false;
   bool _loading = true;
 
@@ -38,6 +41,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     for (final c in _c.values) c.dispose();
     _serverCtrl.dispose();
+    _aiKeyCtrl.dispose();
+    _aiModelCtrl.dispose();
     super.dispose();
   }
 
@@ -48,6 +53,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('AI server updated')));
+    }
+  }
+
+  Future<void> _saveAiKey() async {
+    if (_aiKeyCtrl.text.trim().isNotEmpty) {
+      await AppSettings.instance.setOpenRouterKey(_aiKeyCtrl.text);
+      _aiKeyCtrl.clear();
+    }
+    await AppSettings.instance.setAiModel(_aiModelCtrl.text);
+    final set = await AppSettings.instance.hasOpenRouterKey();
+    if (mounted) {
+      setState(() => _keySet = set);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI key saved on this device')));
+    }
+  }
+
+  Future<void> _clearAiKey() async {
+    await AppSettings.instance.setOpenRouterKey('');
+    if (mounted) {
+      setState(() => _keySet = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI key removed')));
     }
   }
 
@@ -62,6 +90,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } catch (_) {
       for (final f in _fields) { _c[f.$1] = TextEditingController(); }
     }
+    _keySet = await AppSettings.instance.hasOpenRouterKey();
     setState(() => _loading = false);
   }
 
@@ -149,6 +178,81 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   icon: const Icon(Icons.save, size: 18),
                   label: const Text('Save server'),
                 ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // OpenRouter key for direct on-device AI (no backend needed).
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.key, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('AI Key (OpenRouter)', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                if (_keySet)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text('Set', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w700)),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              const Text(
+                'Enables AI directly on your phone — no server. Get a free key at '
+                'openrouter.ai/keys and paste it here. It is stored encrypted on '
+                'this device only (never uploaded or shared).',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _aiKeyCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: _keySet ? 'Replace key (leave blank to keep)' : 'Paste OpenRouter key (sk-or-...)',
+                  prefixIcon: const Icon(Icons.vpn_key, size: 20),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _aiModelCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'AI model',
+                  hintText: 'google/gemini-2.0-flash-exp:free',
+                  prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (_keySet)
+                    TextButton.icon(
+                      onPressed: _clearAiKey,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('Remove'),
+                    ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _saveAiKey,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: const Text('Save AI key'),
+                  ),
+                ],
               ),
             ],
           ),
