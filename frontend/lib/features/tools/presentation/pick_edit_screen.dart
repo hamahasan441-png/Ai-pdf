@@ -96,6 +96,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Offset? _shapeStart; // live shape preview (normalized)
   Offset? _shapeEnd;
 
+  // --- Selection state ---
+  _Annotation? _selected; // currently selected annotation (for move/resize)
+  Offset? _dragOffset; // offset during move
+  bool _hasUnsavedChanges = false;
+
+  // --- Saved signatures (persisted across sessions) ---
+  static final List<List<Offset>> _savedSignatures = [];
+
   @override
   void dispose() {
     _doc?.close();
@@ -197,6 +205,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _norm(local, canvas);
+    if (_tool == EditTool.pan && _selected != null) {
+      // Start moving selected object
+      _dragOffset = n;
+      return;
+    }
     if (_isFreehand) {
       _drawing = [n];
       setState(() {});
@@ -209,6 +222,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _norm(local, canvas);
+    if (_tool == EditTool.pan && _selected != null && _dragOffset != null) {
+      final delta = Offset(n.dx - _dragOffset!.dx, n.dy - _dragOffset!.dy);
+      _moveSelected(delta);
+      _dragOffset = n;
+      return;
+    }
     if (_isFreehand) {
       _drawing = [..._drawing, n];
       setState(() {});
@@ -219,6 +238,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _onPanEnd() {
+    _dragOffset = null;
     if (_isFreehand && _drawing.length > 1) {
       _pushItem(_Stroke(
         List.from(_drawing),
@@ -252,7 +272,71 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {
         if (_layer.items.isNotEmpty) {
           _layer.redo.add(_layer.items.removeLast());
+          _hasUnsavedChanges = true;
         }
+      });
+    } else if (_tool == EditTool.pan) {
+      // Tap in pan mode = try to select an object
+      setState(() => _selected = _hitTest(n));
+    }
+  }
+
+  /// Simple hit-test: find the topmost shape/text near the tap point.
+  _Annotation? _hitTest(Offset n) {
+    // Check text boxes first (on top visually)
+    for (final t in _layer.texts.reversed) {
+      if ((t.pos - n).distance < 0.06) return t;
+    }
+    // Check shapes
+    for (final s in _layer.shapes.reversed) {
+      final center = Offset((s.start.dx + s.end.dx) / 2, (s.start.dy + s.end.dy) / 2);
+      if ((center - n).distance < 0.08) return s;
+    }
+    return null;
+  }
+
+  /// Move a selected object by a normalized delta.
+  void _moveSelected(Offset deltaNorm) {
+    final sel = _selected;
+    if (sel == null) return;
+    setState(() {
+      if (sel is _Shape) {
+        sel.start = Offset(
+          (sel.start.dx + deltaNorm.dx).clamp(0.0, 1.0),
+          (sel.start.dy + deltaNorm.dy).clamp(0.0, 1.0),
+        );
+        sel.end = Offset(
+          (sel.end.dx + deltaNorm.dx).clamp(0.0, 1.0),
+          (sel.end.dy + deltaNorm.dy).clamp(0.0, 1.0),
+        );
+      } else if (sel is _TextBox) {
+        sel.pos = Offset(
+          (sel.pos.dx + deltaNorm.dx).clamp(0.0, 0.98),
+          (sel.pos.dy + deltaNorm.dy).clamp(0.0, 0.98),
+        );
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  /// Resize a selected shape by adjusting its end point.
+  void _resizeSelected(Offset newEndNorm) {
+    final sel = _selected;
+    if (sel is _Shape) {
+      setState(() {
+        sel.end = Offset(newEndNorm.dx.clamp(0.0, 1.0), newEndNorm.dy.clamp(0.0, 1.0));
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
+  void _deleteSelected() {
+    if (_selected != null) {
+      setState(() {
+        _layer.items.remove(_selected);
+        _layer.redo.add(_selected!);
+        _selected = null;
+        _hasUnsavedChanges = true;
       });
     }
   }
@@ -264,6 +348,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _pushItem(_Annotation a) {
     _layer.items.add(a);
     _layer.redo.clear();
+    _hasUnsavedChanges = true;
   }
 
   Future<void> _editTextBox(_TextBox box, {bool isNew = false}) async {
@@ -376,19 +461,84 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   Future<void> _addSignature() async {
-    final points = await Navigator.of(context).push<List<Offset>>(
-      MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _SignaturePad()),
-    );
+    // Show option: draw new or use saved
+    List<Offset>? points;
+    if (_savedSignatures.isNotEmpty) {
+      final choice = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.draw),
+                title: const Text('Draw new signature'),
+                onTap: () => Navigator.pop(ctx, 'new'),
+              ),
+              const Divider(height: 1),
+              ...List.generate(_savedSignatures.length, (i) => ListTile(
+                    leading: const Icon(Icons.gesture),
+                    title: Text('Saved signature ${i + 1}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: () {
+                        _savedSignatures.removeAt(i);
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                    onTap: () => Navigator.pop(ctx, 'saved_$i'),
+                  )),
+            ],
+          ),
+        ),
+      );
+      if (choice == null) return;
+      if (choice == 'new') {
+        points = await _drawSignature();
+      } else if (choice.startsWith('saved_')) {
+        final idx = int.tryParse(choice.replaceFirst('saved_', ''));
+        if (idx != null && idx < _savedSignatures.length) {
+          points = _savedSignatures[idx];
+        }
+      }
+    } else {
+      points = await _drawSignature();
+    }
+
     if (points != null && points.length > 1) {
       setState(() {
         _pushItem(_Stroke(
-          points.map((p) => Offset(0.1 + p.dx / 900, 0.7 + p.dy / 900)).toList(),
+          points!.map((p) => Offset(0.1 + p.dx / 900, 0.7 + p.dy / 900)).toList(),
           Colors.black,
           2.5,
           false,
         ));
       });
     }
+  }
+
+  Future<List<Offset>?> _drawSignature() async {
+    final points = await Navigator.of(context).push<List<Offset>>(
+      MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _SignaturePad()),
+    );
+    if (points != null && points.length > 1) {
+      // Ask to save for reuse
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Save this signature?'),
+          content: const Text('Saved signatures can be reused instantly next time.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (save == true) {
+        _savedSignatures.add(List.from(points));
+      }
+    }
+    return points;
   }
 
   /// Rotate the current page image 90° clockwise. The rotation is applied to
@@ -531,7 +681,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final cs = Theme.of(context).colorScheme;
     final bytes = _pageCache[_current];
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final action = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Unsaved changes'),
+            content: const Text('You have unsaved edits. What would you like to do?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: const Text('Discard')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save & exit')),
+            ],
+          ),
+        );
+        if (action == 'discard' && mounted) {
+          setState(() => _hasUnsavedChanges = false);
+          Navigator.of(context).pop();
+        } else if (action == 'save' && mounted) {
+          await _export();
+          if (mounted) Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF2B2B2B),
       appBar: AppBar(
         title: Column(
@@ -621,14 +794,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 )
               : null),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    ),
     );
   }
 
   Widget _buildCanvas(Uint8List bytes) {
     return LayoutBuilder(builder: (context, constraints) {
       final size = Size(constraints.maxWidth, constraints.maxHeight);
-      // Text boxes are draggable when the Move tool is active; otherwise the
-      // drawing gestures own the surface.
       final canDragText = _tool == EditTool.pan || _tool == EditTool.text;
       return GestureDetector(
         onTapUp: (d) => _onTapUp(d.localPosition, size),
@@ -652,22 +824,37 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _tool == EditTool.highlight,
               ),
             ),
+            // Selection indicator for shapes
+            if (_selected is _Shape)
+              _buildShapeSelection(size, _selected as _Shape),
+            // Text boxes
             ..._layer.texts.map((t) => Positioned(
                   left: t.pos.dx * size.width,
                   top: t.pos.dy * size.height,
                   child: GestureDetector(
-                    onTap: () => _editTextBox(t),
+                    onTap: () {
+                      if (_tool == EditTool.pan) {
+                        setState(() => _selected = t);
+                      } else {
+                        _editTextBox(t);
+                      }
+                    },
                     onPanUpdate: canDragText
                         ? (d) => setState(() {
                               t.pos = Offset(
                                 (t.pos.dx + d.delta.dx / size.width).clamp(0.0, 0.98),
                                 (t.pos.dy + d.delta.dy / size.height).clamp(0.0, 0.98),
                               );
+                              _hasUnsavedChanges = true;
                             })
                         : null,
                     child: Container(
-                      padding: const EdgeInsets.all(2),
-                      color: Colors.transparent,
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        border: _selected == t
+                            ? Border.all(color: Colors.blue, width: 2)
+                            : null,
+                      ),
                       child: Text(
                         t.text,
                         style: TextStyle(
@@ -679,10 +866,60 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     ),
                   ),
                 )),
+            // Selection action bar (appears when something is selected)
+            if (_selected != null)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (_selected is _TextBox) ...[
+                      _miniBtn(Icons.edit, 'Edit text', () => _editTextBox(_selected as _TextBox)),
+                      const SizedBox(width: 8),
+                    ],
+                    _miniBtn(Icons.delete_outline, 'Delete', _deleteSelected),
+                    const SizedBox(width: 8),
+                    _miniBtn(Icons.close, 'Deselect', () => setState(() => _selected = null)),
+                  ]),
+                ),
+              ),
           ],
         ),
       );
     });
+  }
+
+  Widget _miniBtn(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+        message: tip,
+        child: InkWell(
+          onTap: onTap,
+          child: Icon(icon, size: 20, color: Colors.white),
+        ),
+      );
+
+  Widget _buildShapeSelection(Size size, _Shape s) {
+    final left = math.min(s.start.dx, s.end.dx) * size.width - 4;
+    final top = math.min(s.start.dy, s.end.dy) * size.height - 4;
+    final w = (s.end.dx - s.start.dx).abs() * size.width + 8;
+    final h = (s.end.dy - s.start.dy).abs() * size.height + 8;
+    return Positioned(
+      left: left,
+      top: top,
+      width: w,
+      height: h,
+      child: IgnorePointer(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.blue, width: 2),
+          ),
+        ),
+      ),
+    );
   }
 
   ShapeType? _shapePreviewType() {
