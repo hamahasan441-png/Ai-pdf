@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
@@ -69,7 +70,14 @@ class _PageLayer {
 /// eraser, undo/redo, and export to a flattened PDF captured page-by-page so
 /// nothing is ever loaded at huge resolution.
 class PickEditScreen extends StatefulWidget {
-  const PickEditScreen({super.key});
+  /// Optional: open this file immediately (skip the file picker).
+  final String? initialPath;
+
+  /// Optional: pre-place these values as editable text boxes (used by the
+  /// AI form filler to drop answers onto the actual form).
+  final List<FilledField>? initialFields;
+
+  const PickEditScreen({super.key, this.initialPath, this.initialFields});
   @override
   State<PickEditScreen> createState() => _PickEditScreenState();
 }
@@ -105,6 +113,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
   static final List<List<Offset>> _savedSignatures = [];
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialPath != null) {
+      // Open the provided file after first frame (so context/state is ready).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadFile(widget.initialPath!, widget.initialPath!.split('/').last,
+            fields: widget.initialFields);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _doc?.close();
     super.dispose();
@@ -118,13 +138,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
     if (result == null || result.files.isEmpty) return;
-    final path = result.files.first.path!;
+    await _loadFile(result.files.first.path!, result.files.first.name);
+  }
+
+  /// Load a PDF/image from [path]. Optionally pre-place [fields] as editable
+  /// text boxes (used by the AI form filler).
+  Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
     setState(() {
       _loading = true;
       _pageCache.clear();
       _layers.clear();
       _current = 0;
-      _fileName = result.files.first.name;
+      _fileName = name;
+      _selected = null;
     });
 
     try {
@@ -137,6 +163,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
       } else {
         _pageCount = 1;
         _pageCache[0] = await File(path).readAsBytes();
+      }
+
+      // Drop AI-filled values onto their pages as editable text boxes.
+      if (fields != null && fields.isNotEmpty) {
+        for (final f in fields) {
+          final pageIndex = (f.page - 1).clamp(0, (_pageCount - 1).clamp(0, 1 << 30));
+          final layer = _layers.putIfAbsent(pageIndex, () => _PageLayer());
+          layer.items.add(_TextBox(Offset(f.x, f.y), f.text, Colors.black, 0.024, false));
+        }
+        _hasUnsavedChanges = true;
+        _tool = EditTool.pan; // start in move/select mode so user can adjust
       }
     } catch (e) {
       _showError('Could not open file: $e');
@@ -281,16 +318,26 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  /// Simple hit-test: find the topmost shape/text near the tap point.
+  /// Hit-test in reverse draw order (topmost first): text, shapes, strokes.
   _Annotation? _hitTest(Offset n) {
-    // Check text boxes first (on top visually)
-    for (final t in _layer.texts.reversed) {
-      if ((t.pos - n).distance < 0.06) return t;
-    }
-    // Check shapes
-    for (final s in _layer.shapes.reversed) {
-      final center = Offset((s.start.dx + s.end.dx) / 2, (s.start.dy + s.end.dy) / 2);
-      if ((center - n).distance < 0.08) return s;
+    for (final item in _layer.items.reversed) {
+      if (item is _TextBox) {
+        if ((item.pos - n).distance < 0.07) return item;
+      } else if (item is _Shape) {
+        final r = Rect.fromPoints(item.start, item.end).inflate(0.03);
+        if (r.contains(n)) return item;
+      } else if (item is _Stroke) {
+        // Bounding box of the stroke (works for signatures/drawings).
+        var minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+        for (final p in item.points) {
+          minX = math.min(minX, p.dx);
+          minY = math.min(minY, p.dy);
+          maxX = math.max(maxX, p.dx);
+          maxY = math.max(maxY, p.dy);
+        }
+        final r = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(0.02);
+        if (r.contains(n)) return item;
+      }
     }
     return null;
   }
@@ -314,6 +361,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
           (sel.pos.dx + deltaNorm.dx).clamp(0.0, 0.98),
           (sel.pos.dy + deltaNorm.dy).clamp(0.0, 0.98),
         );
+      } else if (sel is _Stroke) {
+        for (var i = 0; i < sel.points.length; i++) {
+          sel.points[i] = Offset(
+            (sel.points[i].dx + deltaNorm.dx).clamp(0.0, 1.0),
+            (sel.points[i].dy + deltaNorm.dy).clamp(0.0, 1.0),
+          );
+        }
       }
       _hasUnsavedChanges = true;
     });
@@ -339,6 +393,49 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _hasUnsavedChanges = true;
       });
     }
+  }
+
+  void _duplicateSelected() {
+    final sel = _selected;
+    if (sel == null) return;
+    const d = 0.03; // small offset so the copy is visible
+    _Annotation? copy;
+    if (sel is _Shape) {
+      copy = _Shape(sel.type, Offset(sel.start.dx + d, sel.start.dy + d),
+          Offset(sel.end.dx + d, sel.end.dy + d), sel.color, sel.width);
+    } else if (sel is _TextBox) {
+      copy = _TextBox(Offset(sel.pos.dx + d, sel.pos.dy + d), sel.text, sel.color, sel.size, sel.bold);
+    } else if (sel is _Stroke) {
+      copy = _Stroke(sel.points.map((p) => Offset(p.dx + d, p.dy + d)).toList(),
+          sel.color, sel.width, sel.highlight);
+    }
+    if (copy != null) {
+      setState(() {
+        _layer.items.add(copy!);
+        _selected = copy;
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
+  void _bringToFront() {
+    final sel = _selected;
+    if (sel == null) return;
+    setState(() {
+      _layer.items.remove(sel);
+      _layer.items.add(sel);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _sendToBack() {
+    final sel = _selected;
+    if (sel == null) return;
+    setState(() {
+      _layer.items.remove(sel);
+      _layer.items.insert(0, sel);
+      _hasUnsavedChanges = true;
+    });
   }
 
   Offset _norm(Offset local, Size canvas) =>
@@ -824,9 +921,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _tool == EditTool.highlight,
               ),
             ),
-            // Selection indicator for shapes
-            if (_selected is _Shape)
+            // Selection indicator + resize handles for shapes
+            if (_selected is _Shape) ...[
               _buildShapeSelection(size, _selected as _Shape),
+              _resizeHandle(size, (_selected as _Shape).start, (v) {
+                setState(() {
+                  (_selected as _Shape).start = v;
+                  _hasUnsavedChanges = true;
+                });
+              }),
+              _resizeHandle(size, (_selected as _Shape).end, (v) {
+                setState(() {
+                  (_selected as _Shape).end = v;
+                  _hasUnsavedChanges = true;
+                });
+              }),
+            ],
             // Text boxes
             ..._layer.texts.map((t) => Positioned(
                   left: t.pos.dx * size.width,
@@ -880,10 +990,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_selected is _TextBox) ...[
                       _miniBtn(Icons.edit, 'Edit text', () => _editTextBox(_selected as _TextBox)),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                     ],
+                    _miniBtn(Icons.copy_all, 'Duplicate', _duplicateSelected),
+                    const SizedBox(width: 10),
+                    _miniBtn(Icons.flip_to_front, 'Bring to front', _bringToFront),
+                    const SizedBox(width: 10),
+                    _miniBtn(Icons.flip_to_back, 'Send to back', _sendToBack),
+                    const SizedBox(width: 10),
                     _miniBtn(Icons.delete_outline, 'Delete', _deleteSelected),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     _miniBtn(Icons.close, 'Deselect', () => setState(() => _selected = null)),
                   ]),
                 ),
@@ -916,6 +1032,32 @@ class _PickEditScreenState extends State<PickEditScreen> {
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.blue, width: 2),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A draggable blue dot for resizing a shape endpoint. [norm] is the current
+  /// normalized position; [onDrag] receives the new normalized position.
+  Widget _resizeHandle(Size size, Offset norm, void Function(Offset) onDrag) {
+    return Positioned(
+      left: norm.dx * size.width - 14,
+      top: norm.dy * size.height - 14,
+      child: GestureDetector(
+        onPanUpdate: (d) {
+          final nx = (norm.dx + d.delta.dx / size.width).clamp(0.0, 1.0);
+          final ny = (norm.dy + d.delta.dy / size.height).clamp(0.0, 1.0);
+          onDrag(Offset(nx, ny));
+        },
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
           ),
         ),
       ),
