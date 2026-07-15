@@ -7,6 +7,11 @@ import '../../features/upload/presentation/upload_screen.dart';
 import '../../features/document/presentation/document_screen.dart';
 import '../../features/editor/presentation/editor_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/tools/presentation/tools_screen.dart';
+import '../../features/tools/presentation/jpg_to_pdf_screen.dart';
+import '../../features/tools/presentation/compress_screen.dart';
+import '../../features/tools/presentation/pdf_tools_screen.dart';
+import '../../features/tools/presentation/pick_edit_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -26,6 +31,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => EditorScreen(documentId: state.pathParameters['id']!),
       ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+
+      // Tools hub
+      GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
+
+      // Offline tools
+      GoRoute(path: '/tools/jpg-to-pdf', builder: (_, __) => const JpgToPdfScreen()),
+      GoRoute(path: '/tools/compress', builder: (_, __) => const CompressScreen()),
+      GoRoute(path: '/tools/merge', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.merge)),
+      GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
+      GoRoute(path: '/tools/extract', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.extract)),
+      GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
     ],
   );
 });
