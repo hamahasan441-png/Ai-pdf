@@ -222,7 +222,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             builder: (_, snap) {
               if (snap.data != true) {
                 return TextButton.icon(
-                  onPressed: () => context.push('/profile'),
+                  onPressed: () => context.push('/settings'),
                   icon: const Icon(Icons.key, size: 16),
                   label: const Text('Add key'),
                 );
@@ -230,7 +230,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               return IconButton(
                 tooltip: 'AI settings',
                 icon: const Icon(Icons.settings_outlined),
-                onPressed: () => context.push('/profile'),
+                onPressed: () => context.push('/settings'),
               );
             },
           ),

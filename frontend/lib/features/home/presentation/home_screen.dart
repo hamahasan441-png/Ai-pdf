@@ -63,6 +63,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Container(
               width: 36, height: 36,
               decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.key, size: 20),
+            ),
+            tooltip: 'AI settings & API key',
+            onPressed: () => context.push('/settings'),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.history, size: 20),
             ),
             tooltip: 'Recent files',
