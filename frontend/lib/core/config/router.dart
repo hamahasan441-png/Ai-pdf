@@ -12,6 +12,7 @@ import '../../features/tools/presentation/jpg_to_pdf_screen.dart';
 import '../../features/tools/presentation/compress_screen.dart';
 import '../../features/tools/presentation/pdf_tools_screen.dart';
 import '../../features/tools/presentation/pick_edit_screen.dart';
+import '../../features/recent/presentation/recent_files_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -41,6 +42,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/merge', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.merge)),
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
       GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
+
+      // Recent files (created / edited / saved on device)
+      GoRoute(path: '/recent', builder: (_, __) => const RecentFilesScreen()),
     ],
   );
 });

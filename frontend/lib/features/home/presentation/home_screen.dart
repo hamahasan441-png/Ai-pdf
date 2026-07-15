@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/recent_files_service.dart';
+import '../../../core/services/permission_service.dart';
+import '../../tools/widgets/result_sheet.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,7 +19,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loading = true;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    RecentFilesService.instance.load();
+    // Ask for storage / gallery / camera access on first launch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) PermissionService.ensureOnStartup(context);
+    });
+  }
 
   Future<void> _load() async {
     try {
@@ -48,6 +59,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const Text('AI PDF'),
         ]),
         actions: [
+          IconButton(
+            icon: Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.history, size: 20),
+            ),
+            tooltip: 'Recent files',
+            onPressed: () => context.push('/recent'),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             icon: Container(
               width: 36, height: 36,
@@ -117,6 +138,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   _QuickAction(icon: Icons.auto_awesome, label: 'AI Fill', color: const Color(0xFF7C3AED), onTap: () => context.push('/upload')),
                 ]),
               )),
+              // Recent files (created / edited / saved on this device)
+              _recentFilesSliver(cs),
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
               // Documents header
               SliverToBoxAdapter(child: Padding(
@@ -141,6 +164,82 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onPressed: () => context.push('/upload'),
         icon: const Icon(Icons.add),
         label: const Text('Upload', style: TextStyle(fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _recentFilesSliver(ColorScheme cs) {
+    return SliverToBoxAdapter(
+      child: ValueListenableBuilder<List<RecentFile>>(
+        valueListenable: RecentFilesService.instance.notifier,
+        builder: (context, items, _) {
+          if (items.isEmpty) return const SizedBox.shrink();
+          final show = items.take(6).toList();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(children: [
+                  Text('Recent Files',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => context.push('/recent'),
+                    child: const Text('See all'),
+                  ),
+                ]),
+              ),
+              SizedBox(
+                height: 120,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: show.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (_, i) {
+                    final f = show[i];
+                    return GestureDetector(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => FilePreviewScreen(path: f.path, isPdf: f.isPdf),
+                      )),
+                      child: Container(
+                        width: 110,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: cs.outlineVariant),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: (f.isPdf ? Colors.red : Colors.blue).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image,
+                                  color: f.isPdf ? Colors.red : Colors.blue, size: 22),
+                            ),
+                            const Spacer(),
+                            Text(f.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
