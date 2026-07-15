@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -96,8 +95,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
   List<Offset> _drawing = [];
   Offset? _shapeStart; // live shape preview (normalized)
   Offset? _shapeEnd;
-
-  final GlobalKey _captureKey = GlobalKey();
 
   @override
   void dispose() {
@@ -391,28 +388,40 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  // ---- Export: capture each annotated page to PNG, build a PDF ----
+  // ---- Export: compose each page off-screen at high resolution ----
+  //
+  // Pro approach (used by big PDF apps): instead of screenshotting the visible
+  // widget (limited to screen resolution and fragile), we re-render each page
+  // at a high pixel cap and paint the annotations directly onto an off-screen
+  // Canvas. This gives crisp output, is much faster (no per-frame waits), works
+  // for pages that aren't on screen, and keeps memory bounded (one page image
+  // in flight at a time, disposed immediately).
+
+  static const double _exportMaxEdge = 1800;
 
   Future<void> _export() async {
     setState(() => _loading = true);
     try {
       final doc = pw.Document();
-      final startPage = _current;
+      var rendered = 0;
       for (var i = 0; i < _pageCount; i++) {
-        await _renderPage(i);
-        setState(() => _current = i);
-        await WidgetsBinding.instance.endOfFrame;
-        await Future.delayed(const Duration(milliseconds: 50));
-        final png = await _capturePng();
+        final png = await _composePagePng(i);
         if (png != null) {
           final image = pw.MemoryImage(png);
           doc.addPage(pw.Page(
             pageFormat: PdfPageFormat.a4,
             build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
           ));
+          rendered++;
         }
+        // Yield to the event loop so the UI stays responsive on big files.
+        await Future<void>.delayed(Duration.zero);
       }
-      setState(() => _current = startPage);
+
+      if (rendered == 0) {
+        _showError('Nothing to export');
+        return;
+      }
 
       final dir = await getApplicationDocumentsDirectory();
       final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
@@ -422,7 +431,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         await showResultSheet(context,
             paths: [outPath],
             title: 'Export Complete',
-            subtitle: '$_pageCount page(s) saved');
+            subtitle: '$rendered page(s) saved');
       }
     } catch (e) {
       _showError('Export failed: $e');
@@ -431,16 +440,53 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  Future<Uint8List?> _capturePng() async {
+  /// Render page [index] at high resolution and paint its annotation layer on
+  /// top, returning a PNG. Everything is disposed before returning.
+  Future<Uint8List?> _composePagePng(int index) async {
+    // 1) Obtain the base image bytes for this page (high-res for PDFs).
+    Uint8List? baseBytes;
+    if (_doc != null) {
+      final page = await _doc!.getPage(index + 1);
+      try {
+        final longEdge = page.width > page.height ? page.width : page.height;
+        final scale = longEdge > _exportMaxEdge ? _exportMaxEdge / longEdge : 1.0;
+        final img = await page.render(
+          width: page.width * scale,
+          height: page.height * scale,
+          format: pdfx.PdfPageImageFormat.jpeg,
+          backgroundColor: '#FFFFFF',
+        );
+        baseBytes = img?.bytes;
+      } finally {
+        await page.close();
+      }
+    } else {
+      baseBytes = _pageCache[index]; // image file case
+    }
+    if (baseBytes == null) return null;
+
+    // 2) Decode to a ui.Image so we know the exact pixel dimensions.
+    final codec = await ui.instantiateImageCodec(baseBytes);
+    final frame = await codec.getNextFrame();
+    final base = frame.image;
+
     try {
-      final boundary =
-          _captureKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return null;
-      final image = await boundary.toImage(pixelRatio: 2.0);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      return data?.buffer.asUint8List();
-    } catch (_) {
-      return null;
+      final size = Size(base.width.toDouble(), base.height.toDouble());
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.width, size.height));
+      canvas.drawImage(base, Offset.zero, Paint());
+      _AnnDraw.layer(canvas, size, _layers[index]);
+      final picture = recorder.endRecording();
+      final composed = await picture.toImage(base.width, base.height);
+      try {
+        final data = await composed.toByteData(format: ui.ImageByteFormat.png);
+        return data?.buffer.asUint8List();
+      } finally {
+        composed.dispose();
+        picture.dispose();
+      }
+    } finally {
+      base.dispose();
     }
   }
 
@@ -498,7 +544,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                         return AspectRatio(
                           aspectRatio: 1 / 1.414, // A4-ish
                           child: RepaintBoundary(
-                            key: _captureKey,
                             child: _buildCanvas(bytes),
                           ),
                         );
@@ -759,7 +804,104 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 }
 
-/// Painter for freehand strokes, shapes, and live previews.
+/// Shared, resolution-independent drawing used by BOTH the on-screen painter
+/// and the off-screen export compositor, so the exported PDF looks exactly
+/// like what the user sees. Line/arrow/text sizes scale with the canvas height
+/// (normalized to a 1000px reference) so a stroke keeps the same relative
+/// thickness whether drawn on a phone screen or a 1800px export page.
+class _AnnDraw {
+  static const double _refHeight = 1000.0;
+
+  static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
+    if (pts.length < 2) return;
+    final k = size.height / _refHeight;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = width * k
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final path = Path()..moveTo(pts[0].dx * size.width, pts[0].dy * size.height);
+    for (var i = 1; i < pts.length; i++) {
+      path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  static void shape(Canvas canvas, Size size, ShapeType type, Offset a, Offset b, Color color, double width) {
+    final k = size.height / _refHeight;
+    final p1 = Offset(a.dx * size.width, a.dy * size.height);
+    final p2 = Offset(b.dx * size.width, b.dy * size.height);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = width * k
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    switch (type) {
+      case ShapeType.rect:
+        canvas.drawRect(Rect.fromPoints(p1, p2), paint);
+        break;
+      case ShapeType.line:
+        canvas.drawLine(p1, p2, paint);
+        break;
+      case ShapeType.arrow:
+        canvas.drawLine(p1, p2, paint);
+        _arrowHead(canvas, p1, p2, paint, k);
+        break;
+    }
+  }
+
+  static void _arrowHead(Canvas canvas, Offset from, Offset to, Paint paint, double k) {
+    final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
+    final headLen = 18.0 * k;
+    const headAngle = math.pi / 7;
+    final p1 = Offset(
+      to.dx - headLen * math.cos(angle - headAngle),
+      to.dy - headLen * math.sin(angle - headAngle),
+    );
+    final p2 = Offset(
+      to.dx - headLen * math.cos(angle + headAngle),
+      to.dy - headLen * math.sin(angle + headAngle),
+    );
+    canvas.drawLine(to, p1, paint);
+    canvas.drawLine(to, p2, paint);
+  }
+
+  static void text(Canvas canvas, Size size, _TextBox t) {
+    if (t.text.isEmpty) return;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: t.text,
+        style: TextStyle(
+          color: t.color,
+          fontSize: t.size * size.height,
+          fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: size.width * (1 - t.pos.dx));
+    tp.paint(canvas, Offset(t.pos.dx * size.width, t.pos.dy * size.height));
+  }
+
+  /// Paint an entire page layer (strokes, shapes, text) onto [canvas].
+  static void layer(Canvas canvas, Size size, _PageLayer? layer) {
+    if (layer == null) return;
+    for (final s in layer.strokes) {
+      stroke(canvas, size, s.points, s.color, s.width);
+    }
+    for (final s in layer.shapes) {
+      shape(canvas, size, s.type, s.start, s.end, s.color, s.width);
+    }
+    for (final t in layer.texts) {
+      text(canvas, size, t);
+    }
+  }
+}
+
+/// On-screen painter for freehand strokes, shapes, and live previews.
+/// Text boxes are drawn as draggable widgets, so they are not painted here.
 class _AnnPainter extends CustomPainter {
   final List<_Stroke> strokes;
   final List<_Shape> shapes;
@@ -786,73 +928,18 @@ class _AnnPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final s in strokes) {
-      _drawStroke(canvas, size, s.points, s.color, s.width);
+      _AnnDraw.stroke(canvas, size, s.points, s.color, s.width);
     }
     for (final s in shapes) {
-      _drawShape(canvas, size, s.type, s.start, s.end, s.color, s.width);
+      _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color, s.width);
     }
     if (current.length > 1) {
-      _drawStroke(canvas, size, current,
+      _AnnDraw.stroke(canvas, size, current,
           curHighlight ? curColor.withOpacity(0.35) : curColor, curHighlight ? 16 : curWidth);
     }
     if (shapeType != null && shapeStart != null && shapeEnd != null) {
-      _drawShape(canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
+      _AnnDraw.shape(canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
     }
-  }
-
-  void _drawStroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
-    if (pts.length < 2) return;
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    final path = Path()..moveTo(pts[0].dx * size.width, pts[0].dy * size.height);
-    for (var i = 1; i < pts.length; i++) {
-      path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  void _drawShape(Canvas canvas, Size size, ShapeType type, Offset a, Offset b, Color color, double width) {
-    final p1 = Offset(a.dx * size.width, a.dy * size.height);
-    final p2 = Offset(b.dx * size.width, b.dy * size.height);
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    switch (type) {
-      case ShapeType.rect:
-        canvas.drawRect(Rect.fromPoints(p1, p2), paint);
-        break;
-      case ShapeType.line:
-        canvas.drawLine(p1, p2, paint);
-        break;
-      case ShapeType.arrow:
-        canvas.drawLine(p1, p2, paint);
-        _drawArrowHead(canvas, p1, p2, paint);
-        break;
-    }
-  }
-
-  void _drawArrowHead(Canvas canvas, Offset from, Offset to, Paint paint) {
-    final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
-    const headLen = 16.0;
-    const headAngle = math.pi / 7;
-    final p1 = Offset(
-      to.dx - headLen * math.cos(angle - headAngle),
-      to.dy - headLen * math.sin(angle - headAngle),
-    );
-    final p2 = Offset(
-      to.dx - headLen * math.cos(angle + headAngle),
-      to.dy - headLen * math.sin(angle + headAngle),
-    );
-    canvas.drawLine(to, p1, paint);
-    canvas.drawLine(to, p2, paint);
   }
 
   @override
