@@ -1,21 +1,14 @@
-/// Application configuration constants.
 class AppConfig {
   AppConfig._();
-
-  static const String appName = 'AI Document Assistant';
-  static const String apiBaseUrl = 'http://localhost:8000/api/v1';
-  static const Duration requestTimeout = Duration(seconds: 30);
-  static const int maxUploadSizeMB = 50;
-
-  // Supported file types
-  static const List<String> supportedFileExtensions = [
-    'pdf',
-    'docx',
-    'png',
-    'jpg',
-    'jpeg',
+  static const String appName = 'AI PDF';
+  static const String apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000/api/v1',
+  );
+  static const int maxFileSizeMB = 50;
+  static const List<String> supportedExtensions = [
+    'pdf', 'docx', 'doc', 'png', 'jpg', 'jpeg', 'tiff',
   ];
-
-  // Pagination
-  static const int defaultPageSize = 20;
+  static const Duration requestTimeout = Duration(seconds: 30);
+  static const Duration uploadTimeout = Duration(seconds: 120);
 }

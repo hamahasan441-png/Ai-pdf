@@ -27,9 +27,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # AI Provider (FreeTheAI - OpenAI compatible)
+    # Get free API key: https://discord.gg/freetheai → run /signup
     AI_API_BASE_URL: str = "https://api.freetheai.xyz/v1"
-    AI_API_KEY: str = "your-api-key-here"
-    AI_MODEL: str = "gpt-4o-mini"
+    AI_API_KEY: str = ""
+    AI_MODEL: str = "gpt-4o-mini"  # Best free model (fast + smart)
+    AI_MODEL_ADVANCED: str = "gpt-4o"  # For complex document analysis
+    AI_FALLBACK_MODELS: List[str] = ["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-flash"]
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-jwt-secret"

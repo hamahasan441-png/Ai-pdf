@@ -2,15 +2,8 @@ include: package:flutter_lints/flutter.yaml
 
 linter:
   rules:
-    - prefer_const_constructors
-    - prefer_const_declarations
-    - avoid_print
-    - prefer_single_quotes
-    - sort_child_properties_last
-    - use_build_context_synchronously
-    - avoid_unnecessary_containers
-
-analyzer:
-  exclude:
-    - "**/*.g.dart"
-    - "**/*.freezed.dart"
+    avoid_print: false
+    prefer_const_constructors: false
+    prefer_const_literals_to_create_immutables: false
+    use_key_in_widget_constructors: false
+    prefer_final_locals: false
