@@ -1,14 +1,15 @@
-"""FreeTheAI provider - OpenAI-compatible API client.
+"""OpenRouter AI provider - OpenAI-compatible API client.
 
-FreeTheAI: https://freetheai.xyz
-- 80+ free models available
-- OpenAI-compatible API at https://api.freetheai.xyz/v1
-- Get free key: Join Discord → run /signup
-- Best models: gpt-4o-mini (fast), gpt-4o (smart), claude-3-5-sonnet (analysis)
+OpenRouter: https://openrouter.ai
+- 400+ models available (GPT-4o, Claude, Gemini, Llama, Qwen, Mistral)
+- OpenAI-compatible API at https://openrouter.ai/api/v1
+- Many free models available (Gemini Flash, Llama, Qwen, Mistral)
+- Docs: https://openrouter.ai/docs
 """
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 import httpx
@@ -20,10 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class AIProvider:
-    """Client for the FreeTheAI API (OpenAI-compatible).
+    """Client for OpenRouter API (OpenAI-compatible).
 
-    Supports automatic model fallback: if the primary model fails,
-    tries alternative models from the fallback list.
+    Features:
+    - Automatic model fallback on failure
+    - JSON mode for structured outputs
+    - Advanced model selection for complex tasks
+    - HTTP-Referer header for OpenRouter identification
     """
 
     def __init__(self):
@@ -37,6 +41,8 @@ class AIProvider:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://ai-pdf.app",
+                "X-Title": "AI PDF Document Assistant",
             },
             timeout=90.0,
         )
@@ -86,7 +92,7 @@ class AIProvider:
         max_tokens: int,
         response_format: Optional[dict],
     ) -> str:
-        """Make a single API call to FreeTheAI."""
+        """Make a single API call to OpenRouter."""
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -105,10 +111,10 @@ class AIProvider:
             return content
         except httpx.HTTPStatusError as e:
             raise AIServiceError(
-                f"AI API ({model}) returned status {e.response.status_code}: {e.response.text}"
+                f"OpenRouter ({model}) returned status {e.response.status_code}: {e.response.text}"
             )
         except (httpx.RequestError, KeyError, IndexError) as e:
-            raise AIServiceError(f"AI API ({model}) request failed: {str(e)}")
+            raise AIServiceError(f"OpenRouter ({model}) request failed: {str(e)}")
 
     async def chat_completion_json(
         self,
@@ -118,8 +124,16 @@ class AIProvider:
         use_advanced: bool = False,
     ) -> dict:
         """Send a chat completion and parse response as JSON."""
+        # Add JSON instruction to system message for models that don't support response_format
+        json_messages = list(messages)
+        if json_messages and json_messages[0]["role"] == "system":
+            json_messages[0] = {
+                "role": "system",
+                "content": json_messages[0]["content"] + "\n\nIMPORTANT: You MUST respond ONLY with valid JSON. No markdown, no explanation, just JSON.",
+            }
+
         response_text = await self.chat_completion(
-            messages=messages,
+            messages=json_messages,
             temperature=temperature,
             max_tokens=max_tokens,
             response_format={"type": "json_object"},
@@ -128,15 +142,21 @@ class AIProvider:
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:
-            # Try to extract JSON from response
-            import re
+            # Try to extract JSON from response (some models wrap in markdown)
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            # Try raw JSON extraction
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
                 try:
                     return json.loads(json_match.group())
                 except json.JSONDecodeError:
                     pass
-            raise AIServiceError(f"Failed to parse AI JSON response: {response_text[:200]}")
+            raise AIServiceError(f"Failed to parse AI JSON response: {response_text[:300]}")
 
     async def analyze_document(
         self,
@@ -147,7 +167,7 @@ class AIProvider:
         messages = [
             {
                 "role": "system",
-                "content": "You are an expert document analyzer. Always respond in valid JSON format.",
+                "content": "You are an expert document analyzer. Always respond in valid JSON format. Never use markdown code blocks.",
             },
             {
                 "role": "user",

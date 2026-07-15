@@ -26,13 +26,26 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # AI Provider (FreeTheAI - OpenAI compatible)
-    # Get free API key: https://discord.gg/freetheai → run /signup
-    AI_API_BASE_URL: str = "https://api.freetheai.xyz/v1"
-    AI_API_KEY: str = ""
-    AI_MODEL: str = "gpt-4o-mini"  # Best free model (fast + smart)
-    AI_MODEL_ADVANCED: str = "gpt-4o"  # For complex document analysis
-    AI_FALLBACK_MODELS: List[str] = ["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-flash"]
+    # AI Provider - OpenRouter (OpenAI-compatible, 400+ models)
+    # Docs: https://openrouter.ai/docs
+    AI_API_BASE_URL: str = "https://openrouter.ai/api/v1"
+    AI_API_KEY: str = ""  # Set in .env file (never commit keys!)
+    AI_MODEL: str = "google/gemini-2.0-flash-exp:free"
+    AI_MODEL_ADVANCED: str = "google/gemini-2.5-flash-preview-05-20"
+    AI_FALLBACK_MODELS: List[str] = [
+        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-2.5-flash-preview-05-20",
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+    ]
+
+    # Vision models (for image/scan understanding) - must support image input
+    AI_VISION_MODELS: List[str] = [
+        "google/gemini-2.0-flash-exp:free",
+        "meta-llama/llama-3.2-11b-vision-instruct:free",
+        "google/gemma-4-26b-a4b-it:free",
+    ]
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-jwt-secret"
