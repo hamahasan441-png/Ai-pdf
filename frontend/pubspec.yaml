@@ -32,7 +32,7 @@ dependencies:
   pdf: ^3.11.1              # Create PDFs offline (JPG to PDF)
   printing: ^5.13.3        # Preview, save, share PDFs offline
   image: ^4.3.0            # Image compress/resize (pure Dart, offline)
-  syncfusion_flutter_pdf: ^27.2.17  # PDF merge/split/compress offline (pure Dart)
+  syncfusion_flutter_pdf: ^29.1.38  # PDF merge/split/compress offline (pure Dart)
 
   # UI helpers
   share_plus: ^10.1.2      # Share exported files
