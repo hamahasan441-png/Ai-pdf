@@ -47,7 +47,7 @@ jobs:
         # If unset, the app still works and you can paste your key in-app.
         run: |
           set -o pipefail
-          flutter build apk --release --stacktrace \
+          flutter build apk --release \
             --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
             2>&1 | tee build.log || {
               echo ""
