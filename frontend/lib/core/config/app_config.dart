@@ -24,6 +24,18 @@ class AppConfig {
     'AI_MODEL',
     defaultValue: 'google/gemini-2.0-flash-exp:free',
   );
+
+  /// Curated list of good free OpenRouter models: (slug, label, supportsVision).
+  /// The free catalog changes over time, so users can also enter a custom slug.
+  /// Vision models are needed to "see" documents/images; text-only models are
+  /// fine for chatting about already-extracted text.
+  static const List<(String, String, bool)> aiModels = [
+    ('google/gemini-2.0-flash-exp:free', 'Gemini 2.0 Flash (vision) — recommended', true),
+    ('meta-llama/llama-3.2-11b-vision-instruct:free', 'Llama 3.2 Vision', true),
+    ('qwen/qwen2.5-vl-72b-instruct:free', 'Qwen2.5-VL 72B (vision)', true),
+    ('meta-llama/llama-3.3-70b-instruct:free', 'Llama 3.3 70B (text only)', false),
+    ('deepseek/deepseek-chat-v3-0324:free', 'DeepSeek V3 (text only)', false),
+  ];
   static const int maxFileSizeMB = 50;
   static const List<String> supportedExtensions = [
     'pdf', 'docx', 'doc', 'png', 'jpg', 'jpeg', 'tiff',

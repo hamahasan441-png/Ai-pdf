@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/config/app_settings.dart';
+import '../../../core/config/app_config.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -15,6 +16,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _serverCtrl = TextEditingController(text: AppSettings.instance.apiBaseUrl);
   final _aiKeyCtrl = TextEditingController();
   final _aiModelCtrl = TextEditingController(text: AppSettings.instance.aiModel);
+  late String _modelChoice = AppConfig.aiModels.any((m) => m.$1 == AppSettings.instance.aiModel)
+      ? AppSettings.instance.aiModel
+      : '__custom__';
   bool _keySet = false;
   bool _saving = false;
   bool _loading = true;
@@ -61,7 +65,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await AppSettings.instance.setOpenRouterKey(_aiKeyCtrl.text);
       _aiKeyCtrl.clear();
     }
-    await AppSettings.instance.setAiModel(_aiModelCtrl.text);
+    final model = _modelChoice == '__custom__' ? _aiModelCtrl.text : _modelChoice;
+    await AppSettings.instance.setAiModel(model);
     final set = await AppSettings.instance.hasOpenRouterKey();
     if (mounted) {
       setState(() => _keySet = set);
@@ -227,14 +232,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              TextField(
-                controller: _aiModelCtrl,
+              DropdownButtonFormField<String>(
+                value: _modelChoice,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'AI model',
-                  hintText: 'google/gemini-2.0-flash-exp:free',
                   prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
                   isDense: true,
                 ),
+                items: [
+                  ...AppConfig.aiModels.map((m) => DropdownMenuItem(
+                        value: m.$1,
+                        child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
+                      )),
+                  const DropdownMenuItem(value: '__custom__', child: Text('Custom model…')),
+                ],
+                onChanged: (v) => setState(() => _modelChoice = v ?? _modelChoice),
+              ),
+              if (_modelChoice == '__custom__') ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _aiModelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom model slug',
+                    hintText: 'provider/model:free',
+                    prefixIcon: Icon(Icons.tune, size: 20),
+                    isDense: true,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Text(
+                'Tip: vision models can read images/PDFs. Free models share a daily '
+                'limit — if one is busy, switch to another.',
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 10),
               Row(

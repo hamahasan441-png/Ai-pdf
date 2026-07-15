@@ -108,11 +108,11 @@ class ToolsScreen extends ConsumerWidget {
               _ToolCard(
                 icon: Icons.edit_note,
                 label: 'Auto-Fill Form',
-                desc: 'AI fills forms',
+                desc: 'Chat & AI fills it',
                 color: const Color(0xFFDB2777),
                 badge: 'AI',
                 badgeColor: cs.primary,
-                onTap: () => context.push('/upload'),
+                onTap: () => context.push('/ai-form'),
               ),
             ],
           ),

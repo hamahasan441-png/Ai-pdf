@@ -34,12 +34,31 @@ class OpenRouterService {
   static String dataUrl(Uint8List bytes, {String mime = 'image/jpeg'}) =>
       'data:$mime;base64,${base64Encode(bytes)}';
 
-  /// Ask the model a question, optionally with images (as data URLs).
-  /// Returns the assistant's text answer.
+  /// Ask a single question, optionally with images (as data URLs).
+  /// Convenience wrapper around [chat].
   Future<String> ask({
     required String prompt,
     List<String> imageUrls = const [],
     String? systemPrompt,
+    String? model,
+  }) {
+    final userContent = <Map<String, dynamic>>[
+      {'type': 'text', 'text': prompt},
+      for (final url in imageUrls)
+        {'type': 'image_url', 'image_url': {'url': url}},
+    ];
+    return chat([
+      if (systemPrompt != null && systemPrompt.isNotEmpty)
+        {'role': 'system', 'content': systemPrompt},
+      {'role': 'user', 'content': userContent},
+    ], model: model);
+  }
+
+  /// Multi-turn chat. [messages] is the full OpenAI-style message list
+  /// (system/user/assistant). Content may be a String or a list of parts
+  /// (for images). Returns the assistant's reply text.
+  Future<String> chat(
+    List<Map<String, dynamic>> messages, {
     String? model,
   }) async {
     final key = await AppSettings.instance.openRouterKey();
@@ -49,28 +68,12 @@ class OpenRouterService {
       );
     }
 
-    final userContent = <Map<String, dynamic>>[
-      {'type': 'text', 'text': prompt},
-      for (final url in imageUrls)
-        {
-          'type': 'image_url',
-          'image_url': {'url': url},
-        },
-    ];
-
-    final messages = <Map<String, dynamic>>[
-      if (systemPrompt != null && systemPrompt.isNotEmpty)
-        {'role': 'system', 'content': systemPrompt},
-      {'role': 'user', 'content': userContent},
-    ];
-
     try {
       final resp = await _dio.post(
         AppConfig.openRouterUrl,
         options: Options(headers: {
           'Authorization': 'Bearer $key',
           'Content-Type': 'application/json',
-          // Optional attribution headers recommended by OpenRouter.
           'HTTP-Referer': 'https://github.com/ai-pdf',
           'X-Title': 'AI PDF',
         }),
@@ -88,7 +91,6 @@ class OpenRouterService {
       final content = choices.first['message']?['content'];
       if (content is String && content.trim().isNotEmpty) return content.trim();
       if (content is List) {
-        // Some models return content as a list of parts.
         final text = content
             .whereType<Map>()
             .map((p) => p['text']?.toString() ?? '')
@@ -103,10 +105,14 @@ class OpenRouterService {
         throw OpenRouterException('Invalid API key. Check your OpenRouter key in Profile.');
       }
       if (code == 402) {
-        throw OpenRouterException('Your OpenRouter account is out of credits for this model.');
+        throw OpenRouterException('This model needs credits. Pick a free model in Profile.');
       }
       if (code == 429) {
         throw OpenRouterException('Rate limit hit. Wait a moment or pick another free model.');
+      }
+      if (code == 400 || code == 404) {
+        throw OpenRouterException(
+            'This model may not accept images or no longer exists. Try another model in Profile.');
       }
       final detail = e.response?.data is Map
           ? (e.response?.data['error']?['message']?.toString())
