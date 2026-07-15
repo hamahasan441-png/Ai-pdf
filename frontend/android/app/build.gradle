@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.aidocassistant.app"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -44,5 +44,5 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
 }
