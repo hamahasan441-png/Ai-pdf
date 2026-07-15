@@ -3,65 +3,116 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_config.dart';
 
-/// Runtime, user-changeable settings.
+/// Runtime, user-changeable settings — now multi-provider.
 ///
-/// - API server URL + AI model: persisted with shared_preferences.
-/// - OpenRouter API key: stored ENCRYPTED with flutter_secure_storage, on the
-///   device only. It is never written to the repo or bundled into source, so
-///   there is no key leak and no GitHub push-protection problem.
+/// The user picks an AI provider (OpenRouter, OpenAI, Anthropic, Perplexity,
+/// or a custom/local server) and supplies their OWN key for it. Keys are
+/// stored ENCRYPTED per-provider with flutter_secure_storage, on the device
+/// only — never in the repo or source. The selected model and (for custom) the
+/// endpoint are stored per-provider in shared_preferences.
 ///
-/// This lets the online AI features work directly on the phone (no backend)
-/// using the user's own key. Offline file tools never use any of this.
+/// Offline file tools never use any of this.
 class AppSettings {
   AppSettings._();
   static final AppSettings instance = AppSettings._();
 
   static const _kApiBaseUrl = 'api_base_url';
-  static const _kModel = 'ai_model';
-  static const _kOpenRouterKey = 'openrouter_api_key';
-  static const _kAiEndpoint = 'ai_endpoint';
+  static const _kProvider = 'ai_provider';
+  static const _kCustomEndpoint = 'ai_custom_endpoint';
+  // Per-provider keys/models use these prefixes.
+  static const _kKeyPrefix = 'aikey_'; // secure storage
+  static const _kModelPrefix = 'aimodel_'; // prefs
 
   final _secure = const FlutterSecureStorage();
 
   String _apiBaseUrl = AppConfig.apiBaseUrl;
-  String _model = AppConfig.defaultAiModel;
-  String _aiEndpoint = AppConfig.openRouterUrl;
+  String _provider = AppConfig.providerOpenRouter;
+  String _customEndpoint = '';
+  final Map<String, String> _models = {}; // providerId -> model slug
 
-  /// Current API base URL (e.g. https://my-server.com/api/v1).
+  // ---- Optional backend base URL (legacy/account flows) ----
   String get apiBaseUrl => _apiBaseUrl;
-
-  /// True when a real server has been configured (not the emulator default).
   bool get hasCustomServer => _apiBaseUrl != AppConfig.apiBaseUrl;
 
-  /// AI model slug used for direct OpenRouter calls.
-  String get aiModel => _model;
+  // ---- Provider ----
+  String get providerId => _provider;
+  AiProviderDef get provider => AppConfig.providerById(_provider);
 
-  /// OpenAI-compatible chat/completions endpoint. Defaults to OpenRouter
-  /// (online); can be changed to a local/LAN server (e.g. Ollama or LM Studio)
-  /// for offline use, or any other OpenAI-compatible provider.
-  String get aiEndpoint => _aiEndpoint;
+  /// The chat/completions (or Anthropic messages) endpoint for the current
+  /// provider. For "custom", it's the user-provided URL.
+  String get aiEndpoint =>
+      provider.id == AppConfig.providerCustom ? _customEndpoint : provider.endpoint;
 
-  /// True when the endpoint points at OpenRouter (which needs an API key).
-  bool get isOpenRouterEndpoint => _aiEndpoint.contains('openrouter.ai');
+  String get customEndpoint => _customEndpoint;
+
+  /// True if the current provider uses the Anthropic Messages API.
+  bool get isAnthropic => provider.anthropic;
+
+  /// True if the current provider requires an API key.
+  bool get needsKey => provider.needsKey;
+
+  /// Selected model slug for the current provider (falls back to its default).
+  String get aiModel {
+    final m = _models[_provider];
+    if (m != null && m.trim().isNotEmpty) return m.trim();
+    return provider.defaultModel;
+  }
 
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final v = prefs.getString(_kApiBaseUrl);
-      if (v != null && v.trim().isNotEmpty) _apiBaseUrl = v.trim();
-      final m = prefs.getString(_kModel);
-      if (m != null && m.trim().isNotEmpty) _model = m.trim();
-      final e = prefs.getString(_kAiEndpoint);
-      if (e != null && e.trim().isNotEmpty) _aiEndpoint = e.trim();
+      final base = prefs.getString(_kApiBaseUrl);
+      if (base != null && base.trim().isNotEmpty) _apiBaseUrl = base.trim();
+
+      final p = prefs.getString(_kProvider);
+      if (p != null && AppConfig.providers.any((d) => d.id == p)) _provider = p;
+
+      final ce = prefs.getString(_kCustomEndpoint);
+      if (ce != null) _customEndpoint = ce.trim();
+
+      for (final d in AppConfig.providers) {
+        final m = prefs.getString('$_kModelPrefix${d.id}');
+        if (m != null && m.trim().isNotEmpty) _models[d.id] = m.trim();
+      }
+
+      // Migrate any legacy single-key/model settings to OpenRouter.
+      final legacyModel = prefs.getString('ai_model');
+      if (legacyModel != null && legacyModel.trim().isNotEmpty) {
+        _models.putIfAbsent(AppConfig.providerOpenRouter, () => legacyModel.trim());
+      }
+      final legacyKey = await _secure.read(key: 'openrouter_api_key');
+      if (legacyKey != null && legacyKey.trim().isNotEmpty) {
+        final existing = await _secure.read(key: '$_kKeyPrefix${AppConfig.providerOpenRouter}');
+        if (existing == null || existing.isEmpty) {
+          await _secure.write(
+              key: '$_kKeyPrefix${AppConfig.providerOpenRouter}', value: legacyKey.trim());
+        }
+      }
     } catch (_) {
       // Keep compile-time defaults on any failure.
     }
   }
 
-  Future<void> setAiEndpoint(String url) async {
-    final cleaned = url.trim();
-    _aiEndpoint = cleaned.isEmpty ? AppConfig.openRouterUrl : cleaned;
-    await _putString(_kAiEndpoint, _aiEndpoint);
+  Future<void> setProvider(String id) async {
+    if (AppConfig.providers.any((d) => d.id == id)) {
+      _provider = id;
+      await _putString(_kProvider, id);
+    }
+  }
+
+  Future<void> setCustomEndpoint(String url) async {
+    _customEndpoint = url.trim();
+    await _putString(_kCustomEndpoint, _customEndpoint);
+  }
+
+  Future<void> setAiModel(String model) async {
+    final cleaned = model.trim();
+    if (cleaned.isEmpty) {
+      _models.remove(_provider);
+    } else {
+      _models[_provider] = cleaned;
+    }
+    await _putString('$_kModelPrefix$_provider', cleaned);
   }
 
   Future<void> setApiBaseUrl(String url) async {
@@ -70,41 +121,47 @@ class AppSettings {
     await _putString(_kApiBaseUrl, _apiBaseUrl);
   }
 
-  Future<void> setAiModel(String model) async {
-    final cleaned = model.trim();
-    _model = cleaned.isEmpty ? AppConfig.defaultAiModel : cleaned;
-    await _putString(_kModel, _model);
-  }
+  // ---- API key (per provider, encrypted) ----
 
-  /// Returns the effective OpenRouter key: the on-device encrypted key if the
-  /// user set one, otherwise the optional build-time key. Null if neither.
-  Future<String?> openRouterKey() async {
+  /// Effective key for the current provider: on-device encrypted key, else the
+  /// optional build-time OpenRouter key (only for the OpenRouter provider).
+  Future<String?> apiKey() async {
     try {
-      final v = await _secure.read(key: _kOpenRouterKey);
+      final v = await _secure.read(key: '$_kKeyPrefix$_provider');
       if (v != null && v.trim().isNotEmpty) return v.trim();
     } catch (_) {
-      // fall through to env
+      // fall through
     }
-    return AppConfig.openRouterKeyFromEnv.isEmpty ? null : AppConfig.openRouterKeyFromEnv;
+    if (_provider == AppConfig.providerOpenRouter &&
+        AppConfig.openRouterKeyFromEnv.isNotEmpty) {
+      return AppConfig.openRouterKeyFromEnv;
+    }
+    return null;
   }
 
-  Future<bool> hasOpenRouterKey() async {
-    final k = await openRouterKey();
+  Future<bool> hasApiKey() async {
+    if (!needsKey) return true;
+    final k = await apiKey();
     return k != null && k.isNotEmpty;
   }
 
-  Future<void> setOpenRouterKey(String key) async {
+  Future<void> setApiKey(String key) async {
     final cleaned = key.trim();
     try {
       if (cleaned.isEmpty) {
-        await _secure.delete(key: _kOpenRouterKey);
+        await _secure.delete(key: '$_kKeyPrefix$_provider');
       } else {
-        await _secure.write(key: _kOpenRouterKey, value: cleaned);
+        await _secure.write(key: '$_kKeyPrefix$_provider', value: cleaned);
       }
     } catch (_) {
       // Non-fatal.
     }
   }
+
+  // ---- Backward-compatible aliases (used by existing call sites) ----
+  Future<String?> openRouterKey() => apiKey();
+  Future<bool> hasOpenRouterKey() => hasApiKey();
+  Future<void> setOpenRouterKey(String key) => setApiKey(key);
 
   Future<void> _putString(String key, String value) async {
     try {

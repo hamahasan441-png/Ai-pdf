@@ -4,11 +4,9 @@ import '../../../core/config/app_config.dart';
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
 
-/// Dedicated, easy-to-find screen for AI configuration:
-///   - API key (OpenRouter) — stored encrypted on device
-///   - Model picker (curated free models + custom)
-///   - Endpoint: online (OpenRouter) or custom/offline (local LAN server)
-///   - Test button to verify the setup actually works
+/// AI configuration: pick a provider (OpenRouter / OpenAI / Anthropic /
+/// Perplexity / custom-local), paste that provider's key, choose a model, and
+/// Test. Everything is stored encrypted on-device, per provider.
 class AiSettingsScreen extends StatefulWidget {
   const AiSettingsScreen({super.key});
 
@@ -18,22 +16,33 @@ class AiSettingsScreen extends StatefulWidget {
 
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _keyCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController(text: AppSettings.instance.aiModel);
-  final _endpointCtrl = TextEditingController(text: AppSettings.instance.aiEndpoint);
+  final _modelCtrl = TextEditingController();
+  final _endpointCtrl = TextEditingController();
 
-  late String _modelChoice = AppConfig.aiModels.any((m) => m.$1 == AppSettings.instance.aiModel)
-      ? AppSettings.instance.aiModel
-      : '__custom__';
-  late bool _customEndpoint = !AppSettings.instance.isOpenRouterEndpoint;
+  late String _provider = AppSettings.instance.providerId;
+  late String _modelChoice;
   bool _keySet = false;
   bool _testing = false;
   String? _testResult;
   bool _testOk = false;
 
+  AiProviderDef get _def => AppConfig.providerById(_provider);
+
   @override
   void initState() {
     super.initState();
-    AppSettings.instance.hasOpenRouterKey().then((v) {
+    _syncFromSettings();
+  }
+
+  void _syncFromSettings() {
+    final s = AppSettings.instance;
+    _provider = s.providerId;
+    _endpointCtrl.text = s.customEndpoint;
+    final model = s.aiModel;
+    final inList = _def.models.any((m) => m.$1 == model);
+    _modelChoice = inList ? model : '__custom__';
+    if (!inList) _modelCtrl.text = model;
+    s.hasApiKey().then((v) {
       if (mounted) setState(() => _keySet = v);
     });
   }
@@ -46,17 +55,25 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     super.dispose();
   }
 
+  Future<void> _onProviderChanged(String id) async {
+    await AppSettings.instance.setProvider(id);
+    _keyCtrl.clear();
+    if (mounted) setState(_syncFromSettings);
+  }
+
   Future<void> _save() async {
+    final s = AppSettings.instance;
+    await s.setProvider(_provider);
+    if (_provider == AppConfig.providerCustom) {
+      await s.setCustomEndpoint(_endpointCtrl.text);
+    }
     if (_keyCtrl.text.trim().isNotEmpty) {
-      await AppSettings.instance.setOpenRouterKey(_keyCtrl.text);
+      await s.setApiKey(_keyCtrl.text);
       _keyCtrl.clear();
     }
-    await AppSettings.instance
-        .setAiModel(_modelChoice == '__custom__' ? _modelCtrl.text : _modelChoice);
-    await AppSettings.instance
-        .setAiEndpoint(_customEndpoint ? _endpointCtrl.text : AppConfig.openRouterUrl);
-    _endpointCtrl.text = AppSettings.instance.aiEndpoint;
-    final set = await AppSettings.instance.hasOpenRouterKey();
+    final model = (_modelChoice == '__custom__') ? _modelCtrl.text : _modelChoice;
+    await s.setAiModel(model);
+    final set = await s.hasApiKey();
     if (mounted) {
       setState(() => _keySet = set);
       ScaffoldMessenger.of(context)
@@ -65,25 +82,28 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   Future<void> _removeKey() async {
-    await AppSettings.instance.setOpenRouterKey('');
+    await AppSettings.instance.setApiKey('');
     if (mounted) {
       setState(() => _keySet = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('AI key removed')));
+          .showSnackBar(const SnackBar(content: Text('API key removed')));
     }
   }
 
   Future<void> _test() async {
-    await _save(); // persist current values first
+    await _save();
     setState(() {
       _testing = true;
       _testResult = null;
     });
     try {
-      final reply = await OpenRouterService().ask(prompt: 'Reply with the single word: OK');
+      final svc = OpenRouterService();
+      final reply = await svc.ask(prompt: 'Reply with the single word: OK');
+      final via = svc.lastModelUsed;
       setState(() {
         _testOk = true;
-        _testResult = 'Success! The AI replied: "${reply.trim()}"';
+        _testResult = 'Success! AI replied: "${reply.trim()}"'
+            '${via != null ? '\nModel used: $via' : ''}';
       });
     } on OpenRouterException catch (e) {
       setState(() {
@@ -103,6 +123,9 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isCustom = _provider == AppConfig.providerCustom;
+    final needsKey = _def.needsKey;
+
     return Scaffold(
       appBar: AppBar(title: const Text('AI Settings')),
       body: ListView(
@@ -119,8 +142,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
-                  'File tools work fully offline. AI features (Understand, Fill Form) '
-                  'need a key. Get a free one at openrouter.ai/keys.',
+                  'File tools work offline. AI features use the provider you pick '
+                  'below with your own key. OpenRouter is easiest — one key, every model.',
                   style: TextStyle(fontSize: 12.5),
                 ),
               ),
@@ -128,94 +151,113 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // API key
-          _sectionTitle('API Key', Icons.key, trailing: _keySet ? _badge('Set', Colors.green) : null),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _keyCtrl,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: _keySet ? 'Replace key (leave blank to keep)' : 'Paste OpenRouter key (sk-or-...)',
-              prefixIcon: const Icon(Icons.vpn_key, size: 20),
-              border: const OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          if (_keySet)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _removeKey,
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('Remove key'),
-              ),
-            ),
-          const SizedBox(height: 16),
-
-          // Model
-          _sectionTitle('Model', Icons.smart_toy_outlined),
+          // Provider
+          _sectionTitle('Provider', Icons.hub_outlined),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: _modelChoice,
+            value: _provider,
             isExpanded: true,
             decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-            items: [
-              ...AppConfig.aiModels.map((m) => DropdownMenuItem(
-                    value: m.$1,
-                    child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
-                  )),
-              const DropdownMenuItem(value: '__custom__', child: Text('Custom model…')),
-            ],
-            onChanged: (v) => setState(() => _modelChoice = v ?? _modelChoice),
+            items: AppConfig.providers
+                .map((p) => DropdownMenuItem(
+                      value: p.id,
+                      child: Text(p.label, overflow: TextOverflow.ellipsis, maxLines: 1),
+                    ))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) _onProviderChanged(v);
+            },
           ),
-          if (_modelChoice == '__custom__') ...[
+          const SizedBox(height: 16),
+
+          // API key (only if provider needs one)
+          if (needsKey) ...[
+            _sectionTitle('API Key', Icons.key,
+                trailing: _keySet ? _badge('Set', Colors.green) : null),
             const SizedBox(height: 8),
             TextField(
-              controller: _modelCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Custom model slug',
-                hintText: 'provider/model:free',
-                border: OutlineInputBorder(),
+              controller: _keyCtrl,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: _keySet ? 'Replace key (leave blank to keep)' : 'Paste your ${_def.label.split(' ').first} key',
+                prefixIcon: const Icon(Icons.vpn_key, size: 20),
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
+            if (_def.keysUrl.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Get a key at ${_def.keysUrl}',
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ),
+            if (_keySet)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _removeKey,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Remove key'),
+                ),
+              ),
+            const SizedBox(height: 16),
           ],
-          const SizedBox(height: 16),
 
-          // Endpoint
-          _sectionTitle('AI Source', Icons.dns_outlined),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            ChoiceChip(
-              label: const Text('OpenRouter (online)'),
-              selected: !_customEndpoint,
-              onSelected: (_) => setState(() => _customEndpoint = false),
-            ),
-            ChoiceChip(
-              label: const Text('Custom / offline'),
-              selected: _customEndpoint,
-              onSelected: (_) => setState(() => _customEndpoint = true),
-            ),
-          ]),
-          if (_customEndpoint) ...[
+          // Custom endpoint (only for custom provider)
+          if (isCustom) ...[
+            _sectionTitle('Server URL', Icons.dns_outlined),
             const SizedBox(height: 8),
             TextField(
               controller: _endpointCtrl,
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
-                labelText: 'AI endpoint (OpenAI-compatible)',
+                labelText: 'OpenAI-compatible endpoint',
                 hintText: 'http://192.168.1.10:1234/v1/chat/completions',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              'Use a local server (Ollama, LM Studio) on your Wi-Fi for offline AI. '
-              'No key needed if the server has none.',
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+            Text('Point to a local server (Ollama, LM Studio) on your Wi-Fi for offline AI.',
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 16),
+          ],
+
+          // Model
+          _sectionTitle('Model', Icons.smart_toy_outlined),
+          const SizedBox(height: 8),
+          if (_def.models.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: _modelChoice,
+              isExpanded: true,
+              decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+              items: [
+                ..._def.models.map((m) => DropdownMenuItem(
+                      value: m.$1,
+                      child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
+                    )),
+                const DropdownMenuItem(value: '__custom__', child: Text('Custom model…')),
+              ],
+              onChanged: (v) => setState(() => _modelChoice = v ?? _modelChoice),
+            ),
+          if (_def.models.isEmpty || _modelChoice == '__custom__') ...[
+            if (_def.models.isNotEmpty) const SizedBox(height: 8),
+            TextField(
+              controller: _modelCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Model name',
+                hintText: 'e.g. llama3, gpt-4o, claude-3-5-haiku-latest',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
             ),
           ],
+          const SizedBox(height: 6),
+          Text(
+            'Tip: pick a vision model to read images/PDFs. If one is busy or gone, '
+            'switch model or provider.',
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
           const SizedBox(height: 24),
 
           Row(children: [

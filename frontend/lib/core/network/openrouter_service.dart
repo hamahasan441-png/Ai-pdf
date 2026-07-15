@@ -14,14 +14,15 @@ class OpenRouterException implements Exception {
   String toString() => message;
 }
 
-/// Direct, on-device AI client via OpenRouter (or any OpenAI-compatible API).
+/// Direct, on-device multi-provider AI client.
 ///
-/// Features:
-/// - Single API key → access GPT-4o, Claude, Gemini, Llama, DeepSeek, etc.
-/// - Auto-retry: if the chosen model fails (404/400), retries once with the
-///   default free fallback model so the user isn't left stuck.
-/// - Multimodal: text + images (rendered PDF pages, picked photos).
-/// - Works with both OpenRouter (online) and local servers (offline/LAN).
+/// Supports several providers with the user's own key:
+/// - OpenRouter, OpenAI, Perplexity, custom/local → OpenAI "chat/completions".
+/// - Anthropic (Claude) → the Anthropic "messages" API (different headers and
+///   request/response shape), handled separately.
+///
+/// (Class name kept as OpenRouterService for compatibility with existing call
+/// sites; it is now provider-agnostic.)
 class OpenRouterService {
   OpenRouterService()
       : _dio = Dio(BaseOptions(
@@ -31,9 +32,29 @@ class OpenRouterService {
 
   final Dio _dio;
 
+  /// The model slug actually used by the last successful call.
+  String? lastModelUsed;
+
   /// Build a data URL for an image to embed in a request.
   static String dataUrl(Uint8List bytes, {String mime = 'image/jpeg'}) =>
       'data:$mime;base64,${base64Encode(bytes)}';
+
+  static bool _hasImages(List<Map<String, dynamic>> messages) {
+    for (final m in messages) {
+      final c = m['content'];
+      if (c is List && c.any((p) => p is Map && p['type'] == 'image_url')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Resolve 'auto' (OpenRouter only) to a concrete free model based on whether
+  /// the request has images. Real slugs pass through unchanged.
+  static String _resolveModel(String model, List<Map<String, dynamic>> messages) {
+    if (model != AppConfig.autoModel) return model;
+    return _hasImages(messages) ? AppConfig.autoVisionModel : AppConfig.autoTextModel;
+  }
 
   /// Ask a single question, optionally with images (as data URLs).
   Future<String> ask({
@@ -54,26 +75,35 @@ class OpenRouterService {
     ], model: model);
   }
 
-  /// Multi-turn chat with auto-fallback on model failure.
-  ///
-  /// If the chosen model returns 400/404 (model broken/gone/no vision), the
-  /// service retries ONCE with the default free model so the user isn't stuck.
+  /// Multi-turn chat. [messages] is the OpenAI-style message list; images are
+  /// image_url parts with data URLs. Dispatches to the right provider API.
   Future<String> chat(
     List<Map<String, dynamic>> messages, {
     String? model,
   }) async {
-    final chosenModel = model ?? AppSettings.instance.aiModel;
+    final settings = AppSettings.instance;
+    final chosen = model ?? settings.aiModel;
+    final resolved = _resolveModel(chosen, messages);
+    final isOpenRouter = settings.providerId == AppConfig.providerOpenRouter;
+
     try {
-      return await _doChat(messages, chosenModel);
+      final reply = await _doChat(messages, resolved);
+      lastModelUsed = resolved;
+      return reply;
     } on OpenRouterException catch (e) {
-      // Auto-fallback: if model-specific error and we haven't already tried the default
-      if (e.message.contains('no longer exists') ||
+      // Auto-fallback only makes sense on OpenRouter (its free slugs).
+      final modelIssue = e.message.contains('no longer exists') ||
           e.message.contains('not accept images') ||
-          e.message.contains('not available')) {
-        final fallback = AppConfig.defaultAiModel;
-        if (fallback != chosenModel) {
-          // Retry with default free model
-          return await _doChat(messages, fallback);
+          e.message.contains('not available') ||
+          e.message.contains('is not available');
+      if (isOpenRouter && modelIssue) {
+        final fallback = _hasImages(messages)
+            ? AppConfig.autoVisionModel
+            : AppConfig.autoTextModel;
+        if (fallback != resolved) {
+          final reply = await _doChat(messages, fallback);
+          lastModelUsed = fallback;
+          return reply;
         }
       }
       rethrow;
@@ -81,102 +111,177 @@ class OpenRouterService {
   }
 
   Future<String> _doChat(List<Map<String, dynamic>> messages, String model) async {
-    final endpoint = AppSettings.instance.aiEndpoint;
-    final needsKey = AppSettings.instance.isOpenRouterEndpoint;
-    final key = await AppSettings.instance.openRouterKey();
+    final settings = AppSettings.instance;
+    final endpoint = settings.aiEndpoint;
+    final anthropic = settings.isAnthropic;
+    final key = await settings.apiKey();
 
-    if ((key == null || key.isEmpty) && needsKey) {
+    if (settings.needsKey && (key == null || key.isEmpty)) {
       throw OpenRouterException(
-        'No API key set. Open AI Settings (key icon on home screen) and paste '
-        'your OpenRouter key. Get a free one at openrouter.ai/keys.',
+        'No API key set for ${settings.provider.label}. Open AI Settings and paste '
+        'your key${settings.provider.keysUrl.isNotEmpty ? ' (get one at ${settings.provider.keysUrl})' : ''}.',
       );
     }
-
-    final headers = <String, dynamic>{
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/ai-pdf',
-      'X-Title': 'AI PDF',
-    };
-    if (key != null && key.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $key';
+    if (endpoint.isEmpty) {
+      throw OpenRouterException(
+        'No AI endpoint set. In AI Settings, choose a provider or enter your custom server URL.',
+      );
     }
 
     try {
-      final resp = await _dio.post(
-        endpoint,
-        options: Options(headers: headers),
-        data: {
-          'model': model,
-          'messages': messages,
-          // Allow large responses for document understanding
-          'max_tokens': 4096,
-        },
-      );
-
-      final data = resp.data;
-      final choices = (data is Map) ? data['choices'] as List? : null;
-      if (choices == null || choices.isEmpty) {
-        throw OpenRouterException('The AI returned an empty response. Try again.');
+      final Response resp;
+      if (anthropic) {
+        resp = await _dio.post(
+          endpoint,
+          options: Options(headers: {
+            'x-api-key': key ?? '',
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          }),
+          data: _anthropicBody(messages, model),
+        );
+        return _parseAnthropic(resp.data);
+      } else {
+        final headers = <String, dynamic>{
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://github.com/ai-pdf',
+          'X-Title': 'AI PDF',
+        };
+        if (key != null && key.isNotEmpty) headers['Authorization'] = 'Bearer $key';
+        resp = await _dio.post(
+          endpoint,
+          options: Options(headers: headers),
+          data: {'model': model, 'messages': messages, 'max_tokens': 4096},
+        );
+        return _parseOpenAi(resp.data);
       }
-      final content = choices.first['message']?['content'];
-      if (content is String && content.trim().isNotEmpty) return content.trim();
-      if (content is List) {
-        final text = content
-            .whereType<Map>()
-            .map((p) => p['text']?.toString() ?? '')
-            .join('\n')
-            .trim();
-        if (text.isNotEmpty) return text;
-      }
-      throw OpenRouterException('The AI returned no readable text.');
     } on DioException catch (e) {
-      switch (e.type) {
-        case DioExceptionType.connectionTimeout:
-        case DioExceptionType.sendTimeout:
-          throw OpenRouterException(
-              'Connection timed out. Check your internet and try again.');
-        case DioExceptionType.receiveTimeout:
-          throw OpenRouterException(
-              'The AI is taking too long. This can happen with large documents. Try again or use a faster model.');
-        case DioExceptionType.connectionError:
-          throw OpenRouterException(
-              'No internet connection. Check Wi-Fi/mobile data, or switch to an offline AI endpoint in Settings.');
-        default:
-          break;
-      }
-      final code = e.response?.statusCode;
-      final errorBody = e.response?.data;
-      final detail = (errorBody is Map)
-          ? (errorBody['error']?['message']?.toString() ??
-              errorBody['message']?.toString())
-          : null;
-
-      if (code == 401 || code == 403) {
-        throw OpenRouterException(
-            'API key is invalid or expired. Open AI Settings and check/replace your key.');
-      }
-      if (code == 402) {
-        throw OpenRouterException(
-            'This model ($model) requires credits. Switch to a free model in AI Settings, '
-            'or top up your OpenRouter account.');
-      }
-      if (code == 429) {
-        throw OpenRouterException(
-            'Rate limit reached. Free models have a daily cap. Wait 1 minute or switch to another model.');
-      }
-      if (code == 400 || code == 404) {
-        throw OpenRouterException(
-            'Model "$model" is not available or does not accept images. '
-            'Switch to another model in AI Settings.');
-      }
-      if (code != null && code >= 500) {
-        throw OpenRouterException(
-            'The AI service is down (error $code). This is temporary — try again in a minute.');
-      }
-      throw OpenRouterException(detail ?? 'Network error. Check your connection and try again.');
+      throw _mapDioError(e, model);
     } catch (e) {
       if (e is OpenRouterException) rethrow;
       throw OpenRouterException('AI request failed: $e');
     }
+  }
+
+  // ---- OpenAI-compatible response ----
+  String _parseOpenAi(dynamic data) {
+    final choices = (data is Map) ? data['choices'] as List? : null;
+    if (choices == null || choices.isEmpty) {
+      throw OpenRouterException('The AI returned an empty response. Try again.');
+    }
+    final content = choices.first['message']?['content'];
+    if (content is String && content.trim().isNotEmpty) return content.trim();
+    if (content is List) {
+      final text = content
+          .whereType<Map>()
+          .map((p) => p['text']?.toString() ?? '')
+          .join('\n')
+          .trim();
+      if (text.isNotEmpty) return text;
+    }
+    throw OpenRouterException('The AI returned no readable text.');
+  }
+
+  // ---- Anthropic request/response ----
+  Map<String, dynamic> _anthropicBody(List<Map<String, dynamic>> messages, String model) {
+    String? system;
+    final out = <Map<String, dynamic>>[];
+    for (final m in messages) {
+      final role = m['role'];
+      final content = m['content'];
+      if (role == 'system') {
+        final t = content is String ? content : '';
+        system = system == null ? t : '$system\n$t';
+        continue;
+      }
+      final blocks = <Map<String, dynamic>>[];
+      if (content is String) {
+        blocks.add({'type': 'text', 'text': content});
+      } else if (content is List) {
+        for (final part in content) {
+          if (part is! Map) continue;
+          if (part['type'] == 'text') {
+            blocks.add({'type': 'text', 'text': part['text'] ?? ''});
+          } else if (part['type'] == 'image_url') {
+            final url = part['image_url']?['url']?.toString() ?? '';
+            final img = _dataUrlToAnthropicImage(url);
+            if (img != null) blocks.add(img);
+          }
+        }
+      }
+      out.add({'role': role, 'content': blocks});
+    }
+    final body = <String, dynamic>{'model': model, 'max_tokens': 4096, 'messages': out};
+    if (system != null && system.isNotEmpty) body['system'] = system;
+    return body;
+  }
+
+  Map<String, dynamic>? _dataUrlToAnthropicImage(String dataUrl) {
+    final match = RegExp(r'^data:([^;]+);base64,(.*)$', dotAll: true).firstMatch(dataUrl);
+    if (match == null) return null;
+    return {
+      'type': 'image',
+      'source': {
+        'type': 'base64',
+        'media_type': match.group(1),
+        'data': match.group(2),
+      },
+    };
+  }
+
+  String _parseAnthropic(dynamic data) {
+    final content = (data is Map) ? data['content'] as List? : null;
+    if (content == null || content.isEmpty) {
+      throw OpenRouterException('The AI returned an empty response. Try again.');
+    }
+    final text = content
+        .whereType<Map>()
+        .where((b) => b['type'] == 'text')
+        .map((b) => b['text']?.toString() ?? '')
+        .join('\n')
+        .trim();
+    if (text.isNotEmpty) return text;
+    throw OpenRouterException('The AI returned no readable text.');
+  }
+
+  OpenRouterException _mapDioError(DioException e, String model) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+        return OpenRouterException('Connection timed out. Check your internet and try again.');
+      case DioExceptionType.receiveTimeout:
+        return OpenRouterException(
+            'The AI is taking too long (large document?). Try again or use a faster model.');
+      case DioExceptionType.connectionError:
+        return OpenRouterException(
+            'No internet connection. Check Wi-Fi/mobile data, or switch to an offline endpoint in Settings.');
+      default:
+        break;
+    }
+    final code = e.response?.statusCode;
+    final body = e.response?.data;
+    final detail = (body is Map)
+        ? (body['error']?['message']?.toString() ?? body['message']?.toString())
+        : null;
+
+    if (code == 401 || code == 403) {
+      return OpenRouterException('API key invalid or unauthorized. Check it in AI Settings.');
+    }
+    if (code == 402) {
+      return OpenRouterException(
+          'This model ($model) needs credits/billing on your account. Add credit or pick a free model.');
+    }
+    if (code == 429) {
+      return OpenRouterException(
+          'Rate limit reached. Wait a minute or switch model/provider in AI Settings.');
+    }
+    if (code == 400 || code == 404) {
+      return OpenRouterException(
+          'Model "$model" is not available or does not accept images. Switch model in AI Settings.');
+    }
+    if (code != null && code >= 500) {
+      return OpenRouterException('The AI service is down (error $code). Try again shortly.');
+    }
+    return OpenRouterException(detail ?? 'Network error. Check your connection and try again.');
   }
 }

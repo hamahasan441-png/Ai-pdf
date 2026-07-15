@@ -1,3 +1,31 @@
+/// Describes one AI provider the app can talk to directly from the phone.
+///
+/// Most providers (OpenRouter, OpenAI, Perplexity, custom/local) speak the
+/// OpenAI "chat/completions" format with a Bearer token. Anthropic uses its
+/// own "messages" API (x-api-key header, different request/response shape), so
+/// it is flagged with [anthropic] and handled specially in the service.
+class AiProviderDef {
+  final String id;
+  final String label;
+  final String endpoint; // '' = user-provided (custom/local)
+  final bool anthropic;
+  final bool needsKey;
+  final String keysUrl; // where to get an API key
+  final String defaultModel;
+  final List<(String, String, bool)> models; // (slug, label, supportsVision)
+
+  const AiProviderDef({
+    required this.id,
+    required this.label,
+    required this.endpoint,
+    required this.defaultModel,
+    required this.models,
+    this.anthropic = false,
+    this.needsKey = true,
+    this.keysUrl = '',
+  });
+}
+
 class AppConfig {
   AppConfig._();
   static const String appName = 'AI PDF';
@@ -19,11 +47,19 @@ class AppConfig {
     defaultValue: '',
   );
 
-  /// Default free, vision-capable model. Changeable in the app (Settings).
+  /// Sentinel for "let the app pick the best model per task".
+  static const String autoModel = 'auto';
+
+  /// Default free, vision-capable model. Also used as the safety fallback if a
+  /// chosen model fails — MUST be a real slug (never 'auto').
   static const String defaultAiModel = String.fromEnvironment(
     'AI_MODEL',
     defaultValue: 'google/gemma-4-27b-it:free',
   );
+
+  /// Best free models the auto-router picks between.
+  static const String autoVisionModel = 'google/gemma-4-27b-it:free';
+  static const String autoTextModel = 'deepseek/deepseek-chat-v3-0324:free';
 
   /// Curated models available through OpenRouter. One API key, all providers.
   /// The free catalog changes over time; users can also enter a custom slug.
@@ -33,6 +69,8 @@ class AppConfig {
 
   /// Combined list for the model picker UI.
   static const List<(String, String, bool)> aiModels = [
+    // --- AUTO ---
+    ('auto', 'Auto — best model for each task', true),
     // --- FREE (no credits needed) ---
     ('google/gemma-4-27b-it:free', 'Gemma 4 27B (vision) — recommended', true),
     ('google/gemma-4-31b-it:free', 'Gemma 4 31B (vision, 256K ctx)', true),
@@ -48,6 +86,79 @@ class AppConfig {
     ('google/gemini-2.5-pro-preview', 'Gemini 2.5 Pro (vision) — Google', true),
     ('meta-llama/llama-4-maverick', 'Llama 4 Maverick (vision) — Meta', true),
   ];
+  // ---- Multi-provider support ------------------------------------------
+  // Users can pick a provider and use their OWN key for it. OpenRouter is the
+  // easiest (one key → every model). OpenAI/Anthropic/Perplexity talk to those
+  // companies directly. "Custom" targets any OpenAI-compatible server incl. a
+  // local/LAN one for offline use.
+
+  static const String providerOpenRouter = 'openrouter';
+  static const String providerOpenAI = 'openai';
+  static const String providerAnthropic = 'anthropic';
+  static const String providerPerplexity = 'perplexity';
+  static const String providerCustom = 'custom';
+
+  static const List<AiProviderDef> providers = [
+    AiProviderDef(
+      id: providerOpenRouter,
+      label: 'OpenRouter — all models, one key (recommended)',
+      endpoint: openRouterUrl,
+      keysUrl: 'openrouter.ai/keys',
+      defaultModel: autoModel,
+      models: aiModels,
+    ),
+    AiProviderDef(
+      id: providerOpenAI,
+      label: 'OpenAI (ChatGPT)',
+      endpoint: 'https://api.openai.com/v1/chat/completions',
+      keysUrl: 'platform.openai.com/api-keys',
+      defaultModel: 'gpt-4o-mini',
+      models: [
+        ('gpt-4o', 'GPT-4o (vision)', true),
+        ('gpt-4o-mini', 'GPT-4o mini (vision, cheap)', true),
+        ('gpt-4.1', 'GPT-4.1 (vision)', true),
+        ('gpt-4.1-mini', 'GPT-4.1 mini (vision)', true),
+      ],
+    ),
+    AiProviderDef(
+      id: providerAnthropic,
+      label: 'Anthropic (Claude)',
+      endpoint: 'https://api.anthropic.com/v1/messages',
+      anthropic: true,
+      keysUrl: 'console.anthropic.com/settings/keys',
+      defaultModel: 'claude-3-5-haiku-latest',
+      models: [
+        ('claude-sonnet-4-20250514', 'Claude Sonnet 4 (vision)', true),
+        ('claude-3-7-sonnet-latest', 'Claude 3.7 Sonnet (vision)', true),
+        ('claude-3-5-sonnet-latest', 'Claude 3.5 Sonnet (vision)', true),
+        ('claude-3-5-haiku-latest', 'Claude 3.5 Haiku (vision, cheap)', true),
+      ],
+    ),
+    AiProviderDef(
+      id: providerPerplexity,
+      label: 'Perplexity',
+      endpoint: 'https://api.perplexity.ai/chat/completions',
+      keysUrl: 'perplexity.ai/settings/api',
+      defaultModel: 'sonar',
+      models: [
+        ('sonar', 'Sonar (fast, web-aware)', false),
+        ('sonar-pro', 'Sonar Pro (web-aware)', false),
+        ('sonar-reasoning', 'Sonar Reasoning', false),
+      ],
+    ),
+    AiProviderDef(
+      id: providerCustom,
+      label: 'Custom / local server (offline)',
+      endpoint: '', // user provides
+      needsKey: false,
+      defaultModel: '',
+      models: [],
+    ),
+  ];
+
+  static AiProviderDef providerById(String id) =>
+      providers.firstWhere((p) => p.id == id, orElse: () => providers.first);
+
   static const int maxFileSizeMB = 50;
   static const List<String> supportedExtensions = [
     'pdf', 'docx', 'doc', 'png', 'jpg', 'jpeg', 'tiff',
