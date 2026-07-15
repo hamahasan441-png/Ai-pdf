@@ -40,7 +40,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/compress', builder: (_, __) => const CompressScreen()),
       GoRoute(path: '/tools/merge', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.merge)),
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
-      GoRoute(path: '/tools/extract', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.extract)),
       GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
     ],
   );
