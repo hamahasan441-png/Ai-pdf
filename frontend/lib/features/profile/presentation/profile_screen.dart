@@ -1,163 +1,112 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/constants/app_constants.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
-
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = true;
-  bool _isSaving = false;
+  final Map<String, TextEditingController> _c = {};
+  bool _saving = false;
+  bool _loading = true;
 
-  final _firstNameCtrl = TextEditingController();
-  final _lastNameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController();
-  final _cityCtrl = TextEditingController();
-  final _stateCtrl = TextEditingController();
-  final _zipCtrl = TextEditingController();
-  final _countryCtrl = TextEditingController();
-  final _dobCtrl = TextEditingController();
-
+  static const _fields = [
+    ('first_name', 'First Name', Icons.person),
+    ('last_name', 'Last Name', Icons.person_outline),
+    ('date_of_birth', 'Date of Birth', Icons.cake),
+    ('nationality', 'Nationality', Icons.flag),
+    ('phone_number', 'Phone', Icons.phone),
+    ('email', 'Email', Icons.email),
+    ('street_address', 'Address', Icons.home),
+    ('city', 'City', Icons.location_city),
+    ('country', 'Country', Icons.public),
+    ('passport_number', 'Passport No.', Icons.card_travel),
+    ('employer_name', 'Employer', Icons.business),
+    ('job_title', 'Job Title', Icons.work),
+  ];
 
   @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-  }
+  void initState() { super.initState(); _load(); }
 
-  Future<void> _loadProfile() async {
-    try {
-      final apiClient = ref.read(apiClientProvider);
-      final response = await apiClient.dio.get(AppConstants.profileEndpoint);
-      final data = response.data;
-      _firstNameCtrl.text = data['first_name'] ?? '';
-      _lastNameCtrl.text = data['last_name'] ?? '';
-      _phoneCtrl.text = data['phone'] ?? '';
-      _addressCtrl.text = data['address'] ?? '';
-      _cityCtrl.text = data['city'] ?? '';
-      _stateCtrl.text = data['state'] ?? '';
-      _zipCtrl.text = data['zip_code'] ?? '';
-      _countryCtrl.text = data['country'] ?? '';
-      _dobCtrl.text = data['date_of_birth'] ?? '';
-    } catch (_) {}
-    setState(() => _isLoading = false);
-  }
+  @override
+  void dispose() { for (final c in _c.values) c.dispose(); super.dispose(); }
 
-  Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isSaving = true);
+  Future<void> _load() async {
     try {
-      final apiClient = ref.read(apiClientProvider);
-      await apiClient.dio.put(AppConstants.profileEndpoint, data: {
-        'first_name': _firstNameCtrl.text,
-        'last_name': _lastNameCtrl.text,
-        'phone': _phoneCtrl.text,
-        'address': _addressCtrl.text,
-        'city': _cityCtrl.text,
-        'state': _stateCtrl.text,
-        'zip_code': _zipCtrl.text,
-        'country': _countryCtrl.text,
-        'date_of_birth': _dobCtrl.text,
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved!')),
-        );
+      final api = ref.read(apiClientProvider);
+      final r = await api.dio.get(AppConstants.profileEndpoint);
+      final data = r.data as Map<String, dynamic>? ?? {};
+      for (final f in _fields) {
+        _c[f.$1] = TextEditingController(text: data[f.$1]?.toString() ?? '');
       }
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save profile')),
-        );
-      }
+      for (final f in _fields) { _c[f.$1] = TextEditingController(); }
     }
-    setState(() => _isSaving = false);
+    setState(() => _loading = false);
   }
 
-  @override
-  void dispose() {
-    _firstNameCtrl.dispose();
-    _lastNameCtrl.dispose();
-    _phoneCtrl.dispose();
-    _addressCtrl.dispose();
-    _cityCtrl.dispose();
-    _stateCtrl.dispose();
-    _zipCtrl.dispose();
-    _countryCtrl.dispose();
-    _dobCtrl.dispose();
-    super.dispose();
-  }
 
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final data = <String, String>{};
+      for (final e in _c.entries) {
+        if (e.value.text.isNotEmpty) data[e.key] = e.value.text;
+      }
+      final api = ref.read(apiClientProvider);
+      await api.dio.put(AppConstants.profileEndpoint, data: data);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile saved!')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Save failed')));
+    }
+    setState(() => _saving = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
+    if (_loading) return Scaffold(appBar: AppBar(title: const Text('Profile')),
+      body: const Center(child: CircularProgressIndicator()));
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-        actions: [
-          FilledButton(
-            onPressed: _isSaving ? null : _saveProfile,
-            child: _isSaving
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Personal Information',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _buildField('First Name', _firstNameCtrl),
-              _buildField('Last Name', _lastNameCtrl),
-              _buildField('Phone', _phoneCtrl),
-              _buildField('Date of Birth', _dobCtrl),
-              const SizedBox(height: 24),
-              Text('Address',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _buildField('Street Address', _addressCtrl),
-              _buildField('City', _cityCtrl),
-              _buildField('State', _stateCtrl),
-              _buildField('ZIP Code', _zipCtrl),
-              _buildField('Country', _countryCtrl),
-            ],
-          ),
+      appBar: AppBar(title: const Text('My Profile'), actions: [
+        IconButton(
+          icon: _saving ? const SizedBox(width: 20, height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+          onPressed: _saving ? null : _save),
+      ]),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12)),
+          child: const Row(children: [
+            Icon(Icons.info_outline, size: 20),
+            SizedBox(width: 10),
+            Expanded(child: Text('Your data is encrypted and used to auto-fill forms.',
+              style: TextStyle(fontSize: 13))),
+          ]),
         ),
-      ),
-    );
-  }
-
-  Widget _buildField(String label, TextEditingController ctrl) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextFormField(
-        controller: ctrl,
-        decoration: InputDecoration(labelText: label),
-      ),
+        const SizedBox(height: 16),
+        ..._fields.map((f) => Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: TextFormField(
+            controller: _c[f.$1],
+            decoration: InputDecoration(labelText: f.$2, prefixIcon: Icon(f.$3, size: 20)),
+          ),
+        )),
+        const SizedBox(height: 20),
+        SizedBox(height: 50, child: FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: const Icon(Icons.save),
+          label: const Text('Save Profile'),
+        )),
+      ]),
     );
   }
 }

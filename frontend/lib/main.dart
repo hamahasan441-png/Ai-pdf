@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'core/config/router.dart';
 import 'core/theme/app_theme.dart';
 
@@ -15,9 +14,8 @@ class AiPdfApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-
     return MaterialApp.router(
-      title: 'AI Document Assistant',
+      title: 'AI PDF',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
