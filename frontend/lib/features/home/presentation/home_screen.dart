@@ -1,173 +1,99 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/constants/app_constants.dart';
 
-import '../../../core/network/auth_provider.dart';
-
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Document Assistant'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outlined),
-            onPressed: () => context.push('/profile'),
-            tooltip: 'Profile',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
-            },
-            tooltip: 'Logout',
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Welcome card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 40,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome back!',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Upload documents to extract, analyze, and auto-fill forms using AI.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Quick Actions',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            // Quick action cards
-            Row(
-              children: [
-                Expanded(
-                  child: _ActionCard(
-                    icon: Icons.upload_file,
-                    label: 'Upload Document',
-                    color: colorScheme.primaryContainer,
-                    onTap: () => context.push('/upload'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _ActionCard(
-                    icon: Icons.folder_outlined,
-                    label: 'My Documents',
-                    color: colorScheme.secondaryContainer,
-                    onTap: () {}, // TODO: Navigate to documents list
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Recent Documents',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            // Placeholder for recent documents
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.description_outlined,
-                      size: 64,
-                      color: colorScheme.outline,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No documents yet',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
-                      onPressed: () => context.push('/upload'),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Upload your first document'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  List<dynamic> _docs = [];
+  bool _loading = true;
 
-  const _ActionCard({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final r = await api.dio.get(AppConstants.documentsEndpoint);
+      setState(() { _docs = (r.data['documents'] as List?) ?? []; _loading = false; });
+    } catch (_) { setState(() => _loading = false); }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI PDF'),
+        actions: [
+          IconButton(icon: const Icon(Icons.person_outlined), tooltip: 'Profile', onPressed: () => context.push('/profile')),
+          IconButton(icon: const Icon(Icons.logout), tooltip: 'Logout', onPressed: () async {
+            await ref.read(apiClientProvider).clearTokens();
+            if (mounted) context.go('/login');
+          }),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _docs.isEmpty
+              ? _buildEmpty(cs)
+              : RefreshIndicator(onRefresh: _load, child: ListView.builder(
+                  padding: const EdgeInsets.all(16), itemCount: _docs.length,
+                  itemBuilder: (_, i) => _DocCard(doc: _docs[i]),
+                )),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/upload'),
+        icon: const Icon(Icons.add),
+        label: const Text('Upload'),
+      ),
+    );
+  }
+
+  Widget _buildEmpty(ColorScheme cs) => Center(child: Padding(
+    padding: const EdgeInsets.all(40),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.description_outlined, size: 80, color: cs.outline),
+      const SizedBox(height: 20),
+      Text('No Documents', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 8),
+      Text('Upload a PDF or image to get started', style: TextStyle(color: cs.onSurfaceVariant), textAlign: TextAlign.center),
+      const SizedBox(height: 24),
+      FilledButton.icon(onPressed: () => context.push('/upload'), icon: const Icon(Icons.upload_file), label: const Text('Upload Document')),
+    ]),
+  ));
+}
+
+class _DocCard extends StatelessWidget {
+  final dynamic doc;
+  const _DocCard({required this.doc});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = doc['original_filename'] ?? 'Document';
+    final status = doc['status'] ?? 'uploaded';
+    final id = doc['id'] ?? '';
     return Card(
-      color: color,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Icon(icon, size: 32),
-              const SizedBox(height: 8),
-              Text(label, textAlign: TextAlign.center),
-            ],
-          ),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: const Icon(Icons.picture_as_pdf, color: Colors.red),
         ),
+        title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(status.toString().toUpperCase(), style: TextStyle(fontSize: 12, color: status == 'error' ? Colors.red : Colors.green)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(icon: const Icon(Icons.edit_note, size: 22), tooltip: 'Edit', onPressed: () => context.push('/editor/$id')),
+          const Icon(Icons.chevron_right),
+        ]),
+        onTap: () => context.push('/document/$id'),
       ),
     );
   }

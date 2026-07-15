@@ -1,144 +1,63 @@
 import 'package:flutter/material.dart';
 
-/// Full-screen signature capture pad
 class SignaturePad extends StatefulWidget {
-  final Function(List<Offset>) onSave;
-
-  const SignaturePad({super.key, required this.onSave});
-
+  final Function(List<Offset>) onDone;
+  const SignaturePad({super.key, required this.onDone});
   @override
   State<SignaturePad> createState() => _SignaturePadState();
 }
 
 class _SignaturePadState extends State<SignaturePad> {
   final List<List<Offset>> _strokes = [];
-  List<Offset> _currentStroke = [];
-
-  void _clear() {
-    setState(() {
-      _strokes.clear();
-      _currentStroke = [];
-    });
-  }
-
-  void _save() {
-    final allPoints = _strokes.expand((s) => s).toList();
-    if (allPoints.isNotEmpty) {
-      widget.onSave(allPoints);
-    }
-    Navigator.of(context).pop();
-  }
+  List<Offset> _current = [];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Draw Signature'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: const Text('Sign Here'),
         actions: [
-          TextButton.icon(
-            onPressed: _clear,
-            icon: const Icon(Icons.clear),
-            label: const Text('Clear'),
-          ),
+          TextButton(onPressed: () => setState(() { _strokes.clear(); _current = []; }), child: const Text('Clear')),
+          FilledButton(onPressed: () {
+            final all = _strokes.expand((s) => s).toList();
+            if (all.isNotEmpty) widget.onDone(all);
+            Navigator.pop(context);
+          }, child: const Text('Done')),
           const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.check),
-            label: const Text('Done'),
-          ),
-          const SizedBox(width: 12),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: GestureDetector(
-                  onPanStart: (details) {
-                    setState(() {
-                      _currentStroke = [details.localPosition];
-                    });
-                  },
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _currentStroke = [..._currentStroke, details.localPosition];
-                    });
-                  },
-                  onPanEnd: (details) {
-                    setState(() {
-                      _strokes.add(List.from(_currentStroke));
-                      _currentStroke = [];
-                    });
-                  },
-                  child: CustomPaint(
-                    painter: _SignaturePainter(
-                      strokes: _strokes,
-                      currentStroke: _currentStroke,
-                    ),
-                    size: Size.infinite,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Sign above using your finger',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-            ),
-          ),
-        ],
+      body: Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300, width: 2), borderRadius: BorderRadius.circular(12)),
+        child: GestureDetector(
+          onPanStart: (d) => setState(() => _current = [d.localPosition]),
+          onPanUpdate: (d) => setState(() => _current = [..._current, d.localPosition]),
+          onPanEnd: (_) => setState(() { _strokes.add(List.from(_current)); _current = []; }),
+          child: CustomPaint(painter: _SigPainter(_strokes, _current), size: Size.infinite),
+        ),
       ),
     );
   }
 }
 
-class _SignaturePainter extends CustomPainter {
+class _SigPainter extends CustomPainter {
   final List<List<Offset>> strokes;
-  final List<Offset> currentStroke;
-
-  _SignaturePainter({required this.strokes, required this.currentStroke});
+  final List<Offset> current;
+  _SigPainter(this.strokes, this.current);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-
-    for (final stroke in strokes) {
-      if (stroke.length < 2) continue;
-      final path = Path();
-      path.moveTo(stroke[0].dx, stroke[0].dy);
-      for (int i = 1; i < stroke.length; i++) {
-        path.lineTo(stroke[i].dx, stroke[i].dy);
-      }
-      canvas.drawPath(path, paint);
-    }
-
-    if (currentStroke.length >= 2) {
-      final path = Path();
-      path.moveTo(currentStroke[0].dx, currentStroke[0].dy);
-      for (int i = 1; i < currentStroke.length; i++) {
-        path.lineTo(currentStroke[i].dx, currentStroke[i].dy);
-      }
+    final paint = Paint()..color = Colors.black..strokeWidth = 3
+      ..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
+    for (final s in [...strokes, current]) {
+      if (s.length < 2) continue;
+      final path = Path()..moveTo(s[0].dx, s[0].dy);
+      for (int i = 1; i < s.length; i++) path.lineTo(s[i].dx, s[i].dy);
       canvas.drawPath(path, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _SignaturePainter oldDelegate) => true;
+  bool shouldRepaint(covariant _SigPainter old) => true;
 }
