@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
 
@@ -58,12 +57,6 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
     }
   }
 
-  Future<void> _preview() async {
-    if (_outputPath == null) return;
-    final bytes = await File(_outputPath!).readAsBytes();
-    await Printing.layoutPdf(onLayout: (_) async => bytes);
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -71,10 +64,8 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
       appBar: AppBar(
         title: const Text('JPG to PDF'),
         actions: [
-          if (_outputPath != null) ...[
-            IconButton(icon: const Icon(Icons.visibility), onPressed: _preview, tooltip: 'Preview'),
-            IconButton(icon: const Icon(Icons.share), onPressed: _share, tooltip: 'Share'),
-          ],
+          if (_outputPath != null)
+            IconButton(icon: const Icon(Icons.share), onPressed: _share, tooltip: 'Save / Share'),
         ],
       ),
       body: Column(
