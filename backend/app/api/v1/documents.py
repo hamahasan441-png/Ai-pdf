@@ -137,15 +137,22 @@ async def analyze_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Trigger AI analysis on an uploaded document.
-    
-    This uses multimodal AI to understand ANY document:
-    - PDFs (text + scanned) 
-    - Images (photos, scans, screenshots)
-    - DOCX files
-    
-    The AI extracts: text, fields, entities, structure, summary.
-    For images/scans, it uses vision models (Gemini Flash free).
+    """Run the full AI document processing pipeline.
+
+    Pipeline stages:
+    1. Virus scan (malware detection)
+    2. File validation (type, corruption)
+    3. Document type detection
+    4. Parsing (text extraction / AI vision for images)
+    5. OCR (for scanned documents)
+    6. Layout analysis
+    7. Field detection (forms, tables, checkboxes)
+    8. Semantic field mapping (multi-language)
+    9. Profile mapping + auto-fill
+    10. Validation
+    11. Ready to export
+
+    Returns full pipeline result with all extracted data.
     """
     result = await db.execute(
         select(Document).where(
@@ -160,56 +167,74 @@ async def analyze_document(
     document.status = DocumentStatus.PROCESSING
     await db.flush()
 
+    # Get user profile for auto-fill
+    profile_data = None
     try:
-        # Use the understanding service to analyze the document
-        from app.services.ai.understanding import understanding_service
+        from app.services.profile.profile_service import ProfileService
+        profile_svc = ProfileService(db)
+        profile_data = await profile_svc.get_profile_data_for_filling(current_user.id)
+    except Exception:
+        pass  # Profile is optional
 
-        analysis = await understanding_service.understand(
-            file_path=document.file_path,
-            mime_type=document.mime_type,
-        )
+    # Run the full pipeline
+    from app.services.pipeline.orchestrator import pipeline
 
-        # Update document with AI results
+    pipeline_result = await pipeline.process(
+        file_path=document.file_path,
+        mime_type=document.mime_type,
+        profile_data=profile_data,
+    )
+
+    # Update document with results
+    if pipeline_result.success:
         document.status = DocumentStatus.ANALYZED
-        document.ai_summary = analysis.get("summary", "")
-        document.language = analysis.get("language", "en")
-        document.page_count = analysis.get("page_count", 1)
-        document.document_category = analysis.get("document_type", "other")
-        document.extracted_text = analysis.get("extracted_text", "")
+        document.ai_summary = pipeline_result.summary
+        document.language = pipeline_result.language
+        document.page_count = pipeline_result.page_count
+        document.document_category = pipeline_result.document_type
+        document.extracted_text = pipeline_result.text_content
 
         # Store detected form fields
-        form_fields = analysis.get("form_fields", []) or analysis.get("fields", [])
-        if form_fields:
+        if pipeline_result.fields:
             from app.models.document import FormField
-            for f in form_fields:
-                field = FormField(
+            for f in pipeline_result.fields:
+                # Find auto-filled value if available
+                filled_value = None
+                for ff in pipeline_result.filled_fields:
+                    if ff.get("field_name") == (f.get("label") or f.get("name", "")):
+                        filled_value = ff.get("value")
+                        break
+
+                db.add(FormField(
                     document_id=document.id,
                     field_name=f.get("label") or f.get("name", "unknown"),
                     field_label=f.get("label") or f.get("name", ""),
                     field_type=f.get("type", "text"),
-                    suggested_value=f.get("value"),
-                    confidence_score=analysis.get("confidence", 0.8),
-                )
-                db.add(field)
-
-        await db.flush()
-
-        return {
-            "status": "analyzed",
-            "document_id": str(document_id),
-            "document_type": analysis.get("document_type", "other"),
-            "language": analysis.get("language", "en"),
-            "summary": analysis.get("summary", ""),
-            "fields_detected": len(form_fields),
-            "method": analysis.get("method", "unknown"),
-            "key_entities": analysis.get("key_entities", {}),
-        }
-
-    except Exception as e:
+                    suggested_value=filled_value or f.get("value"),
+                    confidence_score=f.get("mapping_confidence", 0.8),
+                ))
+    else:
         document.status = DocumentStatus.ERROR
-        await db.flush()
-        logger.error(f"Document analysis failed: {e}")
-        return {"status": "error", "document_id": str(document_id), "error": str(e)}
+
+    await db.flush()
+
+    return {
+        "status": pipeline_result.stage.value,
+        "success": pipeline_result.success,
+        "document_id": str(document_id),
+        "document_type": pipeline_result.document_type,
+        "language": pipeline_result.language,
+        "page_count": pipeline_result.page_count,
+        "summary": pipeline_result.summary,
+        "fields_detected": len(pipeline_result.fields),
+        "fields_filled": len(pipeline_result.filled_fields),
+        "tables_detected": len(pipeline_result.tables),
+        "entities": pipeline_result.entities,
+        "validation_issues": pipeline_result.validation_issues,
+        "stages_completed": pipeline_result.stages_completed,
+        "processing_time_ms": pipeline_result.processing_time_ms,
+        "error": pipeline_result.error,
+    }
 
 
 @router.post("/{document_id}/ask")
