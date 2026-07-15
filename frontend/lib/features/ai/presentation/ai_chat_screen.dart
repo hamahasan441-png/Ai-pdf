@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,8 +8,15 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import 'package:pdf/pdf.dart' show PdfPageFormat;
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../tools/models/filled_field.dart';
+import '../../tools/presentation/pick_edit_screen.dart';
+import '../../tools/widgets/result_sheet.dart';
 
 /// The two AI experiences, both powered by the same on-device chat engine.
 enum AiChatMode { understand, fillForm }
@@ -43,8 +51,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _scroll = ScrollController();
 
   String? _fileName;
+  String? _docPath; // original file path (for placing answers back on the form)
   bool _isPdf = false;
   List<String> _docImages = []; // data URLs attached to the first user turn
+  bool _placing = false;
 
   final List<_ChatMsg> _messages = [];
   bool _busy = false;
@@ -88,6 +98,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _loadingDoc = true;
       _error = null;
       _fileName = result.files.first.name;
+      _docPath = path;
       _docImages = [];
       _messages.clear();
     });
@@ -210,6 +221,99 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
+  /// Ask the AI for the filled values WITH positions, then open the editor with
+  /// those values pre-placed on the actual form so the user can review/adjust
+  /// and export a real filled PDF.
+  Future<void> _placeOnForm() async {
+    if (_docPath == null || _docImages.isEmpty || _placing) return;
+    setState(() {
+      _placing = true;
+      _error = null;
+    });
+    try {
+      // Add a hidden instruction turn requesting strict JSON with coordinates.
+      final jsonMessages = _buildApiMessages()
+        ..add({
+          'role': 'user',
+          'content':
+              'Now output ONLY a JSON array (no prose, no code fences) of the values '
+              'to write on the form based on everything above. Each item: '
+              '{"page": <1-based page number>, "x": <0..1 from left edge>, '
+              '"y": <0..1 from top edge>, "text": "<value to write>"}. '
+              'Place each value where its blank/answer line is on the page. '
+              'Only include fields you have a value for.',
+        });
+
+      final reply = await _service.chat(jsonMessages);
+      final fields = _parseFields(reply);
+
+      if (fields.isEmpty) {
+        setState(() => _error =
+            'Could not detect where to place the answers. You can still copy the '
+            'values above and place them manually in the editor.');
+        return;
+      }
+
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PickEditScreen(initialPath: _docPath, initialFields: fields),
+      ));
+    } on OpenRouterException catch (e) {
+      setState(() => _error = e.message);
+    } catch (e) {
+      setState(() => _error = 'Could not place answers: $e');
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
+  }
+
+  /// Extract a list of FilledField from a possibly-messy AI reply.
+  List<FilledField> _parseFields(String reply) {
+    final result = <FilledField>[];
+    // Find the JSON array within the reply (strip prose / code fences).
+    final start = reply.indexOf('[');
+    final end = reply.lastIndexOf(']');
+    if (start < 0 || end <= start) return result;
+    final jsonStr = reply.substring(start, end + 1);
+    try {
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is List) {
+        for (final item in decoded) {
+          final f = FilledField.tryParse(item);
+          if (f != null) result.add(f);
+        }
+      }
+    } catch (_) {
+      // Malformed JSON — return whatever we parsed (possibly empty).
+    }
+    return result;
+  }
+
+  /// Save an AI answer as a shareable PDF (and record it in Recent Files).
+  Future<void> _saveAnswerPdf(String text) async {
+    try {
+      final doc = pw.Document();
+      doc.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (_) => [
+          pw.Header(level: 0, text: 'AI PDF — Notes'),
+          pw.SizedBox(height: 8),
+          pw.Paragraph(text: text),
+        ],
+      ));
+      final dir = await getApplicationDocumentsDirectory();
+      final outPath = '${dir.path}/ai_notes_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      await File(outPath).writeAsBytes(await doc.save());
+      if (mounted) {
+        await showResultSheet(context,
+            paths: [outPath], title: 'AI Answer', subtitle: 'Saved as PDF');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not save PDF: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -243,18 +347,41 @@ class _AiChatScreenState extends State<AiChatScreen> {
           Expanded(
             child: _docImages.isEmpty
                 ? _emptyState(cs)
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _messages.length + (_busy ? 1 : 0),
-                    itemBuilder: (_, i) {
-                      if (i >= _messages.length) return _typingBubble(cs);
-                      return _bubble(cs, _messages[i]);
-                    },
-                  ),
+                : (_messages.isEmpty && !_isForm && !_busy
+                    ? _suggestionView(cs)
+                    : ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _messages.length + (_busy ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (i >= _messages.length) return _typingBubble(cs);
+                          return _bubble(cs, _messages[i]);
+                        },
+                      )),
           ),
+          if (_isForm && _docImages.isNotEmpty && _messages.length >= 2)
+            _placeBar(cs),
           if (_docImages.isNotEmpty) _inputBar(cs),
         ],
+      ),
+    );
+  }
+
+  Widget _placeBar(ColorScheme cs) {
+    return Material(
+      color: cs.primaryContainer.withOpacity(0.4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _placing ? null : _placeOnForm,
+            icon: _placing
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.auto_fix_high),
+            label: Text(_placing ? 'Placing answers…' : 'Place answers on the form'),
+          ),
+        ),
       ),
     );
   }
@@ -359,26 +486,70 @@ class _AiChatScreenState extends State<AiChatScreen> {
               ),
             ),
             if (!isUser)
-              GestureDetector(
-                onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: m.text));
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Copied')));
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.copy, size: 13, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text('Copy', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                  ]),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _bubbleAction(cs, Icons.copy, 'Copy', () async {
+                    await Clipboard.setData(ClipboardData(text: m.text));
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied')));
+                    }
+                  }),
+                  const SizedBox(width: 14),
+                  _bubbleAction(cs, Icons.picture_as_pdf_outlined, 'Save PDF',
+                      () => _saveAnswerPdf(m.text)),
+                ]),
               ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _bubbleAction(ColorScheme cs, IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 14, color: cs.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+      ]),
+    );
+  }
+
+  /// Shown in Understand mode after a doc is loaded but before any question,
+  /// to give the user quick starting points.
+  Widget _suggestionView(ColorScheme cs) {
+    const suggestions = [
+      'Summarize this document',
+      'List the key dates, names and amounts',
+      'Explain it in simple words',
+      'What do I need to do or send?',
+      'Are there any deadlines?',
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Icon(Icons.auto_awesome, size: 40, color: cs.primary),
+        const SizedBox(height: 10),
+        Text('Ask about your document, or tap a suggestion:',
+            textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: suggestions
+              .map((s) => ActionChip(
+                    label: Text(s),
+                    onPressed: () {
+                      if (!_busy) _send(auto: s);
+                    },
+                  ))
+              .toList(),
+        ),
+      ],
     );
   }
 
