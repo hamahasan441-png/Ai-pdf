@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-import '../config/app_config.dart';
 import '../config/app_settings.dart';
 
 /// Raised when an AI request cannot be completed. [message] is user-friendly.
@@ -61,22 +60,29 @@ class OpenRouterService {
     List<Map<String, dynamic>> messages, {
     String? model,
   }) async {
+    final endpoint = AppSettings.instance.aiEndpoint;
+    final needsKey = AppSettings.instance.isOpenRouterEndpoint;
     final key = await AppSettings.instance.openRouterKey();
-    if (key == null || key.isEmpty) {
+    if ((key == null || key.isEmpty) && needsKey) {
       throw OpenRouterException(
-        'No AI key yet. Go to Profile and paste your OpenRouter API key to enable AI.',
+        'No AI key yet. Go to Profile and paste your OpenRouter API key, or set a '
+        'custom AI endpoint (e.g. a local server) that does not need a key.',
       );
+    }
+
+    final headers = <String, dynamic>{
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/ai-pdf',
+      'X-Title': 'AI PDF',
+    };
+    if (key != null && key.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $key';
     }
 
     try {
       final resp = await _dio.post(
-        AppConfig.openRouterUrl,
-        options: Options(headers: {
-          'Authorization': 'Bearer $key',
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/ai-pdf',
-          'X-Title': 'AI PDF',
-        }),
+        endpoint,
+        options: Options(headers: headers),
         data: {
           'model': model ?? AppSettings.instance.aiModel,
           'messages': messages,
@@ -100,9 +106,22 @@ class OpenRouterService {
       }
       throw OpenRouterException('The AI returned no readable text.');
     } on DioException catch (e) {
+      // Network-level problems (no response yet).
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          throw OpenRouterException(
+              'The AI took too long to respond. Check your connection and try again.');
+        case DioExceptionType.connectionError:
+          throw OpenRouterException(
+              'Cannot reach the AI. Check your internet, or the AI endpoint URL in Profile.');
+        default:
+          break;
+      }
       final code = e.response?.statusCode;
-      if (code == 401) {
-        throw OpenRouterException('Invalid API key. Check your OpenRouter key in Profile.');
+      if (code == 401 || code == 403) {
+        throw OpenRouterException('Invalid or unauthorized API key. Check it in Profile.');
       }
       if (code == 402) {
         throw OpenRouterException('This model needs credits. Pick a free model in Profile.');
@@ -113,6 +132,9 @@ class OpenRouterService {
       if (code == 400 || code == 404) {
         throw OpenRouterException(
             'This model may not accept images or no longer exists. Try another model in Profile.');
+      }
+      if (code != null && code >= 500) {
+        throw OpenRouterException('The AI service is temporarily unavailable. Try again shortly.');
       }
       final detail = e.response?.data is Map
           ? (e.response?.data['error']?['message']?.toString())

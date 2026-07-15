@@ -16,9 +16,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _serverCtrl = TextEditingController(text: AppSettings.instance.apiBaseUrl);
   final _aiKeyCtrl = TextEditingController();
   final _aiModelCtrl = TextEditingController(text: AppSettings.instance.aiModel);
+  final _aiEndpointCtrl = TextEditingController(text: AppSettings.instance.aiEndpoint);
   late String _modelChoice = AppConfig.aiModels.any((m) => m.$1 == AppSettings.instance.aiModel)
       ? AppSettings.instance.aiModel
       : '__custom__';
+  late bool _customEndpoint = !AppSettings.instance.isOpenRouterEndpoint;
   bool _keySet = false;
   bool _saving = false;
   bool _loading = true;
@@ -47,6 +49,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _serverCtrl.dispose();
     _aiKeyCtrl.dispose();
     _aiModelCtrl.dispose();
+    _aiEndpointCtrl.dispose();
     super.dispose();
   }
 
@@ -67,6 +70,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
     final model = _modelChoice == '__custom__' ? _aiModelCtrl.text : _modelChoice;
     await AppSettings.instance.setAiModel(model);
+    await AppSettings.instance
+        .setAiEndpoint(_customEndpoint ? _aiEndpointCtrl.text : AppConfig.openRouterUrl);
+    _aiEndpointCtrl.text = AppSettings.instance.aiEndpoint;
     final set = await AppSettings.instance.hasOpenRouterKey();
     if (mounted) {
       setState(() => _keySet = set);
@@ -221,6 +227,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 'this device only (never uploaded or shared).',
                 style: TextStyle(fontSize: 12),
               ),
+              const SizedBox(height: 10),
+              // Choose the AI source: OpenRouter online, or a custom/offline
+              // OpenAI-compatible endpoint (e.g. a local server on your Wi-Fi).
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('OpenRouter (online)'),
+                    selected: !_customEndpoint,
+                    onSelected: (_) => setState(() => _customEndpoint = false),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Custom / offline'),
+                    selected: _customEndpoint,
+                    onSelected: (_) => setState(() => _customEndpoint = true),
+                  ),
+                ],
+              ),
+              if (_customEndpoint) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _aiEndpointCtrl,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'AI endpoint (OpenAI-compatible)',
+                    hintText: 'http://192.168.1.10:1234/v1/chat/completions',
+                    prefixIcon: Icon(Icons.dns_outlined, size: 20),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Point to a local server (Ollama, LM Studio) on your Wi-Fi to use '
+                  'AI offline. No key needed if the server has none.',
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ],
               const SizedBox(height: 10),
               TextField(
                 controller: _aiKeyCtrl,
