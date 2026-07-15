@@ -22,7 +22,11 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
   Future<void> _load() async {
     try {
       final api = ref.read(apiClientProvider);
-      final r = await api.dio.get('${AppConstants.documentsEndpoint}/${widget.id}');
+      final hasAuth = await api.hasToken();
+      final endpoint = hasAuth
+          ? '${AppConstants.documentsEndpoint}/${widget.id}'
+          : '/documents/guest/${widget.id}';
+      final r = await api.dio.get(endpoint);
       setState(() { _doc = r.data; _loading = false; });
     } catch (_) { setState(() => _loading = false); }
   }
@@ -31,7 +35,11 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     setState(() => _processing = true);
     try {
       final api = ref.read(apiClientProvider);
-      await api.dio.post('${AppConstants.documentsEndpoint}/${widget.id}/analyze');
+      final hasAuth = await api.hasToken();
+      final endpoint = hasAuth
+          ? '${AppConstants.documentsEndpoint}/${widget.id}/analyze'
+          : '/documents/guest/${widget.id}/analyze';
+      await api.dio.post(endpoint);
       await _load();
     } catch (_) {}
     setState(() => _processing = false);

@@ -1,5 +1,7 @@
 """Authentication dependencies for FastAPI routes."""
 
+from typing import Optional
+
 from fastapi import Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,3 +44,28 @@ async def get_current_user(
         raise AuthenticationError("User account is deactivated")
 
     return user
+
+
+async def get_optional_user(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Get user if authenticated, None if guest.
+
+    This allows endpoints to work for both authenticated users
+    and anonymous guests. Guest users get limited features.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization[7:]
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id or payload.get("type") != "access":
+            return None
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        return user if user and user.is_active else None
+    except Exception:
+        return None
