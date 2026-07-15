@@ -45,9 +45,17 @@ jobs:
         # OPENROUTER_API_KEY is optional. Add it under
         # Settings -> Secrets and variables -> Actions to bake AI into the APK.
         # If unset, the app still works and you can paste your key in-app.
-        run: >
-          flutter build apk --release
-          --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}"
+        run: |
+          set -o pipefail
+          flutter build apk --release \
+            --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
+            2>&1 | tee build.log || {
+              echo ""
+              echo "================= BUILD ERROR SUMMARY (copy this) ================="
+              grep -iE "error:|^e: |FAILURE:|What went wrong|Caused by|Exception|not found|Unresolved|Could not|incompatible|Namespace|minSdk|compileSdk|Duplicate|AAPT|Execution failed" build.log | tail -60
+              echo "==================================================================="
+              exit 1
+            }
 
       - name: Rename APK
         working-directory: frontend
