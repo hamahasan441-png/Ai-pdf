@@ -19,22 +19,34 @@ class AppConfig {
     defaultValue: '',
   );
 
-  /// Default free, vision-capable model. Changeable in the app (Profile).
+  /// Default free, vision-capable model. Changeable in the app (Settings).
   static const String defaultAiModel = String.fromEnvironment(
     'AI_MODEL',
-    defaultValue: 'google/gemini-2.0-flash-exp:free',
+    defaultValue: 'google/gemma-4-27b-it:free',
   );
 
-  /// Curated list of good free OpenRouter models: (slug, label, supportsVision).
-  /// The free catalog changes over time, so users can also enter a custom slug.
-  /// Vision models are needed to "see" documents/images; text-only models are
-  /// fine for chatting about already-extracted text.
+  /// Curated models available through OpenRouter. One API key, all providers.
+  /// The free catalog changes over time; users can also enter a custom slug.
+  /// Vision models can "see" documents/images directly.
+  ///
+  /// Format: (slug, label, supportsVision)
+
+  /// Combined list for the model picker UI.
   static const List<(String, String, bool)> aiModels = [
-    ('google/gemini-2.0-flash-exp:free', 'Gemini 2.0 Flash (vision) — recommended', true),
-    ('meta-llama/llama-3.2-11b-vision-instruct:free', 'Llama 3.2 Vision', true),
-    ('qwen/qwen2.5-vl-72b-instruct:free', 'Qwen2.5-VL 72B (vision)', true),
-    ('meta-llama/llama-3.3-70b-instruct:free', 'Llama 3.3 70B (text only)', false),
-    ('deepseek/deepseek-chat-v3-0324:free', 'DeepSeek V3 (text only)', false),
+    // --- FREE (no credits needed) ---
+    ('google/gemma-4-27b-it:free', 'Gemma 4 27B (vision) — recommended', true),
+    ('google/gemma-4-31b-it:free', 'Gemma 4 31B (vision, 256K ctx)', true),
+    ('google/gemma-4-26b-a4b-it:free', 'Gemma 4 26B MoE (vision, fast)', true),
+    ('google/gemini-2.5-flash-preview:free', 'Gemini 2.5 Flash (vision)', true),
+    ('nvidia/llama-3.1-nemotron-70b-instruct:free', 'Nemotron 70B (text)', false),
+    ('deepseek/deepseek-chat-v3-0324:free', 'DeepSeek V3 (text)', false),
+    // --- PREMIUM (pay-per-token via OpenRouter) ---
+    ('openai/gpt-4o', 'GPT-4o (vision) — OpenAI', true),
+    ('openai/gpt-4o-mini', 'GPT-4o Mini (vision, cheap) — OpenAI', true),
+    ('anthropic/claude-sonnet-4', 'Claude Sonnet 4 (vision) — Anthropic', true),
+    ('anthropic/claude-3.5-haiku', 'Claude 3.5 Haiku (vision, fast)', true),
+    ('google/gemini-2.5-pro-preview', 'Gemini 2.5 Pro (vision) — Google', true),
+    ('meta-llama/llama-4-maverick', 'Llama 4 Maverick (vision) — Meta', true),
   ];
   static const int maxFileSizeMB = 50;
   static const List<String> supportedExtensions = [

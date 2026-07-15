@@ -13,10 +13,10 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
-enum EditTool { pan, draw, highlight, text, line, arrow, rect, signature, eraser }
+enum EditTool { pan, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
 
 /// Shape kinds for the vector shape tools.
-enum ShapeType { line, arrow, rect }
+enum ShapeType { line, arrow, rect, oval, whiteout }
 
 /// Base type for anything drawn on a page (used for undo/redo ordering).
 abstract class _Annotation {}
@@ -192,7 +192,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   bool get _isFreehand => _tool == EditTool.draw || _tool == EditTool.highlight;
   bool get _isShape =>
-      _tool == EditTool.line || _tool == EditTool.arrow || _tool == EditTool.rect;
+      _tool == EditTool.line || _tool == EditTool.arrow || _tool == EditTool.rect ||
+      _tool == EditTool.oval || _tool == EditTool.whiteout;
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _norm(local, canvas);
@@ -229,6 +230,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final type = switch (_tool) {
         EditTool.line => ShapeType.line,
         EditTool.arrow => ShapeType.arrow,
+        EditTool.oval => ShapeType.oval,
+        EditTool.whiteout => ShapeType.whiteout,
         _ => ShapeType.rect,
       };
       if ((_shapeStart! - _shapeEnd!).distance > 0.01) {
@@ -385,6 +388,39 @@ class _PickEditScreenState extends State<PickEditScreen> {
           false,
         ));
       });
+    }
+  }
+
+  /// Rotate the current page image 90° clockwise. The rotation is applied to
+  /// the cached bytes (re-encoded) so it appears immediately and exports correctly.
+  Future<void> _rotatePage() async {
+    final bytes = _pageCache[_current];
+    if (bytes == null) return;
+    setState(() => _loading = true);
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final original = frame.image;
+      final w = original.height;
+      final h = original.width;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()));
+      canvas.translate(w.toDouble(), 0);
+      canvas.rotate(math.pi / 2);
+      canvas.drawImage(original, Offset.zero, Paint());
+      original.dispose();
+      final picture = recorder.endRecording();
+      final rotated = await picture.toImage(w, h);
+      final data = await rotated.toByteData(format: ui.ImageByteFormat.png);
+      rotated.dispose();
+      picture.dispose();
+      if (data != null) {
+        _pageCache[_current] = data.buffer.asUint8List();
+      }
+    } catch (e) {
+      _showError('Rotate failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -657,6 +693,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
         return ShapeType.arrow;
       case EditTool.rect:
         return ShapeType.rect;
+      case EditTool.oval:
+        return ShapeType.oval;
+      case EditTool.whiteout:
+        return ShapeType.whiteout;
       default:
         return null;
     }
@@ -706,8 +746,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _toolBtn(Icons.horizontal_rule, 'Line', EditTool.line, cs),
                 _toolBtn(Icons.north_east, 'Arrow', EditTool.arrow, cs),
                 _toolBtn(Icons.crop_square, 'Box', EditTool.rect, cs),
+                _toolBtn(Icons.circle_outlined, 'Oval', EditTool.oval, cs),
+                _toolBtn(Icons.format_color_fill, 'Whiteout', EditTool.whiteout, cs),
                 _actionBtn(Icons.gesture, 'Sign', _addSignature, cs),
                 _toolBtn(Icons.cleaning_services, 'Eraser', EditTool.eraser, cs),
+                _actionBtn(Icons.rotate_right, 'Rotate', _rotatePage, cs),
                 _actionBtn(Icons.folder_open, 'Open', _pick, cs),
               ]),
             ),
@@ -849,6 +892,22 @@ class _AnnDraw {
       case ShapeType.arrow:
         canvas.drawLine(p1, p2, paint);
         _arrowHead(canvas, p1, p2, paint, k);
+        break;
+      case ShapeType.oval:
+        canvas.drawOval(Rect.fromPoints(p1, p2), paint);
+        break;
+      case ShapeType.whiteout:
+        // Filled white rectangle — covers/redacts content underneath.
+        final fill = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill;
+        canvas.drawRect(Rect.fromPoints(p1, p2), fill);
+        // Thin border so you can see it while editing.
+        final border = Paint()
+          ..color = Colors.grey.shade400
+          ..strokeWidth = 1 * k
+          ..style = PaintingStyle.stroke;
+        canvas.drawRect(Rect.fromPoints(p1, p2), border);
         break;
     }
   }
