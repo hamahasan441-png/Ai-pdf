@@ -15,7 +15,7 @@ import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
-enum EditTool { pan, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
+enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
 
 /// Inferred type of a detected form field, so tapping it opens the right input.
 enum FieldType { text, number, date, email, phone, name, signature }
@@ -122,6 +122,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
   _Annotation? _selected; // currently selected annotation (for move/resize)
   Offset? _dragOffset; // offset during move
   bool _hasUnsavedChanges = false;
+
+  // --- Multi-select (E2) ---
+  final Set<_Annotation> _multi = {};
+  Offset? _marqueeStart;
+  Offset? _marqueeEnd;
+  String _selMode = 'none'; // 'marquee' | 'move'
+  Offset? _selDragLast;
 
   // --- Smart field detection (E1) ---
   final OcrService _ocr = OcrService();
@@ -319,6 +326,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _loading = true;
       _pageCache.clear();
       _layers.clear();
+      _fields.clear();
+      _multi.clear();
       _current = 0;
       _fileName = name;
       _selected = null;
@@ -394,6 +403,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     await _renderPage(index);
     setState(() {
       _current = index;
+      _selected = null;
+      _multi.clear();
+      _showFields = false;
       _loading = false;
     });
   }
@@ -413,6 +425,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _norm(local, canvas);
+    if (_tool == EditTool.select) {
+      final hit = _hitTest(n);
+      if (hit != null && _multi.contains(hit)) {
+        _selMode = 'move';
+        _selDragLast = n;
+      } else if (hit != null) {
+        _multi
+          ..clear()
+          ..add(hit);
+        _selMode = 'move';
+        _selDragLast = n;
+      } else {
+        _selMode = 'marquee';
+        _marqueeStart = n;
+        _marqueeEnd = n;
+      }
+      setState(() {});
+      return;
+    }
     if (_tool == EditTool.pan && _selected != null) {
       // Start moving selected object
       _dragOffset = n;
@@ -430,6 +461,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _norm(local, canvas);
+    if (_tool == EditTool.select) {
+      if (_selMode == 'marquee') {
+        _marqueeEnd = n;
+        setState(() {});
+      } else if (_selMode == 'move' && _selDragLast != null) {
+        final d = Offset(n.dx - _selDragLast!.dx, n.dy - _selDragLast!.dy);
+        for (final a in _multi) {
+          _moveAnnotation(a, d);
+        }
+        _selDragLast = n;
+        _hasUnsavedChanges = true;
+        setState(() {});
+      }
+      return;
+    }
     if (_tool == EditTool.pan && _selected != null && _dragOffset != null) {
       final delta = Offset(n.dx - _dragOffset!.dx, n.dy - _dragOffset!.dy);
       _moveSelected(delta);
@@ -446,6 +492,23 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _onPanEnd() {
+    if (_tool == EditTool.select) {
+      if (_selMode == 'marquee' && _marqueeStart != null && _marqueeEnd != null) {
+        final r = Rect.fromPoints(_marqueeStart!, _marqueeEnd!);
+        _multi.clear();
+        if (r.width > 0.01 || r.height > 0.01) {
+          for (final a in _layer.items) {
+            if (_boundsOf(a).overlaps(r)) _multi.add(a);
+          }
+        }
+      }
+      _selMode = 'none';
+      _marqueeStart = null;
+      _marqueeEnd = null;
+      _selDragLast = null;
+      setState(() {});
+      return;
+    }
     _dragOffset = null;
     if (_isFreehand && _drawing.length > 1) {
       _pushItem(_Stroke(
@@ -486,6 +549,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
     } else if (_tool == EditTool.pan) {
       // Tap in pan mode = try to select an object
       setState(() => _selected = _hitTest(n));
+    } else if (_tool == EditTool.select) {
+      final hit = _hitTest(n);
+      setState(() {
+        _multi.clear();
+        if (hit != null) _multi.add(hit);
+      });
     }
   }
 
@@ -605,6 +674,146 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _layer.items.remove(sel);
       _layer.items.insert(0, sel);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  // ---- Multi-select helpers (E2) ----
+
+  Offset _clampOff(Offset o, [double m = 1.0]) =>
+      Offset(o.dx.clamp(0.0, m), o.dy.clamp(0.0, m));
+
+  void _moveAnnotation(_Annotation a, Offset d) {
+    if (a is _Shape) {
+      a.start = _clampOff(a.start + d);
+      a.end = _clampOff(a.end + d);
+    } else if (a is _TextBox) {
+      a.pos = _clampOff(a.pos + d, 0.98);
+    } else if (a is _Stroke) {
+      for (var i = 0; i < a.points.length; i++) {
+        a.points[i] = _clampOff(a.points[i] + d);
+      }
+    }
+  }
+
+  /// Normalized bounding box of any annotation.
+  Rect _boundsOf(_Annotation a) {
+    if (a is _Shape) return Rect.fromPoints(a.start, a.end);
+    if (a is _TextBox) {
+      final w = (a.text.length * a.size * 0.55).clamp(0.02, 1.0);
+      return Rect.fromLTWH(a.pos.dx, a.pos.dy, w.toDouble(), a.size * 1.3);
+    }
+    if (a is _Stroke) {
+      var minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+      for (final p in a.points) {
+        minX = math.min(minX, p.dx);
+        minY = math.min(minY, p.dy);
+        maxX = math.max(maxX, p.dx);
+        maxY = math.max(maxY, p.dy);
+      }
+      return Rect.fromLTRB(minX, minY, maxX, maxY);
+    }
+    return Rect.zero;
+  }
+
+  _Annotation? _copyAnnotation(_Annotation a, double d) {
+    if (a is _Shape) {
+      return _Shape(a.type, Offset(a.start.dx + d, a.start.dy + d),
+          Offset(a.end.dx + d, a.end.dy + d), a.color, a.width);
+    } else if (a is _TextBox) {
+      return _TextBox(Offset(a.pos.dx + d, a.pos.dy + d), a.text, a.color, a.size, a.bold);
+    } else if (a is _Stroke) {
+      return _Stroke(a.points.map((p) => Offset(p.dx + d, p.dy + d)).toList(),
+          a.color, a.width, a.highlight);
+    }
+    return null;
+  }
+
+  void _alignMulti(String how) {
+    if (_multi.length < 2) return;
+    final rects = {for (final a in _multi) a: _boundsOf(a)};
+    Rect group = rects.values.first;
+    for (final r in rects.values) {
+      group = group.expandToInclude(r);
+    }
+    setState(() {
+      for (final a in _multi) {
+        final r = rects[a]!;
+        double dx = 0, dy = 0;
+        switch (how) {
+          case 'left':
+            dx = group.left - r.left;
+            break;
+          case 'hcenter':
+            dx = group.center.dx - r.center.dx;
+            break;
+          case 'right':
+            dx = group.right - r.right;
+            break;
+          case 'top':
+            dy = group.top - r.top;
+            break;
+          case 'vcenter':
+            dy = group.center.dy - r.center.dy;
+            break;
+          case 'bottom':
+            dy = group.bottom - r.bottom;
+            break;
+        }
+        _moveAnnotation(a, Offset(dx, dy));
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _distributeMulti(Axis axis) {
+    if (_multi.length < 3) return;
+    final list = _multi.toList();
+    final rects = {for (final a in list) a: _boundsOf(a)};
+    list.sort((p, q) => axis == Axis.horizontal
+        ? rects[p]!.center.dx.compareTo(rects[q]!.center.dx)
+        : rects[p]!.center.dy.compareTo(rects[q]!.center.dy));
+    final first = rects[list.first]!.center;
+    final last = rects[list.last]!.center;
+    final step = (axis == Axis.horizontal ? (last.dx - first.dx) : (last.dy - first.dy)) /
+        (list.length - 1);
+    setState(() {
+      for (var i = 1; i < list.length - 1; i++) {
+        final a = list[i];
+        final c = rects[a]!.center;
+        if (axis == Axis.horizontal) {
+          _moveAnnotation(a, Offset(first.dx + step * i - c.dx, 0));
+        } else {
+          _moveAnnotation(a, Offset(0, first.dy + step * i - c.dy));
+        }
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _deleteMulti() {
+    setState(() {
+      for (final a in _multi) {
+        _layer.items.remove(a);
+        _layer.redo.add(a);
+      }
+      _multi.clear();
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _duplicateMulti() {
+    const d = 0.03;
+    final copies = <_Annotation>[];
+    for (final a in _multi) {
+      final c = _copyAnnotation(a, d);
+      if (c != null) copies.add(c);
+    }
+    setState(() {
+      _layer.items.addAll(copies);
+      _multi
+        ..clear()
+        ..addAll(copies);
       _hasUnsavedChanges = true;
     });
   }
@@ -1120,6 +1329,40 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       ),
                     ),
                   )),
+            // Multi-select highlights (E2)
+            ..._multi.map((a) {
+              final r = _boundsOf(a);
+              return Positioned(
+                left: r.left * size.width,
+                top: r.top * size.height,
+                width: (r.width * size.width).clamp(6.0, size.width),
+                height: (r.height * size.height).clamp(6.0, size.height),
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blue, width: 1.5),
+                      color: Colors.blue.withOpacity(0.08),
+                    ),
+                  ),
+                ),
+              );
+            }),
+            // Marquee rectangle while dragging in Select mode
+            if (_selMode == 'marquee' && _marqueeStart != null && _marqueeEnd != null)
+              Positioned.fromRect(
+                rect: Rect.fromPoints(
+                  Offset(_marqueeStart!.dx * size.width, _marqueeStart!.dy * size.height),
+                  Offset(_marqueeEnd!.dx * size.width, _marqueeEnd!.dy * size.height),
+                ),
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blueAccent),
+                      color: Colors.blue.withOpacity(0.12),
+                    ),
+                  ),
+                ),
+              ),
             // Selection indicator + resize handles for shapes
             if (_selected is _Shape) ...[
               _buildShapeSelection(size, _selected as _Shape),
@@ -1201,6 +1444,49 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     const SizedBox(width: 10),
                     _miniBtn(Icons.close, 'Deselect', () => setState(() => _selected = null)),
                   ]),
+                ),
+              ),
+            // Multi-select action bar (E2): align / distribute / bulk actions
+            if (_multi.isNotEmpty)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      Text('${_multi.length} selected',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_horizontal_left, 'Align left', () => _alignMulti('left')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_horizontal_center, 'Align center', () => _alignMulti('hcenter')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_horizontal_right, 'Align right', () => _alignMulti('right')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_vertical_top, 'Align top', () => _alignMulti('top')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_vertical_center, 'Align middle', () => _alignMulti('vcenter')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.align_vertical_bottom, 'Align bottom', () => _alignMulti('bottom')),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.horizontal_distribute, 'Distribute H', () => _distributeMulti(Axis.horizontal)),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.vertical_distribute, 'Distribute V', () => _distributeMulti(Axis.vertical)),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.copy_all, 'Duplicate', _duplicateMulti),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.delete_outline, 'Delete', _deleteMulti),
+                      const SizedBox(width: 12),
+                      _miniBtn(Icons.close, 'Deselect', () => setState(() => _multi.clear())),
+                    ]),
+                  ),
                 ),
               ),
           ],
@@ -1324,6 +1610,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       _showFields ? 'Hide' : 'Fields',
                       () => setState(() => _showFields = !_showFields), cs),
                 _toolBtn(Icons.pan_tool_alt, 'Move', EditTool.pan, cs),
+                _toolBtn(Icons.select_all, 'Select', EditTool.select, cs),
                 _toolBtn(Icons.edit, 'Draw', EditTool.draw, cs),
                 _toolBtn(Icons.highlight, 'Highlight', EditTool.highlight, cs),
                 _toolBtn(Icons.title, 'Text', EditTool.text, cs),
