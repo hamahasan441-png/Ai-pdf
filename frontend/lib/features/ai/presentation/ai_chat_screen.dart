@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/services/form_memory_service.dart';
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/user_profile_service.dart';
 import '../../tools/models/filled_field.dart';
@@ -68,6 +69,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   String? _error;
 
   String _profileBlock = ''; // the user's saved details, injected for form-fill
+  String _memoryBlock = ''; // previously-answered fields, injected for form-fill
 
   bool get _isForm => widget.mode == AiChatMode.fillForm;
 
@@ -80,6 +82,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
               'fields automatically, and do NOT ask again for information already '
               'present here:\n$_profileBlock'
           : '';
+      final memory = _memoryBlock.isNotEmpty
+          ? '\n\nThe user has previously answered these fields on earlier forms — '
+              'reuse a value ONLY when it clearly matches a field on this form, and '
+              'confirm rather than assume when unsure:\n$_memoryBlock'
+          : '';
       return 'You are an expert form-filling assistant. The user shares a form as page '
           'images. Steps: (1) Read the form carefully and identify every field or '
           'blank that needs a value. (2) Pre-fill everything you already know from '
@@ -87,7 +94,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           'logically and in plain language. (4) When you have enough, output the '
           'completed form as a clean, copyable list of "Field: Value" lines, and point '
           'out any field still missing. Be friendly, concise, and never invent '
-          'personal data.$profile';
+          'personal data.$profile$memory';
     }
     return 'You are a precise, helpful document assistant. The user shares a document '
         'as page images. Answer questions accurately based only on the document. '
@@ -100,6 +107,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
     if (_isForm) {
       UserProfileService.instance.load().then((_) {
         if (mounted) setState(() => _profileBlock = UserProfileService.instance.asPromptBlock());
+      });
+      FormMemoryService.instance.load().then((_) {
+        if (mounted) setState(() => _memoryBlock = FormMemoryService.instance.asPromptBlock());
       });
     }
   }
@@ -434,6 +444,21 @@ class _AiChatScreenState extends State<AiChatScreen> {
         builder: (_) => _FieldReviewSheet(fields: fields),
       );
       if (confirmed == null || confirmed.isEmpty) return;
+
+      // Remember the confirmed answers so recurring fields auto-fill next time.
+      final toRemember = <String, String>{};
+      for (final f in confirmed) {
+        if (f.field.trim().isNotEmpty && f.text.trim().isNotEmpty) {
+          toRemember[f.field] = f.text;
+        }
+      }
+      if (toRemember.isNotEmpty) {
+        FormMemoryService.instance.remember(toRemember).then((_) {
+          if (mounted) {
+            setState(() => _memoryBlock = FormMemoryService.instance.asPromptBlock());
+          }
+        });
+      }
 
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
