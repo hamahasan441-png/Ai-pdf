@@ -50,9 +50,12 @@ class _Shape extends _Annotation {
   final ShapeType type;
   Offset start;
   Offset end;
-  final Color color;
-  final double width;
-  _Shape(this.type, this.start, this.end, this.color, this.width);
+  Color color;
+  double width;
+  bool filled; // fill rect/oval with a translucent color
+  double opacity; // 0..1
+  _Shape(this.type, this.start, this.end, this.color, this.width,
+      [this.filled = false, this.opacity = 1.0]);
 }
 
 /// A text box annotation (normalized position).
@@ -62,7 +65,11 @@ class _TextBox extends _Annotation {
   Color color;
   double size; // normalized to canvas height
   bool bold;
-  _TextBox(this.pos, this.text, this.color, this.size, this.bold);
+  bool italic;
+  bool underline;
+  String? fontFamily; // null = default, 'serif', 'monospace'
+  _TextBox(this.pos, this.text, this.color, this.size, this.bold,
+      [this.italic = false, this.underline = false, this.fontFamily]);
 }
 
 /// Per-page annotation layer with undo + redo history.
@@ -832,6 +839,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final ctrl = TextEditingController(text: box.text);
     double size = box.size;
     bool bold = box.bold;
+    bool italic = box.italic;
+    bool underline = box.underline;
+    String? font = box.fontFamily;
     Color color = box.color;
 
     final result = await showDialog<String>(
@@ -867,6 +877,34 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   isSelected: bold,
                   icon: const Icon(Icons.format_bold),
                   onPressed: () => setLocal(() => bold = !bold),
+                ),
+                IconButton(
+                  tooltip: 'Italic',
+                  isSelected: italic,
+                  icon: const Icon(Icons.format_italic),
+                  onPressed: () => setLocal(() => italic = !italic),
+                ),
+                IconButton(
+                  tooltip: 'Underline',
+                  isSelected: underline,
+                  icon: const Icon(Icons.format_underlined),
+                  onPressed: () => setLocal(() => underline = !underline),
+                ),
+              ]),
+              Row(children: [
+                const Text('Font'),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButton<String?>(
+                    value: font,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Default')),
+                      DropdownMenuItem(value: 'serif', child: Text('Serif', style: TextStyle(fontFamily: 'serif'))),
+                      DropdownMenuItem(value: 'monospace', child: Text('Mono', style: TextStyle(fontFamily: 'monospace'))),
+                    ],
+                    onChanged: (v) => setLocal(() => font = v),
+                  ),
                 ),
               ]),
               Row(
@@ -912,6 +950,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         box.color = color;
         box.size = size;
         box.bold = bold;
+        box.italic = italic;
+        box.underline = underline;
+        box.fontFamily = font;
         // Remember last-used style for the next text box.
         _textSize = size;
         _bold = bold;
@@ -919,6 +960,78 @@ class _PickEditScreenState extends State<PickEditScreen> {
         if (isNew) _pushItem(box);
       }
     });
+  }
+
+  /// Properties editor for a selected shape (E3): stroke width, color,
+  /// fill (rect/oval), and opacity.
+  Future<void> _editShapeStyle(_Shape s) async {
+    bool filled = s.filled;
+    double opacity = s.opacity;
+    double width = s.width;
+    Color color = s.color;
+    final canFill = s.type == ShapeType.rect || s.type == ShapeType.oval;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Shape style'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              const SizedBox(width: 56, child: Text('Width')),
+              Expanded(
+                child: Slider(value: width, min: 1, max: 14, onChanged: (v) => setLocal(() => width = v)),
+              ),
+            ]),
+            Row(children: [
+              const SizedBox(width: 56, child: Text('Opacity')),
+              Expanded(
+                child: Slider(value: opacity, min: 0.1, max: 1, onChanged: (v) => setLocal(() => opacity = v)),
+              ),
+            ]),
+            if (canFill)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Fill'),
+                value: filled,
+                onChanged: (v) => setLocal(() => filled = v),
+              ),
+            Row(
+              children: [Colors.red, Colors.blue, Colors.black, Colors.green, Colors.orange, Colors.purple]
+                  .map((c) => GestureDetector(
+                        onTap: () => setLocal(() => color = c),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          margin: const EdgeInsets.only(right: 8, top: 4),
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: color == c ? Colors.blueAccent : Colors.grey.shade400,
+                              width: color == c ? 3 : 1,
+                            ),
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      setState(() {
+        s.filled = filled;
+        s.opacity = opacity;
+        s.width = width;
+        s.color = color;
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   void _undo() {
@@ -1413,6 +1526,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           color: t.color,
                           fontSize: t.size * size.height,
                           fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+                          fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+                          decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
+                          decorationColor: t.color,
+                          fontFamily: t.fontFamily,
                         ),
                       ),
                     ),
@@ -1432,6 +1549,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_selected is _TextBox) ...[
                       _miniBtn(Icons.edit, 'Edit text', () => _editTextBox(_selected as _TextBox)),
+                      const SizedBox(width: 10),
+                    ],
+                    if (_selected is _Shape) ...[
+                      _miniBtn(Icons.tune, 'Style', () => _editShapeStyle(_selected as _Shape)),
                       const SizedBox(width: 10),
                     ],
                     _miniBtn(Icons.copy_all, 'Duplicate', _duplicateSelected),
@@ -1742,19 +1863,25 @@ class _AnnDraw {
     canvas.drawPath(path, paint);
   }
 
-  static void shape(Canvas canvas, Size size, ShapeType type, Offset a, Offset b, Color color, double width) {
+  static void shape(Canvas canvas, Size size, ShapeType type, Offset a, Offset b, Color color, double width,
+      [bool filled = false, double opacity = 1.0]) {
     final k = size.height / _refHeight;
     final p1 = Offset(a.dx * size.width, a.dy * size.height);
     final p2 = Offset(b.dx * size.width, b.dy * size.height);
+    final effColor = color.withOpacity((color.opacity * opacity).clamp(0.0, 1.0));
     final paint = Paint()
-      ..color = color
+      ..color = effColor
       ..strokeWidth = width * k
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
+    final fillPaint = Paint()
+      ..color = effColor.withOpacity((effColor.opacity * 0.25).clamp(0.0, 1.0))
+      ..style = PaintingStyle.fill;
 
     switch (type) {
       case ShapeType.rect:
+        if (filled) canvas.drawRect(Rect.fromPoints(p1, p2), fillPaint);
         canvas.drawRect(Rect.fromPoints(p1, p2), paint);
         break;
       case ShapeType.line:
@@ -1765,6 +1892,7 @@ class _AnnDraw {
         _arrowHead(canvas, p1, p2, paint, k);
         break;
       case ShapeType.oval:
+        if (filled) canvas.drawOval(Rect.fromPoints(p1, p2), fillPaint);
         canvas.drawOval(Rect.fromPoints(p1, p2), paint);
         break;
       case ShapeType.whiteout:
@@ -1808,6 +1936,10 @@ class _AnnDraw {
           color: t.color,
           fontSize: t.size * size.height,
           fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+          fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+          decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
+          decorationColor: t.color,
+          fontFamily: t.fontFamily,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -1822,7 +1954,7 @@ class _AnnDraw {
       stroke(canvas, size, s.points, s.color, s.width);
     }
     for (final s in layer.shapes) {
-      shape(canvas, size, s.type, s.start, s.end, s.color, s.width);
+      shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
     }
     for (final t in layer.texts) {
       text(canvas, size, t);
@@ -1861,7 +1993,7 @@ class _AnnPainter extends CustomPainter {
       _AnnDraw.stroke(canvas, size, s.points, s.color, s.width);
     }
     for (final s in shapes) {
-      _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color, s.width);
+      _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
     }
     if (current.length > 1) {
       _AnnDraw.stroke(canvas, size, current,
