@@ -361,7 +361,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
         for (final f in fields) {
           final pageIndex = (f.page - 1).clamp(0, (_pageCount - 1).clamp(0, 1 << 30));
           final layer = _layers.putIfAbsent(pageIndex, () => _PageLayer());
-          layer.items.add(_TextBox(Offset(f.x, f.y), f.text, Colors.black, 0.024, false));
+          // Style by field kind: checks are a bold mark, signatures use an
+          // italic serif (script-like) look, everything else is plain text.
+          final double boxSize = f.isCheck ? 0.03 : (f.isSignature ? 0.032 : 0.024);
+          layer.items.add(_TextBox(
+            Offset(f.x, f.y),
+            f.text,
+            Colors.black,
+            boxSize,
+            f.isCheck, // bold
+            f.isSignature, // italic
+            false,
+            f.isSignature ? 'serif' : null,
+          ));
         }
         _hasUnsavedChanges = true;
         _tool = EditTool.pan; // start in move/select mode so user can adjust
