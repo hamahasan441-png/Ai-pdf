@@ -18,6 +18,7 @@ import '../../../core/services/bm25_retriever.dart';
 import '../../../core/services/form_memory_service.dart';
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/user_profile_service.dart';
+import '../../profile/presentation/profile_screen.dart';
 import '../../tools/models/filled_field.dart';
 import '../../tools/presentation/pick_edit_screen.dart';
 import '../../tools/widgets/result_sheet.dart';
@@ -99,13 +100,23 @@ class _AiChatScreenState extends State<AiChatScreen> {
               'confirm rather than assume when unsure:\n$_memoryBlock'
           : '';
       return 'You are an expert form-filling assistant. The user shares a form as page '
-          'images. Steps: (1) Read the form carefully and identify every field or '
-          'blank that needs a value. (2) Pre-fill everything you already know from '
-          'the profile below. (3) Ask the user only for the remaining fields, grouped '
-          'logically and in plain language. (4) When you have enough, output the '
-          'completed form as a clean, copyable list of "Field: Value" lines, and point '
-          'out any field still missing. Be friendly, concise, and never invent '
-          'personal data.$profile$memory';
+          'images (sometimes with extracted text). Do as much as possible automatically '
+          'and keep questions to a minimum:\n'
+          '1. Read the WHOLE form and identify every field, checkbox and signature line.\n'
+          '2. For each, infer its type (text, name, date, email, phone, number, address, '
+          'checkbox, choice, signature).\n'
+          '3. Auto-fill everything you can from the saved profile and remembered answers '
+          'below. Never ask for information already known.\n'
+          '4. Give a short numbered overview: the fields you FILLED (with the value) and '
+          'the fields you still NEED.\n'
+          '5. Ask for all remaining fields together in ONE concise, plainly-worded '
+          'message. Validate each answer against its field type and politely re-ask only '
+          'if a value is clearly wrong (e.g. an invalid date or email).\n'
+          '6. When you have enough, output the completed form as a clean list of '
+          '"Field: Value" lines, note anything left blank, and remind the user they can '
+          'tap "Place on form" to drop the answers onto the real PDF and export it.\n'
+          'Be friendly and efficient. Prefer asking once for everything over many small '
+          'questions, and never invent personal data.$profile$memory';
     }
     return 'You are a precise, helpful document assistant. The user shares a document '
         'as page images, sometimes with extracted text excerpts. Answer questions '
@@ -174,8 +185,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
       } else if (_isForm) {
         // Kick off the form flow automatically.
         await _send(
-          auto: 'Please read my form and tell me exactly what information you '
-              'need from me to fill it in.',
+          auto: 'Read my form. Give me a short numbered list of every field you '
+              'found — marking which you already filled from my saved info and which '
+              'you still need from me — then ask for all the missing ones together.',
         );
       } else {
         // Understand mode: build the retrieval index in the background so
@@ -769,7 +781,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
               const SizedBox(height: 16),
               Text(
                 _isForm
-                    ? 'Choose a form. The AI will read it and ask you for the info it needs, then fill it.'
+                    ? 'Choose a form (PDF or photo). The AI reads it, auto-fills what it '
+                        'already knows from your profile, asks only for what\'s missing, '
+                        'then places the answers on the real form to export.'
                     : 'Choose any PDF or image, then chat to understand it, summarize, or extract details.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant),
@@ -778,8 +792,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
               FilledButton.icon(
                 onPressed: _loadingDoc ? null : _pick,
                 icon: const Icon(Icons.folder_open),
-                label: const Text('Choose file'),
+                label: Text(_isForm ? 'Choose a form' : 'Choose file'),
               ),
+              if (_isForm) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                  ),
+                  icon: const Icon(Icons.badge_outlined, size: 18),
+                  label: const Text('Set up profile for instant auto-fill'),
+                ),
+              ],
             ],
           ),
         ),
