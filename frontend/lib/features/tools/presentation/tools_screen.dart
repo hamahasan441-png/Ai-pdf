@@ -133,6 +133,14 @@ class ToolsScreen extends ConsumerWidget {
                 onTap: () => context.push('/tools/extract-pages'),
               ),
               _ToolCard(
+                icon: Icons.delete_sweep,
+                label: 'Delete Pages',
+                desc: 'Remove a page range',
+                color: const Color(0xFFBE123C),
+                badge: 'Offline',
+                onTap: () => context.push('/tools/delete-pages'),
+              ),
+              _ToolCard(
                 icon: Icons.text_snippet,
                 label: 'PDF to Text',
                 desc: 'OCR full text export',
