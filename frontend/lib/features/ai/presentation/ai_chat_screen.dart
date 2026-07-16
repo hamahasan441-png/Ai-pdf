@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/services/ocr_service.dart';
 import '../../../core/services/user_profile_service.dart';
 import '../../tools/models/filled_field.dart';
 import '../../tools/presentation/pick_edit_screen.dart';
@@ -57,6 +58,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   String? _docPath; // original file path (for placing answers back on the form)
   bool _isPdf = false;
   List<String> _docImages = []; // data URLs attached to the first user turn
+  List<String> _pageImagePaths = []; // on-disk page images (for OCR anchoring)
   bool _placing = false;
 
   final List<_ChatMsg> _messages = [];
@@ -124,6 +126,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _fileName = result.files.first.name;
       _docPath = path;
       _docImages = [];
+      _pageImagePaths = [];
       _messages.clear();
     });
 
@@ -137,6 +140,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         final bytes = await File(path).readAsBytes();
         final mime = lower.endsWith('.png') ? 'image/png' : 'image/jpeg';
         _docImages = [OpenRouterService.dataUrl(bytes, mime: mime)];
+        _pageImagePaths = [path]; // the image itself is page 1 for OCR
       }
       if (_docImages.isEmpty) {
         _error = 'Could not read any pages from this file.';
@@ -156,6 +160,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Future<List<String>> _renderPdf(String path) async {
     final urls = <String>[];
+    _pageImagePaths = [];
+    Directory? tmp;
+    try {
+      tmp = await getTemporaryDirectory();
+    } catch (_) {
+      tmp = null;
+    }
+    final stamp = DateTime.now().millisecondsSinceEpoch;
     final doc = await pdfx.PdfDocument.openFile(path);
     try {
       final count = doc.pagesCount < _maxPages ? doc.pagesCount : _maxPages;
@@ -173,6 +185,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
           final bytes = img?.bytes;
           if (bytes != null) {
             urls.add(OpenRouterService.dataUrl(Uint8List.fromList(bytes)));
+            // Persist the page image so OCR can anchor placement precisely.
+            if (tmp != null) {
+              try {
+                final p = '${tmp.path}/aiform_${stamp}_p$i.jpg';
+                await File(p).writeAsBytes(bytes);
+                _pageImagePaths.add(p);
+              } catch (_) {
+                // OCR anchoring is best-effort; ignore write failures.
+              }
+            }
           }
         } finally {
           await page.close();
@@ -182,6 +204,90 @@ class _AiChatScreenState extends State<AiChatScreen> {
       await doc.close();
     }
     return urls;
+  }
+
+  /// Run on-device OCR on each rendered page, returning page (1-based) → lines.
+  /// Best-effort: returns an empty map if OCR is unavailable or fails.
+  Future<Map<int, List<OcrLine>>> _ocrPages() async {
+    final byPage = <int, List<OcrLine>>{};
+    if (_pageImagePaths.isEmpty) return byPage;
+    final ocr = OcrService();
+    try {
+      for (var i = 0; i < _pageImagePaths.length; i++) {
+        try {
+          final res = await ocr.recognize(_pageImagePaths[i]);
+          byPage[i + 1] = res.lines;
+        } catch (_) {
+          // Skip pages that fail OCR.
+        }
+      }
+    } finally {
+      await ocr.dispose();
+    }
+    return byPage;
+  }
+
+  /// Build a compact prompt block of detected label boxes for the AI to anchor
+  /// placement against. Keeps only label-like lines, capped per page.
+  String _anchorPrompt(Map<int, List<OcrLine>> byPage) {
+    if (byPage.isEmpty) return '';
+    final b = StringBuffer();
+    byPage.forEach((page, lines) {
+      var count = 0;
+      for (final l in lines) {
+        final t = l.text.trim().replaceAll('"', '');
+        if (t.isEmpty) continue;
+        // Prefer short labels or anything ending in a colon.
+        if (t.length > 40 && !t.contains(':')) continue;
+        b.writeln('p$page: "$t" (x${l.x.toStringAsFixed(2)},y${l.y.toStringAsFixed(2)})');
+        if (++count >= 40) break;
+      }
+    });
+    final s = b.toString();
+    if (s.isEmpty) return '';
+    return '\n\nDetected text labels on the pages (normalized coordinates). Use these '
+        'to place each value ACCURATELY: set "anchor" to the EXACT label text you '
+        'are filling next to so the value lands on the correct line:\n$s';
+  }
+
+  /// Snap a parsed field onto its matching OCR label box (just to the right of
+  /// the label, vertically aligned). Returns the field unchanged if no match.
+  List<FilledField> _snapToOcr(List<FilledField> fields, Map<int, List<OcrLine>> byPage) {
+    if (byPage.isEmpty) return fields;
+    String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final out = <FilledField>[];
+    for (final f in fields) {
+      final lines = byPage[f.page];
+      if (f.anchor.isEmpty || lines == null || lines.isEmpty) {
+        out.add(f);
+        continue;
+      }
+      final a = norm(f.anchor);
+      OcrLine? best;
+      var bestScore = 0;
+      for (final l in lines) {
+        final t = norm(l.text);
+        if (t.isEmpty) continue;
+        var score = 0;
+        if (t == a) {
+          score = 1000;
+        } else if (t.contains(a) || a.contains(t)) {
+          score = a.length < t.length ? a.length : t.length;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = l;
+        }
+      }
+      if (best != null && bestScore > 0) {
+        final nx = (best.x + best.w + 0.012).clamp(0.0, 0.97);
+        final ny = best.y.clamp(0.0, 0.97);
+        out.add(f.withXY(nx.toDouble(), ny.toDouble()));
+      } else {
+        out.add(f);
+      }
+    }
+    return out;
   }
 
   /// Build the full OpenAI-style message list. Document images are attached to
@@ -291,6 +397,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _error = null;
     });
     try {
+      // On-device OCR gives real label positions so placement is precise
+      // instead of the model guessing pixel coordinates.
+      final ocrByPage = await _ocrPages();
+      final anchorBlock = _anchorPrompt(ocrByPage);
+
       // Add a hidden instruction turn requesting strict JSON with coordinates.
       final jsonMessages = _buildApiMessages()
         ..add({
@@ -300,12 +411,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
               'to write on the form based on everything above. Each item: '
               '{"field": "<short label of the field>", "page": <1-based page number>, '
               '"x": <0..1 from left edge>, "y": <0..1 from top edge>, '
-              '"text": "<value to write>"}. Place each value where its blank/answer '
-              'line is on the page. Only include fields you have a value for.',
+              '"text": "<value to write>", "anchor": "<exact detected label text to '
+              'place next to, or empty>"}. Place each value where its blank/answer '
+              'line is on the page. Only include fields you have a value for.$anchorBlock',
         });
 
       final reply = await _service.chat(jsonMessages);
-      final fields = _parseFields(reply);
+      final fields = _snapToOcr(_parseFields(reply), ocrByPage);
 
       if (fields.isEmpty) {
         setState(() => _error =
