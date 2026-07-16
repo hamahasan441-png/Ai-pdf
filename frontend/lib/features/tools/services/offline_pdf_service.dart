@@ -37,6 +37,19 @@ class OfflinePdfService {
     return '${outDir.path}/${name}_$ts';
   }
 
+  /// Build an output path with the timestamp BEFORE the extension, so the file
+  /// keeps a valid extension (e.g. page_1_1699999999.jpg) that the OS/file
+  /// managers recognize when saved or shared.
+  Future<String> _outputFile(String base, String ext) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final outDir = Directory('${dir.path}/ai_pdf_output');
+    if (!await outDir.exists()) {
+      await outDir.create(recursive: true);
+    }
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    return '${outDir.path}/${base}_$ts.$ext';
+  }
+
   /// Render a single PDF page to encoded JPEG bytes at a CAPPED resolution.
   /// This is the core memory-safety primitive.
   Future<Uint8List> _renderPageCapped(
@@ -235,6 +248,47 @@ class OfflinePdfService {
       originalSize: originalSize,
       compressedSize: outBytes.length,
     );
+  }
+
+  // ==========================================================
+  // PDF -> IMAGES (offline: export each page as JPG or PNG)
+  // ==========================================================
+
+  /// Render every page of [pdfPath] to a separate image file (capped
+  /// resolution for bounded memory) and return the file paths in page order.
+  Future<List<String>> pdfToImages(
+    String pdfPath, {
+    bool png = false,
+    int maxEdge = _imageMaxEdge,
+  }) async {
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final outputs = <String>[];
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final longEdge = page.width > page.height ? page.width : page.height;
+          final scale = longEdge > maxEdge ? maxEdge / longEdge : 1.0;
+          final rendered = await page.render(
+            width: (page.width * scale).clamp(1, maxEdge.toDouble()).toDouble(),
+            height: (page.height * scale).clamp(1, maxEdge.toDouble()).toDouble(),
+            format: png
+                ? pdfx.PdfPageImageFormat.png
+                : pdfx.PdfPageImageFormat.jpeg,
+            backgroundColor: '#FFFFFF',
+          );
+          if (rendered == null) continue;
+          final outPath = await _outputFile('page_$i', png ? 'png' : 'jpg');
+          await File(outPath).writeAsBytes(rendered.bytes);
+          outputs.add(outPath);
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    return outputs;
   }
 
   // ==========================================================
