@@ -339,7 +339,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
     if (result == null || result.files.isEmpty) return;
-    await _loadFile(result.files.first.path!, result.files.first.name);
+    final path = result.files.first.path;
+    if (path == null) return;
+    await _loadFile(path, result.files.first.name);
   }
 
   /// Load a PDF/image from [path]. Optionally pre-place [fields] as editable
@@ -591,6 +593,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {
         if (_layer.items.isNotEmpty) {
           _layer.redo.add(_layer.items.removeLast());
+          _selected = null;
+          _multi.clear();
           _hasUnsavedChanges = true;
         }
       });
@@ -1101,6 +1105,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       if (_layer.items.isNotEmpty) {
         _layer.redo.add(_layer.items.removeLast());
+        _selected = null;
+        _multi.clear();
+        _hasUnsavedChanges = true;
       }
     });
   }
@@ -1109,6 +1116,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       if (_layer.redo.isNotEmpty) {
         _layer.items.add(_layer.redo.removeLast());
+        _selected = null;
+        _multi.clear();
+        _hasUnsavedChanges = true;
       }
     });
   }
@@ -2140,7 +2150,10 @@ class _SignaturePadState extends State<_SignaturePad> {
         title: const Text('Sign Here'),
         actions: [
           TextButton(onPressed: () => setState(() => _points.clear()), child: const Text('Clear')),
-          FilledButton(onPressed: () => Navigator.pop(context, _points), child: const Text('Done')),
+          FilledButton(
+              onPressed: () => Navigator.pop(
+                  context, _points.where((p) => p.isFinite).toList()),
+              child: const Text('Done')),
           const SizedBox(width: 8),
         ],
       ),

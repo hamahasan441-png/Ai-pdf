@@ -59,7 +59,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   String? _docPath; // original file path (for placing answers back on the form)
   bool _isPdf = false;
   List<String> _docImages = []; // data URLs attached to the first user turn
-  List<String> _pageImagePaths = []; // on-disk page images (for OCR anchoring)
+  // On-disk page images for OCR anchoring, keyed by 1-based page number so the
+  // page->image mapping stays correct even if one page's temp write fails.
+  Map<int, String> _pageImages = {};
   bool _placing = false;
 
   final List<_ChatMsg> _messages = [];
@@ -136,7 +138,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _fileName = result.files.first.name;
       _docPath = path;
       _docImages = [];
-      _pageImagePaths = [];
+      _pageImages = {};
       _messages.clear();
     });
 
@@ -150,7 +152,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         final bytes = await File(path).readAsBytes();
         final mime = lower.endsWith('.png') ? 'image/png' : 'image/jpeg';
         _docImages = [OpenRouterService.dataUrl(bytes, mime: mime)];
-        _pageImagePaths = [path]; // the image itself is page 1 for OCR
+        _pageImages = {1: path}; // the image itself is page 1 for OCR
       }
       if (_docImages.isEmpty) {
         _error = 'Could not read any pages from this file.';
@@ -170,7 +172,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Future<List<String>> _renderPdf(String path) async {
     final urls = <String>[];
-    _pageImagePaths = [];
+    _pageImages = {};
     Directory? tmp;
     try {
       tmp = await getTemporaryDirectory();
@@ -200,7 +202,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               try {
                 final p = '${tmp.path}/aiform_${stamp}_p$i.jpg';
                 await File(p).writeAsBytes(bytes);
-                _pageImagePaths.add(p);
+                _pageImages[i] = p;
               } catch (_) {
                 // OCR anchoring is best-effort; ignore write failures.
               }
@@ -220,13 +222,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// Best-effort: returns an empty map if OCR is unavailable or fails.
   Future<Map<int, List<OcrLine>>> _ocrPages() async {
     final byPage = <int, List<OcrLine>>{};
-    if (_pageImagePaths.isEmpty) return byPage;
+    if (_pageImages.isEmpty) return byPage;
     final ocr = OcrService();
     try {
-      for (var i = 0; i < _pageImagePaths.length; i++) {
+      for (final entry in _pageImages.entries) {
         try {
-          final res = await ocr.recognize(_pageImagePaths[i]);
-          byPage[i + 1] = res.lines;
+          final res = await ocr.recognize(entry.value);
+          byPage[entry.key] = res.lines;
         } catch (_) {
           // Skip pages that fail OCR.
         }
