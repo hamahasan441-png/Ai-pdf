@@ -7,6 +7,8 @@ import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColors;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import '../../../core/services/ocr_service.dart';
+
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
 ///
 /// MEMORY SAFETY (the key design goal):
@@ -411,6 +413,70 @@ class OfflinePdfService {
     final outPath = await _outputFile('numbered', 'pdf');
     await File(outPath).writeAsBytes(await out.save());
     return outPath;
+  }
+
+  // ==========================================================
+  // PDF -> TEXT (offline: OCR each page, combine to a .txt file)
+  // ==========================================================
+
+  /// OCR every page and combine the text into a single .txt file, useful
+  /// for copy/pasting or searching the full content of a scanned document.
+  Future<String> pdfToText(String pdfPath) async {
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final buf = StringBuffer();
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final longEdge = page.width > page.height ? page.width : page.height;
+          final scale = longEdge > _compressMaxEdge ? _compressMaxEdge / longEdge : 1.0;
+          final rendered = await page.render(
+            width: (page.width * scale).clamp(1, _compressMaxEdge.toDouble()).toDouble(),
+            height: (page.height * scale).clamp(1, _compressMaxEdge.toDouble()).toDouble(),
+            format: pdfx.PdfPageImageFormat.jpeg,
+            backgroundColor: '#FFFFFF',
+          );
+          if (rendered == null) continue;
+          // Write temp image so OCR can process it.
+          final dir = await getTemporaryDirectory();
+          final tmp = '${dir.path}/pdftotext_p$i.jpg';
+          await File(tmp).writeAsBytes(rendered.bytes);
+          try {
+            final ocr = await _ocrFile(tmp);
+            if (ocr.isNotEmpty) {
+              buf.writeln('--- Page $i ---');
+              buf.writeln(ocr);
+              buf.writeln();
+            }
+          } finally {
+            try { await File(tmp).delete(); } catch (_) {}
+          }
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final text = buf.toString().trim();
+    if (text.isEmpty) throw Exception('No text could be extracted');
+    final outPath = await _outputFile('extracted_text', 'txt');
+    await File(outPath).writeAsString(text);
+    return outPath;
+  }
+
+  /// OCR a single image file (wrapper around google_mlkit).
+  Future<String> _ocrFile(String imagePath) async {
+    try {
+      final ocr = OcrService();
+      try {
+        return await ocr.recognizeText(imagePath);
+      } finally {
+        await ocr.dispose();
+      }
+    } catch (_) {
+      return '';
+    }
   }
 
   // ==========================================================
