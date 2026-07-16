@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart' show PdfPageFormat;
+import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColors;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -289,6 +289,128 @@ class OfflinePdfService {
       await doc.close();
     }
     return outputs;
+  }
+
+  // ==========================================================
+  // WATERMARK (offline: overlay diagonal text on every page)
+  // ==========================================================
+
+  /// Stamp a semi-transparent diagonal [text] watermark across every page.
+  Future<String> watermarkPdf(
+    String pdfPath,
+    String text, {
+    double opacity = 0.25,
+  }) async {
+    final label = text.trim().isEmpty ? 'CONFIDENTIAL' : text.trim();
+    final op = opacity.clamp(0.05, 1.0).toDouble();
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final image = pw.MemoryImage(bytes);
+          out.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              margin: pw.EdgeInsets.zero,
+              build: (ctx) => pw.Stack(
+                fit: pw.StackFit.expand,
+                alignment: pw.Alignment.center,
+                children: [
+                  pw.Image(image, fit: pw.BoxFit.contain),
+                  pw.Center(
+                    child: pw.Transform.rotateBox(
+                      angle: 0.6,
+                      child: pw.Opacity(
+                        opacity: op,
+                        child: pw.Text(
+                          label,
+                          style: pw.TextStyle(
+                            fontSize: 54,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.blueGrey600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final outPath = await _outputFile('watermarked', 'pdf');
+    await File(outPath).writeAsBytes(await out.save());
+    return outPath;
+  }
+
+  // ==========================================================
+  // PAGE NUMBERS (offline: overlay "n / total" on every page)
+  // ==========================================================
+
+  /// Add a page-number badge (e.g. "3 / 12") to the bottom-center of each page.
+  Future<String> addPageNumbers(String pdfPath) async {
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    final total = doc.pagesCount;
+    try {
+      for (var i = 1; i <= total; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final image = pw.MemoryImage(bytes);
+          out.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              margin: pw.EdgeInsets.zero,
+              build: (ctx) => pw.Stack(
+                fit: pw.StackFit.expand,
+                children: [
+                  pw.Image(image, fit: pw.BoxFit.contain),
+                  pw.Positioned(
+                    bottom: 16,
+                    left: 0,
+                    right: 0,
+                    child: pw.Center(
+                      child: pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColors.white,
+                          borderRadius: pw.BorderRadius.circular(4),
+                        ),
+                        child: pw.Text(
+                          '$i / $total',
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            color: PdfColors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final outPath = await _outputFile('numbered', 'pdf');
+    await File(outPath).writeAsBytes(await out.save());
+    return outPath;
   }
 
   // ==========================================================
