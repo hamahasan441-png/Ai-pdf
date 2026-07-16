@@ -11,17 +11,26 @@ class FilledField {
   /// Human-readable field label (e.g. "First name") for the review step.
   final String field;
 
+  /// Optional OCR label text the AI wants this value placed next to. Used to
+  /// snap x/y precisely onto the detected label line. Empty = use x/y as-is.
+  final String anchor;
+
   const FilledField({
     required this.page,
     required this.x,
     required this.y,
     required this.text,
     this.field = '',
+    this.anchor = '',
   });
 
   /// Copy with an overridden value (used after the user edits it in review).
-  FilledField withText(String newText) =>
-      FilledField(page: page, x: x, y: y, text: newText, field: field);
+  FilledField withText(String newText) => FilledField(
+      page: page, x: x, y: y, text: newText, field: field, anchor: anchor);
+
+  /// Copy with refined coordinates (used to snap onto an OCR label box).
+  FilledField withXY(double nx, double ny) => FilledField(
+      page: page, x: nx, y: ny, text: text, field: field, anchor: anchor);
 
   /// Parse from a loosely-typed JSON map returned by the AI. Tolerant of
   /// missing/oddly-typed fields so a single bad entry never crashes filling.
@@ -30,6 +39,7 @@ class FilledField {
     final text = (json['text'] ?? json['value'] ?? '').toString().trim();
     if (text.isEmpty) return null;
     final label = (json['field'] ?? json['label'] ?? json['name'] ?? '').toString().trim();
+    final anchor = (json['anchor'] ?? json['near'] ?? '').toString().trim();
     int page = _toInt(json['page']) ?? 1;
     if (page < 1) page = 1;
     double x = _toDouble(json['x']) ?? 0.15;
@@ -39,7 +49,8 @@ class FilledField {
     if (y > 1.0) y = y / 100.0;
     x = x.clamp(0.0, 0.97);
     y = y.clamp(0.0, 0.97);
-    return FilledField(page: page, x: x, y: y, text: text, field: label);
+    return FilledField(
+        page: page, x: x, y: y, text: text, field: label, anchor: anchor);
   }
 
   static int? _toInt(dynamic v) {
