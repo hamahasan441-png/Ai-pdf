@@ -141,11 +141,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Row(children: [
                   _QuickAction(icon: Icons.grid_view_rounded, label: 'Tools', color: AppColors.primary, onTap: () => context.push('/tools')),
                   const SizedBox(width: 12),
+                  _QuickAction(icon: Icons.psychology, label: 'Ask AI', color: const Color(0xFF7C3AED), onTap: () => context.push('/ai')),
+                  const SizedBox(width: 12),
+                  _QuickAction(icon: Icons.edit_note, label: 'Fill Form', color: const Color(0xFFDB2777), onTap: () => context.push('/ai-form')),
+                  const SizedBox(width: 12),
                   _QuickAction(icon: Icons.draw, label: 'Editor', color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
-                  const SizedBox(width: 12),
-                  _QuickAction(icon: Icons.compress, label: 'Compress', color: AppColors.success, onTap: () => context.push('/tools/compress')),
-                  const SizedBox(width: 12),
-                  _QuickAction(icon: Icons.auto_awesome, label: 'AI Fill', color: const Color(0xFF7C3AED), onTap: () => context.push('/upload')),
                 ]),
               )),
               // Recent files (created / edited / saved on this device)
@@ -263,9 +263,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Icon(Icons.description_outlined, size: 48, color: cs.outline),
       ),
       const SizedBox(height: 24),
-      Text('No Documents Yet', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+      Text('Get Started', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
-      Text('Upload a PDF, Word, or image to start editing', style: TextStyle(color: cs.onSurfaceVariant), textAlign: TextAlign.center),
+      Text('Edit, convert and sign PDFs, or ask AI about any document — all on your device.',
+          style: TextStyle(color: cs.onSurfaceVariant), textAlign: TextAlign.center),
+      const SizedBox(height: 20),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        alignment: WrapAlignment.center,
+        children: [
+          FilledButton.icon(
+            onPressed: () => context.push('/tools'),
+            icon: const Icon(Icons.grid_view_rounded, size: 18),
+            label: const Text('Open Tools'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.push('/ai'),
+            icon: const Icon(Icons.psychology, size: 18),
+            label: const Text('Ask AI'),
+          ),
+        ],
+      ),
     ]),
   ));
 }
