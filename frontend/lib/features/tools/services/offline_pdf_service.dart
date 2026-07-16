@@ -414,6 +414,52 @@ class OfflinePdfService {
   }
 
   // ==========================================================
+  // ROTATE PDF (offline: rotate all pages by a fixed angle)
+  // ==========================================================
+
+  /// Rotate every page of [pdfPath] by [degrees] (90, 180, or 270).
+  Future<String> rotatePdf(String pdfPath, {int degrees = 90}) async {
+    final angle = (degrees ~/ 90).clamp(1, 3); // 1=90, 2=180, 3=270
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final decoded = img.decodeImage(bytes);
+          if (decoded == null) continue;
+          final rotated = angle == 1
+              ? img.copyRotate(decoded, angle: 90)
+              : angle == 2
+                  ? img.copyRotate(decoded, angle: 180)
+                  : img.copyRotate(decoded, angle: 270);
+          final jpg = Uint8List.fromList(img.encodeJpg(rotated, quality: 88));
+          final image = pw.MemoryImage(jpg);
+          // Flip page format for 90/270 so the page matches the rotated content.
+          final fmt = (angle == 1 || angle == 3)
+              ? const PdfPageFormat(PdfPageFormat.a4.height, PdfPageFormat.a4.width)
+              : PdfPageFormat.a4;
+          out.addPage(
+            pw.Page(
+              pageFormat: fmt,
+              margin: pw.EdgeInsets.zero,
+              build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final outPath = await _outputFile('rotated', 'pdf');
+    await File(outPath).writeAsBytes(await out.save());
+    return outPath;
+  }
+
+  // ==========================================================
   // PAGE COUNT (offline helper)
   // ==========================================================
 

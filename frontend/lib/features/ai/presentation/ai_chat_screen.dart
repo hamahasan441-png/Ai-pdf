@@ -670,6 +670,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
           if (_isForm && _docImages.isNotEmpty && _messages.length >= 2)
             _placeBar(cs),
+          _quickActions(cs),
           if (_docImages.isNotEmpty) _inputBar(cs),
         ],
       ),
@@ -831,6 +832,32 @@ class _AiChatScreenState extends State<AiChatScreen> {
         const SizedBox(width: 4),
         Text(label, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
       ]),
+    );
+  }
+
+  /// Persistent quick-action chips shown above the input (like Adobe AI), even
+  /// after the conversation starts, so the user can tap anytime.
+  Widget _quickActions(ColorScheme cs) {
+    if (_isForm || _docImages.isEmpty) return const SizedBox.shrink();
+    const actions = [
+      ('Summarize', 'Give a concise summary with key takeaways'),
+      ('Key facts', 'List every important name, date, number and amount'),
+      ('Action items', 'What actions, tasks, or deadlines does this document require?'),
+      ('Translate', 'Translate the document into English'),
+    ];
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) => ActionChip(
+          avatar: const Icon(Icons.auto_awesome, size: 14),
+          label: Text(actions[i].$1, style: const TextStyle(fontSize: 12)),
+          onPressed: _busy ? null : () => _send(auto: actions[i].$2),
+        ),
+      ),
     );
   }
 
