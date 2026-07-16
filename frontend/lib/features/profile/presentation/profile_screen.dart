@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/form_memory_service.dart';
 import '../../../core/services/user_profile_service.dart';
 
 /// Your details, stored ENCRYPTED on this device (works offline / in guest
@@ -51,11 +52,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _load() async {
     await UserProfileService.instance.load();
+    await FormMemoryService.instance.load();
     final data = UserProfileService.instance.data;
     for (final f in UserProfileService.fields) {
       _c[f.$1] = TextEditingController(text: data[f.$1] ?? '');
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _clearMemory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Forget remembered answers?'),
+        content: const Text(
+            'This clears answers the AI learned from forms you filled before. '
+            'Your profile above is not affected.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Forget')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await FormMemoryService.instance.clear();
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _save() async {
@@ -154,6 +176,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/settings'),
           ),
+        ),
+        ValueListenableBuilder<Map<String, String>>(
+          valueListenable: FormMemoryService.instance.notifier,
+          builder: (context, mem, _) {
+            final count = mem.length;
+            return Card(
+              child: ListTile(
+                leading: Icon(Icons.history_edu_outlined, color: cs.primary),
+                title: const Text('Remembered answers'),
+                subtitle: Text(count == 0
+                    ? 'Answers you give while filling forms are saved here to auto-fill later'
+                    : '$count field${count == 1 ? '' : 's'} remembered from past forms'),
+                trailing: count == 0
+                    ? null
+                    : TextButton(onPressed: _clearMemory, child: const Text('Forget')),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 16),
         ...UserProfileService.fields.map((f) => Padding(
