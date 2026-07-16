@@ -11,6 +11,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/services/ocr_service.dart';
+import '../../../core/services/signature_store.dart';
 import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
@@ -150,10 +151,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   // --- Saved signatures (persisted across sessions) ---
   static final List<List<Offset>> _savedSignatures = [];
+  static bool _signaturesLoaded = false;
 
   @override
   void initState() {
     super.initState();
+    // Restore signatures saved in previous sessions (once per app run).
+    if (!_signaturesLoaded) {
+      _signaturesLoaded = true;
+      SignatureStore.instance.load().then((sigs) {
+        if (sigs.isNotEmpty && _savedSignatures.isEmpty) {
+          _savedSignatures.addAll(sigs);
+          if (mounted) setState(() {});
+        }
+      });
+    }
     if (widget.initialPath != null) {
       // Open the provided file after first frame (so context/state is ready).
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -361,6 +373,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
         for (final f in fields) {
           final pageIndex = (f.page - 1).clamp(0, (_pageCount - 1).clamp(0, 1 << 30));
           final layer = _layers.putIfAbsent(pageIndex, () => _PageLayer());
+          // If the AI found a signature line and the user has a saved drawn
+          // signature, stamp the real signature there instead of the name.
+          if (f.isSignature && _savedSignatures.isNotEmpty) {
+            final s = _signatureStrokeAt(_savedSignatures.first, f.x, f.y);
+            if (s != null) {
+              layer.items.add(s);
+              continue;
+            }
+          }
           // Style by field kind: checks are a bold mark, signatures use an
           // italic serif (script-like) look, everything else is plain text.
           final double boxSize = f.isCheck ? 0.03 : (f.isSignature ? 0.032 : 0.024);
@@ -1092,6 +1113,37 @@ class _PickEditScreenState extends State<PickEditScreen> {
     });
   }
 
+  /// Map raw signature-pad points into a normalized [_Stroke] positioned with
+  /// its top-left near (x, y) on the page, preserving aspect ratio. Returns
+  /// null if the points have no meaningful extent.
+  _Stroke? _signatureStrokeAt(List<Offset> pts, double x, double y,
+      {double targetW = 0.26}) {
+    if (pts.length < 2) return null;
+    double minX = pts.first.dx, maxX = minX, minY = pts.first.dy, maxY = minY;
+    for (final p in pts) {
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    final w = (maxX - minX).abs();
+    final h = (maxY - minY).abs();
+    if (w < 1e-3 && h < 1e-3) return null;
+    final aspect = w == 0 ? 0.4 : (h / w);
+    final targetH = (targetW * aspect).clamp(0.02, 0.14).toDouble();
+    // Sit the signature slightly above the label baseline so it rests on the line.
+    final top = (y - targetH * 0.6).clamp(0.0, 0.97).toDouble();
+    final norm = pts.map((p) {
+      final nx = w == 0 ? 0.0 : (p.dx - minX) / w;
+      final ny = h == 0 ? 0.0 : (p.dy - minY) / h;
+      return Offset(
+        (x + nx * targetW).clamp(0.0, 1.0).toDouble(),
+        (top + ny * targetH).clamp(0.0, 1.0).toDouble(),
+      );
+    }).toList();
+    return _Stroke(norm, Colors.black, 2.5, false);
+  }
+
   Future<void> _addSignature() async {
     // Show option: draw new or use saved
     List<Offset>? points;
@@ -1115,6 +1167,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       icon: const Icon(Icons.delete_outline, size: 20),
                       onPressed: () {
                         _savedSignatures.removeAt(i);
+                        SignatureStore.instance.save(_savedSignatures);
                         Navigator.pop(ctx);
                       },
                     ),
@@ -1168,6 +1221,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
       if (save == true) {
         _savedSignatures.add(List.from(points));
+        SignatureStore.instance.save(_savedSignatures);
       }
     }
     return points;
