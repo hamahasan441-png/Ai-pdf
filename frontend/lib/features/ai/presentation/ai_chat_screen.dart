@@ -44,7 +44,9 @@ class _ChatMsg {
 }
 
 class _AiChatScreenState extends State<AiChatScreen> {
-  static const int _maxPages = 2;
+  // A3: send the whole document (bounded for memory/cost). Most forms/letters
+  // are a few pages; capped resolution keeps each page light.
+  static const int _maxPages = 12;
   static const double _renderMaxEdge = 1200;
 
   final _service = OpenRouterService();
@@ -59,6 +61,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   final List<_ChatMsg> _messages = [];
   bool _busy = false;
+  bool _streaming = false;
   bool _loadingDoc = false;
   String? _error;
 
@@ -220,15 +223,51 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _error = null;
     });
     _scrollToBottom();
+
+    // Build request BEFORE adding the assistant placeholder.
+    final apiMessages = _buildApiMessages();
+    final assistant = _ChatMsg('assistant', '');
+    setState(() {
+      _messages.add(assistant);
+      _streaming = true;
+    });
+
     try {
-      final reply = await _service.chat(_buildApiMessages());
-      setState(() => _messages.add(_ChatMsg('assistant', reply)));
+      await _service.chatStream(apiMessages, onDelta: (d) {
+        if (!mounted) return;
+        setState(() => assistant.text += d);
+        _scrollToBottom();
+      });
+      // Safety net: if nothing streamed, try a normal call.
+      if (assistant.text.trim().isEmpty) {
+        final reply = await _service.chat(apiMessages);
+        if (mounted) setState(() => assistant.text = reply);
+      }
     } on OpenRouterException catch (e) {
-      setState(() => _error = e.message);
+      // Streaming failed — try a normal (non-stream) call once before erroring.
+      try {
+        final reply = await _service.chat(apiMessages);
+        if (mounted) setState(() => assistant.text = reply);
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _messages.remove(assistant);
+            _error = e.message;
+          });
+        }
+      }
     } catch (e) {
-      setState(() => _error = 'Something went wrong: $e');
+      if (mounted) {
+        setState(() {
+          _messages.remove(assistant);
+          _error = 'Something went wrong: $e';
+        });
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() {
+            _busy = false;
+            _streaming = false;
+          });
       _scrollToBottom();
     }
   }
@@ -259,10 +298,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
           'content':
               'Now output ONLY a JSON array (no prose, no code fences) of the values '
               'to write on the form based on everything above. Each item: '
-              '{"page": <1-based page number>, "x": <0..1 from left edge>, '
-              '"y": <0..1 from top edge>, "text": "<value to write>"}. '
-              'Place each value where its blank/answer line is on the page. '
-              'Only include fields you have a value for.',
+              '{"field": "<short label of the field>", "page": <1-based page number>, '
+              '"x": <0..1 from left edge>, "y": <0..1 from top edge>, '
+              '"text": "<value to write>"}. Place each value where its blank/answer '
+              'line is on the page. Only include fields you have a value for.',
         });
 
       final reply = await _service.chat(jsonMessages);
@@ -276,8 +315,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
       }
 
       if (!mounted) return;
+      // A4: review & confirm before placing.
+      final confirmed = await showModalBottomSheet<List<FilledField>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => _FieldReviewSheet(fields: fields),
+      );
+      if (confirmed == null || confirmed.isEmpty) return;
+
+      if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => PickEditScreen(initialPath: _docPath, initialFields: fields),
+        builder: (_) => PickEditScreen(initialPath: _docPath, initialFields: confirmed),
       ));
     } on OpenRouterException catch (e) {
       setState(() => _error = e.message);
@@ -373,7 +421,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     : ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length + (_busy ? 1 : 0),
+                        // Show the extra typing bubble only when busy AND not
+                        // already streaming into an assistant bubble.
+                        itemCount: _messages.length + ((_busy && !_streaming) ? 1 : 0),
                         itemBuilder: (_, i) {
                           if (i >= _messages.length) return _typingBubble(cs);
                           return _bubble(cs, _messages[i]);
@@ -499,14 +549,21 @@ class _AiChatScreenState extends State<AiChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SelectableText(
-              m.text,
-              style: TextStyle(
-                color: isUser ? Colors.white : cs.onSurface,
-                height: 1.35,
+            if (!isUser && m.text.isEmpty)
+              const SizedBox(
+                width: 18, height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              SelectableText(
+                m.text,
+                style: TextStyle(
+                  color: isUser ? Colors.white : cs.onSurface,
+                  height: 1.35,
+                ),
               ),
-            ),
-            if (!isUser)
+            // Copy / Save actions only once the answer has content.
+            if (!isUser && m.text.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -625,6 +682,134 @@ class _AiChatScreenState extends State<AiChatScreen> {
             icon: const Icon(Icons.send),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+/// Review & confirm sheet shown before placing answers on the form.
+/// Lets the user edit each value and untick ones they don't want placed.
+class _FieldReviewSheet extends StatefulWidget {
+  final List<FilledField> fields;
+  const _FieldReviewSheet({required this.fields});
+
+  @override
+  State<_FieldReviewSheet> createState() => _FieldReviewSheetState();
+}
+
+class _FieldReviewSheetState extends State<_FieldReviewSheet> {
+  late final List<TextEditingController> _ctrls;
+  late final List<bool> _include;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = widget.fields.map((f) => TextEditingController(text: f.text)).toList();
+    _include = List<bool>.filled(widget.fields.length, true);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _confirm() {
+    final out = <FilledField>[];
+    for (var i = 0; i < widget.fields.length; i++) {
+      if (!_include[i]) continue;
+      final v = _ctrls[i].text.trim();
+      if (v.isEmpty) continue;
+      out.add(widget.fields[i].withText(v));
+    }
+    Navigator.pop(context, out);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final count = _include.where((e) => e).length;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      builder: (context, scrollCtrl) => Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(children: [
+              Icon(Icons.fact_check_outlined, color: cs.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Review before placing',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Edit any value or untick what you don\'t want. Then place them on the form.',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView.separated(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: widget.fields.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, i) {
+                final f = widget.fields[i];
+                return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Checkbox(
+                    value: _include[i],
+                    onChanged: (v) => setState(() => _include[i] = v ?? true),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _ctrls[i],
+                      decoration: InputDecoration(
+                        labelText: f.field.isNotEmpty ? f.field : 'Value (page ${f.page})',
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ]);
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: count == 0 ? null : _confirm,
+                    icon: const Icon(Icons.auto_fix_high),
+                    label: Text('Place $count value(s)'),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ],
       ),
     );
   }

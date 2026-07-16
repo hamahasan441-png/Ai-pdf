@@ -110,6 +110,84 @@ class OpenRouterService {
     }
   }
 
+  /// Streaming chat for OpenAI-compatible providers. Calls [onDelta] with each
+  /// text chunk as it arrives and returns the full text. Anthropic (different
+  /// SSE format) transparently falls back to a single non-streamed response.
+  Future<String> chatStream(
+    List<Map<String, dynamic>> messages, {
+    String? model,
+    required void Function(String delta) onDelta,
+  }) async {
+    final settings = AppSettings.instance;
+    final chosen = model ?? settings.aiModel;
+    final resolved = _resolveModel(chosen, messages);
+
+    // Anthropic uses a different streaming protocol — just do a normal call.
+    if (settings.isAnthropic) {
+      final full = await _doChat(messages, resolved);
+      lastModelUsed = resolved;
+      if (full.isNotEmpty) onDelta(full);
+      return full;
+    }
+
+    final endpoint = settings.aiEndpoint;
+    final key = await settings.apiKey();
+    if (settings.needsKey && (key == null || key.isEmpty)) {
+      throw OpenRouterException(
+        'No API key set for ${settings.provider.label}. Open AI Settings and paste your key.',
+      );
+    }
+    if (endpoint.isEmpty) {
+      throw OpenRouterException('No AI endpoint set. Choose a provider in AI Settings.');
+    }
+
+    final headers = <String, dynamic>{
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/ai-pdf',
+      'X-Title': 'AI PDF',
+    };
+    if (key != null && key.isNotEmpty) headers['Authorization'] = 'Bearer $key';
+
+    try {
+      final resp = await _dio.post(
+        endpoint,
+        options: Options(headers: headers, responseType: ResponseType.stream),
+        data: {'model': resolved, 'messages': messages, 'max_tokens': 4096, 'stream': true},
+      );
+
+      final body = resp.data as ResponseBody;
+      final buffer = StringBuffer();
+      await for (final line
+          in body.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+        final l = line.trim();
+        if (l.isEmpty || !l.startsWith('data:')) continue;
+        final data = l.substring(5).trim();
+        if (data == '[DONE]') break;
+        try {
+          final json = jsonDecode(data);
+          final delta = json['choices']?[0]?['delta']?['content'];
+          if (delta is String && delta.isNotEmpty) {
+            buffer.write(delta);
+            onDelta(delta);
+          }
+        } catch (_) {
+          // Ignore keep-alive / non-JSON lines.
+        }
+      }
+      lastModelUsed = resolved;
+      final full = buffer.toString().trim();
+      if (full.isEmpty) {
+        throw OpenRouterException('The AI returned no readable text.');
+      }
+      return full;
+    } on DioException catch (e) {
+      throw _mapDioError(e, resolved);
+    } catch (e) {
+      if (e is OpenRouterException) rethrow;
+      throw OpenRouterException('AI stream failed: $e');
+    }
+  }
+
   Future<String> _doChat(List<Map<String, dynamic>> messages, String model) async {
     final settings = AppSettings.instance;
     final endpoint = settings.aiEndpoint;
