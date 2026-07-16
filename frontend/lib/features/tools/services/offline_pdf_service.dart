@@ -438,7 +438,7 @@ class OfflinePdfService {
           final image = pw.MemoryImage(jpg);
           // Flip page format for 90/270 so the page matches the rotated content.
           final fmt = (angle == 1 || angle == 3)
-              ? const PdfPageFormat(PdfPageFormat.a4.height, PdfPageFormat.a4.width)
+              ? PdfPageFormat(PdfPageFormat.a4.height, PdfPageFormat.a4.width)
               : PdfPageFormat.a4;
           out.addPage(
             pw.Page(
