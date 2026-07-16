@@ -355,6 +355,100 @@ class OfflinePdfService {
   }
 
   // ==========================================================
+  // STAMP IMAGE (offline: overlay a logo/photo/signature image)
+  // ==========================================================
+
+  /// Overlay [imagePath] onto the pages of [pdfPath] at a grid [position]
+  /// (0..8, left-to-right, top-to-bottom; 4 = center), sized to [sizePct] of
+  /// the page width. Applies to every page, or just the first if [firstPageOnly].
+  Future<String> stampImageOnPdf(
+    String pdfPath,
+    String imagePath, {
+    int position = 4,
+    double sizePct = 0.25,
+    bool firstPageOnly = false,
+  }) async {
+    // Load the stamp; downscale very large images (preserving alpha as PNG).
+    var stampBytes = await File(imagePath).readAsBytes();
+    final decoded = img.decodeImage(stampBytes);
+    if (decoded != null && (decoded.width > 1200 || decoded.height > 1200)) {
+      final resized = decoded.width >= decoded.height
+          ? img.copyResize(decoded, width: 1200)
+          : img.copyResize(decoded, height: 1200);
+      stampBytes = Uint8List.fromList(img.encodePng(resized));
+    }
+    final stamp = pw.MemoryImage(stampBytes);
+    final align = _alignForGrid(position);
+    final pct = sizePct.clamp(0.05, 0.9).toDouble();
+
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    try {
+      for (var i = 1; i <= doc.pagesCount; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final image = pw.MemoryImage(bytes);
+          final apply = !firstPageOnly || i == 1;
+          out.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              margin: pw.EdgeInsets.zero,
+              build: (ctx) => pw.Stack(
+                fit: pw.StackFit.expand,
+                children: [
+                  pw.Image(image, fit: pw.BoxFit.contain),
+                  if (apply)
+                    pw.Align(
+                      alignment: align,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.all(20),
+                        child: pw.Image(stamp,
+                            width: PdfPageFormat.a4.width * pct),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final outPath = await _outputFile('stamped', 'pdf');
+    await File(outPath).writeAsBytes(await out.save());
+    return outPath;
+  }
+
+  pw.Alignment _alignForGrid(int p) {
+    switch (p) {
+      case 0:
+        return pw.Alignment.topLeft;
+      case 1:
+        return pw.Alignment.topCenter;
+      case 2:
+        return pw.Alignment.topRight;
+      case 3:
+        return pw.Alignment.centerLeft;
+      case 4:
+        return pw.Alignment.center;
+      case 5:
+        return pw.Alignment.centerRight;
+      case 6:
+        return pw.Alignment.bottomLeft;
+      case 7:
+        return pw.Alignment.bottomCenter;
+      case 8:
+        return pw.Alignment.bottomRight;
+      default:
+        return pw.Alignment.center;
+    }
+  }
+
+  // ==========================================================
   // PAGE NUMBERS (offline: overlay "n / total" on every page)
   // ==========================================================
 
