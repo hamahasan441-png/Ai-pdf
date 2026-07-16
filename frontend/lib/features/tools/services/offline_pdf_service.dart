@@ -414,6 +414,40 @@ class OfflinePdfService {
   }
 
   // ==========================================================
+  // EXTRACT PAGES (offline: extract a range → smaller PDF)
+  // ==========================================================
+
+  /// Extract pages [from] to [to] (1-based, inclusive) from [pdfPath].
+  Future<String> extractPages(String pdfPath, {required int from, required int to}) async {
+    final doc = await pdfx.PdfDocument.openFile(pdfPath);
+    final out = pw.Document();
+    final start = from.clamp(1, doc.pagesCount);
+    final end = to.clamp(start, doc.pagesCount);
+    try {
+      for (var i = start; i <= end; i++) {
+        final page = await doc.getPage(i);
+        try {
+          final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
+          final image = pw.MemoryImage(bytes);
+          out.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await doc.close();
+    }
+    final outPath = await _outputFile('pages_${start}_to_$end', 'pdf');
+    await File(outPath).writeAsBytes(await out.save());
+    return outPath;
+  }
+
+  // ==========================================================
   // ROTATE PDF (offline: rotate all pages by a fixed angle)
   // ==========================================================
 
