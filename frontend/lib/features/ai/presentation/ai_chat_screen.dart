@@ -421,9 +421,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
               'to write on the form based on everything above. Each item: '
               '{"field": "<short label of the field>", "page": <1-based page number>, '
               '"x": <0..1 from left edge>, "y": <0..1 from top edge>, '
-              '"text": "<value to write>", "anchor": "<exact detected label text to '
-              'place next to, or empty>"}. Place each value where its blank/answer '
-              'line is on the page. Only include fields you have a value for.$anchorBlock',
+              '"text": "<value to write>", '
+              '"type": "text" | "check" | "signature", '
+              '"confidence": "high" | "low", '
+              '"anchor": "<exact detected label text to place next to, or empty>"}. '
+              'Use type "check" for checkboxes/radios that should be ticked (set text '
+              'to "yes"); omit boxes that stay empty. Use type "signature" for '
+              'signature lines and set text to the person\'s full name. Set confidence '
+              '"low" for any value or position you are unsure about. Place each value '
+              'where its blank/answer line is on the page. Only include fields you have '
+              'a value for.$anchorBlock',
         });
 
       final reply = await _service.chat(jsonMessages);
@@ -905,11 +912,21 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
               separatorBuilder: (_, __) => const SizedBox(height: 6),
               itemBuilder: (context, i) {
                 final f = widget.fields[i];
+                IconData typeIcon = Icons.text_fields;
+                if (f.isCheck) typeIcon = Icons.check_box_outlined;
+                if (f.isSignature) typeIcon = Icons.draw_outlined;
                 return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                   Checkbox(
                     value: _include[i],
                     onChanged: (v) => setState(() => _include[i] = v ?? true),
                   ),
+                  Tooltip(
+                    message: f.isCheck
+                        ? 'Checkbox'
+                        : (f.isSignature ? 'Signature' : 'Text'),
+                    child: Icon(typeIcon, size: 18, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _ctrls[i],
@@ -917,6 +934,13 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                         labelText: f.field.isNotEmpty ? f.field : 'Value (page ${f.page})',
                         isDense: true,
                         border: const OutlineInputBorder(),
+                        suffixIcon: f.uncertain
+                            ? Tooltip(
+                                message: 'AI was unsure — please double-check',
+                                child: Icon(Icons.warning_amber_rounded,
+                                    size: 20, color: Colors.orange.shade700),
+                              )
+                            : null,
                       ),
                     ),
                   ),
