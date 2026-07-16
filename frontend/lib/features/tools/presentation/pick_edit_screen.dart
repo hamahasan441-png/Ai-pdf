@@ -10,11 +10,25 @@ import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import '../../../core/services/ocr_service.dart';
 import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
 enum EditTool { pan, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
+
+/// Inferred type of a detected form field, so tapping it opens the right input.
+enum FieldType { text, number, date, email, phone, name, signature }
+
+/// A fillable field the app detected on the page via OCR. [rect] is the label
+/// position (normalized 0..1); the value is placed just after it, at a font
+/// size matched to the label's height.
+class DetectedField {
+  final Rect rect;
+  final String label;
+  final FieldType type;
+  const DetectedField(this.rect, this.label, this.type);
+}
 
 /// Shape kinds for the vector shape tools.
 enum ShapeType { line, arrow, rect, oval, whiteout }
@@ -109,6 +123,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Offset? _dragOffset; // offset during move
   bool _hasUnsavedChanges = false;
 
+  // --- Smart field detection (E1) ---
+  final OcrService _ocr = OcrService();
+  final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
+  bool _showFields = false;
+  bool _detecting = false;
+  List<DetectedField> get _pageFields => _fields[_current] ?? const [];
+
   // --- Saved signatures (persisted across sessions) ---
   static final List<List<Offset>> _savedSignatures = [];
 
@@ -127,7 +148,157 @@ class _PickEditScreenState extends State<PickEditScreen> {
   @override
   void dispose() {
     _doc?.close();
+    _ocr.dispose();
     super.dispose();
+  }
+
+  // ---- Smart field detection (E1) --------------------------------------
+
+  /// OCR the current page, find label-like fields, infer each type, and show
+  /// them as tappable targets. Fully offline (ML Kit bundled model).
+  Future<void> _detectFields() async {
+    final bytes = _pageCache[_current];
+    if (bytes == null) return;
+    setState(() => _detecting = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/detect_${DateTime.now().microsecondsSinceEpoch}.jpg');
+      await f.writeAsBytes(bytes);
+      final result = await _ocr.recognize(f.path);
+      try {
+        await f.delete();
+      } catch (_) {}
+
+      final detected = <DetectedField>[];
+      for (final line in result.lines) {
+        if (!_isFieldLabel(line.text)) continue;
+        detected.add(DetectedField(
+          Rect.fromLTWH(line.x, line.y, line.w, line.h),
+          line.text.trim(),
+          _inferType(line.text),
+        ));
+      }
+      setState(() {
+        _fields[_current] = detected;
+        _showFields = true;
+        _tool = EditTool.pan; // so taps select/fill, not draw
+      });
+      if (detected.isEmpty) {
+        _showError('No obvious fields found on this page. You can still tap Text to add anywhere.');
+      }
+    } catch (e) {
+      _showError('Field detection failed: $e');
+    } finally {
+      if (mounted) setState(() => _detecting = false);
+    }
+  }
+
+  bool _isFieldLabel(String t) {
+    final s = t.trim();
+    if (s.isEmpty || s.length > 60) return false;
+    if (s.endsWith(':')) return true;
+    if (RegExp(r'_{2,}').hasMatch(s)) return true; // underscore blanks
+    return _inferType(s) != FieldType.text; // matched a typed keyword
+  }
+
+  FieldType _inferType(String label) {
+    final s = label.toLowerCase();
+    bool has(List<String> ks) => ks.any((k) => s.contains(k));
+    if (has(['signature', 'unterschrift', 'sign here', 'signed'])) return FieldType.signature;
+    if (has(['e-mail', 'email', 'e mail'])) return FieldType.email;
+    if (has(['date', 'datum', 'birth', 'geburt', 'geboren', 'dob', 'valid', 'expiry'])) {
+      return FieldType.date;
+    }
+    if (has(['phone', 'tel', 'telefon', 'mobile', 'handy', 'fax'])) return FieldType.phone;
+    if (has(['amount', 'betrag', 'iban', 'zip', 'postal', 'plz', 'number', 'nummer',
+        'no.', 'nr', 'sum', 'total', 'konto', 'account', 'salary', 'income', 'einkommen'])) {
+      return FieldType.number;
+    }
+    if (has(['name', 'vorname', 'nachname', 'first name', 'last name', 'surname', 'familienname'])) {
+      return FieldType.name;
+    }
+    return FieldType.text;
+  }
+
+  IconData _typeIcon(FieldType t) => switch (t) {
+        FieldType.date => Icons.event,
+        FieldType.number || FieldType.phone => Icons.pin,
+        FieldType.email => Icons.alternate_email,
+        FieldType.signature => Icons.gesture,
+        _ => Icons.text_fields,
+      };
+
+  /// Tapping a detected field opens the right input for its type and places the
+  /// value just after the label at a matched font size.
+  Future<void> _openFieldInput(DetectedField field) async {
+    // Where to write: just to the right of the label, same baseline.
+    final pos = Offset(
+      (field.rect.left + field.rect.width + 0.012).clamp(0.0, 0.9),
+      field.rect.top,
+    );
+    // Auto font size: match the label's line height (normalized to page).
+    final size = (field.rect.height * 0.85).clamp(0.014, 0.06);
+    final title = field.label.replaceAll(':', '').trim();
+
+    if (field.type == FieldType.signature) {
+      await _addSignature();
+      return;
+    }
+    if (field.type == FieldType.date) {
+      final d = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(1900),
+        lastDate: DateTime(2100),
+        helpText: title.isEmpty ? 'Select date' : title,
+      );
+      if (d != null) {
+        final v = '${d.day.toString().padLeft(2, '0')}.'
+            '${d.month.toString().padLeft(2, '0')}.${d.year}';
+        _placeValue(pos, size, v);
+      }
+      return;
+    }
+    final kb = switch (field.type) {
+      FieldType.number || FieldType.phone => TextInputType.number,
+      FieldType.email => TextInputType.emailAddress,
+      _ => TextInputType.text,
+    };
+    final val = await _promptValue(title.isEmpty ? 'Enter value' : title, kb, field.type);
+    if (val != null && val.trim().isNotEmpty) {
+      _placeValue(pos, size, val.trim());
+    }
+  }
+
+  void _placeValue(Offset pos, double size, String text) {
+    setState(() {
+      _pushItem(_TextBox(pos, text, Colors.black, size, false));
+      _selected = null;
+    });
+  }
+
+  Future<String?> _promptValue(String label, TextInputType kb, FieldType type) {
+    final c = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(_typeIcon(type), size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        ]),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          keyboardType: kb,
+          decoration: const InputDecoration(hintText: 'Type here…', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Add')),
+        ],
+      ),
+    );
   }
 
   _PageLayer get _layer => _layers.putIfAbsent(_current, () => _PageLayer());
@@ -857,11 +1028,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     ),
                   ),
                 ),
-                if (_loading)
-                  const Positioned.fill(
+                if (_loading || _detecting)
+                  Positioned.fill(
                     child: ColoredBox(
-                      color: Color(0x66000000),
-                      child: Center(child: CircularProgressIndicator()),
+                      color: const Color(0x66000000),
+                      child: Center(
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          const CircularProgressIndicator(),
+                          if (_detecting) ...[
+                            const SizedBox(height: 12),
+                            const Text('Reading the form…', style: TextStyle(color: Colors.white)),
+                          ],
+                        ]),
+                      ),
                     ),
                   ),
                 Positioned(left: 0, right: 0, bottom: 0, child: _toolbar(cs)),
@@ -921,6 +1100,26 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _tool == EditTool.highlight,
               ),
             ),
+            // Detected fields (tap to fill with the right typed input)
+            if (_showFields)
+              ..._pageFields.map((f) => Positioned(
+                    left: f.rect.left * size.width,
+                    top: f.rect.top * size.height,
+                    child: GestureDetector(
+                      onTap: () => _openFieldInput(f),
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 26, minHeight: 18),
+                        height: (f.rect.height * size.height).clamp(18.0, 60.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.18),
+                          border: Border.all(color: Colors.amber.shade700, width: 1.5),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(_typeIcon(f.type), size: 14, color: Colors.amber.shade900),
+                      ),
+                    ),
+                  )),
             // Selection indicator + resize handles for shapes
             if (_selected is _Shape) ...[
               _buildShapeSelection(size, _selected as _Shape),
@@ -1118,6 +1317,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(children: [
+                _actionBtn(Icons.auto_awesome, _detecting ? 'Scanning…' : 'Smart Fill',
+                    _detecting ? () {} : _detectFields, cs),
+                if (_pageFields.isNotEmpty)
+                  _actionBtn(_showFields ? Icons.visibility_off : Icons.visibility,
+                      _showFields ? 'Hide' : 'Fields',
+                      () => setState(() => _showFields = !_showFields), cs),
                 _toolBtn(Icons.pan_tool_alt, 'Move', EditTool.pan, cs),
                 _toolBtn(Icons.edit, 'Draw', EditTool.draw, cs),
                 _toolBtn(Icons.highlight, 'Highlight', EditTool.highlight, cs),
