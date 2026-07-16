@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/services/bm25_retriever.dart';
 import '../../../core/services/form_memory_service.dart';
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/user_profile_service.dart';
@@ -50,8 +51,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
   // are a few pages; capped resolution keeps each page light.
   static const int _maxPages = 12;
   static const double _renderMaxEdge = 1200;
+  // Retrieval (RAG) covers more pages than we can send as images, at a lower
+  // resolution used only for on-device OCR + citation indexing.
+  static const int _ragMaxPages = 24;
+  static const double _ocrMaxEdge = 1000;
 
   final _service = OpenRouterService();
+  // On-device lexical retriever: grounds answers on the most relevant pages and
+  // enables page citations, built in the background after a doc loads.
+  final Bm25Retriever _retriever = Bm25Retriever();
+  bool _indexTried = false;
   final _inputCtrl = TextEditingController();
   final _scroll = ScrollController();
 
@@ -99,8 +108,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
           'personal data.$profile$memory';
     }
     return 'You are a precise, helpful document assistant. The user shares a document '
-        'as page images. Answer questions accurately based only on the document. '
-        'If something is not in the document, say so clearly. Be concise.';
+        'as page images, sometimes with extracted text excerpts. Answer questions '
+        'accurately based only on the document. When your answer draws on the '
+        'document, cite the relevant page number(s) in parentheses, e.g. "(page 2)". '
+        'For summaries, lead with a one-line overview, then short bold headers with '
+        'bullet points. If something is not in the document, say so clearly. Be '
+        'concise.';
   }
 
   @override
@@ -140,6 +153,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
       _docImages = [];
       _pageImages = {};
       _messages.clear();
+      _retriever.clear();
+      _indexTried = false;
     });
 
     try {
@@ -162,6 +177,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
           auto: 'Please read my form and tell me exactly what information you '
               'need from me to fill it in.',
         );
+      } else {
+        // Understand mode: build the retrieval index in the background so
+        // questions can be grounded + cited without blocking the UI.
+        _ensureIndex();
       }
     } catch (e) {
       _error = 'Could not read file: $e';
@@ -212,10 +231,63 @@ class _AiChatScreenState extends State<AiChatScreen> {
           await page.close();
         }
       }
+
+      // Render extra pages BEYOND the image cap at low resolution, for OCR /
+      // retrieval only. This lets the AI answer about — and cite — the whole
+      // document, not just the first pages it can see as images.
+      if (tmp != null && doc.pagesCount > count) {
+        final ragMax =
+            doc.pagesCount < _ragMaxPages ? doc.pagesCount : _ragMaxPages;
+        for (var i = count + 1; i <= ragMax; i++) {
+          final page = await doc.getPage(i);
+          try {
+            final longEdge =
+                page.width > page.height ? page.width : page.height;
+            final scale =
+                longEdge > _ocrMaxEdge ? _ocrMaxEdge / longEdge : 1.0;
+            final img = await page.render(
+              width: page.width * scale,
+              height: page.height * scale,
+              format: pdfx.PdfPageImageFormat.jpeg,
+              backgroundColor: '#FFFFFF',
+            );
+            final bytes = img?.bytes;
+            if (bytes != null) {
+              try {
+                final p = '${tmp.path}/aiform_${stamp}_p$i.jpg';
+                await File(p).writeAsBytes(bytes);
+                _pageImages[i] = p;
+              } catch (_) {
+                // Best-effort; ignore write failures.
+              }
+            }
+          } finally {
+            await page.close();
+          }
+        }
+      }
     } finally {
       await doc.close();
     }
     return urls;
+  }
+
+  /// Build the on-device retrieval index (OCR every rendered page, then index
+  /// the text). Best-effort and runs once; failures degrade to no grounding.
+  Future<void> _ensureIndex() async {
+    if (_isForm || _indexTried || _pageImages.length < 2) return;
+    _indexTried = true;
+    try {
+      final ocrByPage = await _ocrPages();
+      final pageText = <int, String>{};
+      ocrByPage.forEach((page, lines) {
+        final t = lines.map((l) => l.text).join(' ').trim();
+        if (t.isNotEmpty) pageText[page] = t;
+      });
+      if (pageText.isNotEmpty) _retriever.index(pageText);
+    } catch (_) {
+      // Retrieval is an enhancement; never let it break the chat.
+    }
   }
 
   /// Run on-device OCR on each rendered page, returning page (1-based) → lines.
@@ -304,9 +376,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   /// Build the full OpenAI-style message list. Document images are attached to
   /// the first user message so the model can see the pages.
-  List<Map<String, dynamic>> _buildApiMessages() {
+  List<Map<String, dynamic>> _buildApiMessages({String? grounding}) {
+    final systemContent = (grounding != null && grounding.isNotEmpty)
+        ? '$_systemPrompt\n\n$grounding'
+        : _systemPrompt;
     final msgs = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt},
+      {'role': 'system', 'content': systemContent},
     ];
     var attached = false;
     for (final m in _messages) {
@@ -342,8 +417,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
     _scrollToBottom();
 
+    // Ground the answer on the most relevant pages (Understand mode) so it can
+    // cite sources and reason over pages beyond those sent as images.
+    String? grounding;
+    if (!_isForm && !_retriever.isEmpty) {
+      final hits = _retriever.search(text, topK: 5);
+      if (hits.isNotEmpty) {
+        final b = StringBuffer(
+            'Relevant excerpts extracted on-device from the document. Use them to '
+            'ground your answer and cite the page like "(page N)". If they do not '
+            'contain the answer, rely on the page images:\n');
+        for (final h in hits) {
+          b.writeln('[page ${h.page}] ${h.text}');
+        }
+        grounding = b.toString();
+      }
+    }
+
     // Build request BEFORE adding the assistant placeholder.
-    final apiMessages = _buildApiMessages();
+    final apiMessages = _buildApiMessages(grounding: grounding);
     final assistant = _ChatMsg('assistant', '');
     setState(() {
       _messages.add(assistant);
