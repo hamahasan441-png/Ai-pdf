@@ -15,6 +15,7 @@ import '../../features/tools/presentation/pick_edit_screen.dart';
 import '../../features/tools/presentation/organize_pages_screen.dart';
 import '../../features/tools/presentation/ocr_screen.dart';
 import '../../features/tools/presentation/pdf_to_images_screen.dart';
+import '../../features/tools/presentation/pdf_stamp_screens.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
@@ -50,6 +51,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/organize', builder: (_, __) => const OrganizePagesScreen()),
       GoRoute(path: '/tools/ocr', builder: (_, __) => const OcrScreen()),
       GoRoute(path: '/tools/pdf-to-images', builder: (_, __) => const PdfToImagesScreen()),
+      GoRoute(path: '/tools/watermark', builder: (_, __) => const WatermarkScreen()),
+      GoRoute(path: '/tools/page-numbers', builder: (_, __) => const PageNumbersScreen()),
 
       // Recent files (created / edited / saved on device)
       GoRoute(path: '/recent', builder: (_, __) => const RecentFilesScreen()),
