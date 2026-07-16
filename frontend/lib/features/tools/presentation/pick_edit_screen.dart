@@ -130,6 +130,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Offset? _dragOffset; // offset during move
   bool _hasUnsavedChanges = false;
 
+  // --- Snapping guides (E3.4) ---
+  double? _guideX; // normalized x for a vertical alignment guide
+  double? _guideY; // normalized y for a horizontal alignment guide
+
   // --- Multi-select (E2) ---
   final Set<_Annotation> _multi = {};
   Offset? _marqueeStart;
@@ -513,10 +517,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _marqueeStart = null;
       _marqueeEnd = null;
       _selDragLast = null;
+      _guideX = null;
+      _guideY = null;
       setState(() {});
       return;
     }
     _dragOffset = null;
+    _guideX = null;
+    _guideY = null;
     if (_isFreehand && _drawing.length > 1) {
       _pushItem(_Stroke(
         List.from(_drawing),
@@ -616,8 +624,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
           );
         }
       }
+      _snapSelected();
       _hasUnsavedChanges = true;
     });
+  }
+
+  /// Magnetically snap the selected object's center to the page center (0.5)
+  /// when close, and record guide lines to draw. Call inside setState.
+  void _snapSelected() {
+    final sel = _selected;
+    if (sel == null) return;
+    const th = 0.015; // snap threshold (normalized)
+    final b = _boundsOf(sel);
+    double? gx, gy;
+    if ((b.center.dx - 0.5).abs() < th) {
+      _moveAnnotation(sel, Offset(0.5 - b.center.dx, 0));
+      gx = 0.5;
+    }
+    final b2 = _boundsOf(sel);
+    if ((b2.center.dy - 0.5).abs() < th) {
+      _moveAnnotation(sel, Offset(0, 0.5 - b2.center.dy));
+      gy = 0.5;
+    }
+    _guideX = gx;
+    _guideY = gy;
   }
 
   /// Resize a selected shape by adjusting its end point.
@@ -1442,6 +1472,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       ),
                     ),
                   )),
+            // Snapping guides (E3.4)
+            if (_guideX != null)
+              Positioned(
+                left: _guideX! * size.width,
+                top: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Container(width: 1, color: Colors.pinkAccent),
+                ),
+              ),
+            if (_guideY != null)
+              Positioned(
+                top: _guideY! * size.height,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Container(height: 1, color: Colors.pinkAccent),
+                ),
+              ),
             // Multi-select highlights (E2)
             ..._multi.map((a) {
               final r = _boundsOf(a);
