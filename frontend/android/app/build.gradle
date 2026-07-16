@@ -7,7 +7,9 @@ plugins {
 android {
     namespace = "com.aidocassistant.app"
     compileSdk = 35
-    ndkVersion = flutter.ndkVersion
+    // Pinned: several plugins (ML Kit, pdfx, secure_storage, etc.) require
+    // NDK 27; use the highest requested version (backward compatible).
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         // Core library desugaring: required by printing/pdf & Java 8 APIs

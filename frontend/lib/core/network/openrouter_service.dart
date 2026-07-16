@@ -157,8 +157,10 @@ class OpenRouterService {
 
       final body = resp.data as ResponseBody;
       final buffer = StringBuffer();
-      await for (final line
-          in body.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+      await for (final line in body.stream
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
         final l = line.trim();
         if (l.isEmpty || !l.startsWith('data:')) continue;
         final data = l.substring(5).trim();
