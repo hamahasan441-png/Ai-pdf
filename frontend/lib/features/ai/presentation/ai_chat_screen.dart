@@ -844,6 +844,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       ('Key facts', 'List every important name, date, number and amount'),
       ('Action items', 'What actions, tasks, or deadlines does this document require?'),
       ('Translate', 'Translate the document into English'),
+      ('Explain', 'Explain this document in simple terms a non-expert can understand'),
     ];
     return SizedBox(
       height: 38,
