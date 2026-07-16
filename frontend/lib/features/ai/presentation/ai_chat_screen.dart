@@ -402,6 +402,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
     return msgs;
   }
 
+  /// Clear the conversation but keep the loaded document + its retrieval index,
+  /// so the user can start a fresh line of questions without re-picking a file.
+  void _newChat() {
+    if (_busy) return;
+    setState(() {
+      _messages.clear();
+      _error = null;
+      _inputCtrl.clear();
+    });
+  }
+
   Future<void> _send({String? auto}) async {
     final text = (auto ?? _inputCtrl.text).trim();
     if (text.isEmpty || _busy) return;
@@ -628,6 +639,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
       appBar: AppBar(
         title: Text(_title),
         actions: [
+          if (_messages.isNotEmpty && !_busy)
+            IconButton(
+              tooltip: 'New chat',
+              icon: const Icon(Icons.restart_alt),
+              onPressed: _newChat,
+            ),
           FutureBuilder<bool>(
             future: AppSettings.instance.hasOpenRouterKey(),
             builder: (_, snap) {

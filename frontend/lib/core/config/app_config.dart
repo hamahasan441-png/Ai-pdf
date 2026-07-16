@@ -79,11 +79,13 @@ class AppConfig {
     ('nvidia/llama-3.1-nemotron-70b-instruct:free', 'Nemotron 70B (text)', false),
     ('deepseek/deepseek-chat-v3-0324:free', 'DeepSeek V3 (text)', false),
     // --- PREMIUM (pay-per-token via OpenRouter) ---
+    ('google/gemini-2.5-pro', 'Gemini 2.5 Pro (vision, top-tier) — Google', true),
+    ('google/gemini-2.5-flash', 'Gemini 2.5 Flash (vision, fast + cheap) — Google', true),
     ('openai/gpt-4o', 'GPT-4o (vision) — OpenAI', true),
     ('openai/gpt-4o-mini', 'GPT-4o Mini (vision, cheap) — OpenAI', true),
     ('anthropic/claude-sonnet-4', 'Claude Sonnet 4 (vision) — Anthropic', true),
     ('anthropic/claude-3.5-haiku', 'Claude 3.5 Haiku (vision, fast)', true),
-    ('google/gemini-2.5-pro-preview', 'Gemini 2.5 Pro (vision) — Google', true),
+    ('google/gemini-2.5-pro-preview', 'Gemini 2.5 Pro Preview (vision) — Google', true),
     ('meta-llama/llama-4-maverick', 'Llama 4 Maverick (vision) — Meta', true),
   ];
   // ---- Multi-provider support ------------------------------------------
