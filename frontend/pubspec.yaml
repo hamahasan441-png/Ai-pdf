@@ -62,6 +62,9 @@ dependencies:
   # TTS engine; no network, no extra permissions).
   flutter_tts: ^4.2.0
 
+  # Ads (free tier only; removed for Pro). Includes the UMP consent SDK.
+  google_mobile_ads: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

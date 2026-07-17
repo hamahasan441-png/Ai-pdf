@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/ads/ad_banner.dart';
 import '../../../core/services/recent_files_service.dart';
 import '../../tools/services/output_actions.dart';
 import '../../tools/widgets/result_sheet.dart';
@@ -42,6 +43,7 @@ class _RecentFilesScreenState extends State<RecentFilesScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: const AdBanner(),
       body: ValueListenableBuilder<List<RecentFile>>(
         valueListenable: RecentFilesService.instance.notifier,
         builder: (_, items, __) {

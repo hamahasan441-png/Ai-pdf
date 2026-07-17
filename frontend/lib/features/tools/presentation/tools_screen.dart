@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/ads/ad_banner.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// ToolsScreen - Hub for all document tools.
@@ -19,6 +20,7 @@ class ToolsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.tools)),
+      bottomNavigationBar: const AdBanner(),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -203,6 +205,15 @@ class ToolsScreen extends ConsumerWidget {
                 badge: 'AI',
                 badgeColor: cs.primary,
                 onTap: () => context.push('/ai-form'),
+              ),
+              _ToolCard(
+                icon: Icons.sync_alt,
+                label: l10n.convert,
+                desc: l10n.convertDesc,
+                color: const Color(0xFF2B579A),
+                badge: l10n.badgeCloud,
+                badgeColor: cs.primary,
+                onTap: () => context.push('/tools/convert'),
               ),
             ],
           ),

@@ -47,6 +47,7 @@ class AnalyticsEvents {
 
   // Monetization funnel
   static const String paywallViewed = 'paywall_viewed';
+  static const String trialStarted = 'trial_started';
   static const String purchaseStarted = 'purchase_started';
   static const String purchaseSucceeded = 'purchase_succeeded';
   static const String purchaseRestored = 'purchase_restored';

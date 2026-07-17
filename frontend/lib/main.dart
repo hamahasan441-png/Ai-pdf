@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/ads/ads_service.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
 import 'core/config/locale_controller.dart';
@@ -30,6 +31,9 @@ void main() {
     await ThemeController.instance.load();
     await LocaleController.instance.load();
 
+    // Ads init is fire-and-forget (free tier only; removed for Pro).
+    AdsService.instance.init();
+
     runApp(const ProviderScope(child: AiPdfApp()));
   }, (error, stack) {
     // Report uncaught async errors instead of silently dropping them. The app
@@ -48,6 +52,8 @@ class AiPdfApp extends ConsumerWidget {
     // Keep the billing controller alive for the whole app lifetime so
     // subscription renewals / restores are always processed.
     ref.watch(subscriptionControllerProvider);
+    // Free tier sees ads; Pro removes them everywhere.
+    AdsService.instance.setPro(ref.watch(isProProvider));
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.instance.mode,
       builder: (context, themeMode, _) => ValueListenableBuilder<Locale?>(

@@ -19,6 +19,12 @@ class PaywallScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
 
+    final ent = state.entitlement;
+    final trialActive = ent.tier.isTrial && ent.isPro;
+    final int trialDaysLeft = (trialActive && ent.expiry != null)
+        ? (ent.expiry!.difference(DateTime.now()).inHours / 24).ceil().clamp(0, 3).toInt()
+        : 0;
+
     final benefits = <String>[
       l10n.proBenefit1,
       l10n.proBenefit2,
@@ -30,7 +36,7 @@ class PaywallScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('AI PDF Pro')),
-      body: state.isPro
+      body: (state.isPro && !trialActive)
           ? _ProActive(entitlement: state.entitlement)
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -63,7 +69,30 @@ class PaywallScreen extends ConsumerWidget {
                         Expanded(child: Text(b, style: const TextStyle(fontSize: 14))),
                       ]),
                     )),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+
+                // Free trial (one-time) or active-trial banner.
+                if (trialActive)
+                  _InfoBanner(
+                    icon: Icons.timer_outlined,
+                    color: cs.primary,
+                    text: l10n.trialActive(trialDaysLeft),
+                  )
+                else if (state.canStartTrial) ...[
+                  FilledButton.icon(
+                    onPressed: state.purchaseInProgress ? null : controller.startFreeTrial,
+                    icon: const Icon(Icons.lock_open),
+                    label: Text(l10n.startFreeTrial),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(l10n.trialTagline,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+                const SizedBox(height: 16),
 
                 if (!state.storeAvailable && state.initialized)
                   _InfoBanner(icon: Icons.info_outline, color: cs.error, text: l10n.proStoreUnavailable)

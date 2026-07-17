@@ -39,15 +39,18 @@ class ProductIds {
   }
 }
 
-enum ProTier { free, monthly, yearly, lifetime }
+enum ProTier { free, trial, monthly, yearly, lifetime }
 
 extension ProTierX on ProTier {
   bool get isPro => this != ProTier.free;
+  bool get isTrial => this == ProTier.trial;
 
   String get label {
     switch (this) {
       case ProTier.free:
         return 'Free';
+      case ProTier.trial:
+        return 'Free Trial';
       case ProTier.monthly:
         return 'Pro (Monthly)';
       case ProTier.yearly:

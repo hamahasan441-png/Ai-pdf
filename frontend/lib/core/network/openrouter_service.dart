@@ -82,6 +82,11 @@ class OpenRouterService {
     String? model,
   }) async {
     final settings = AppSettings.instance;
+    if (settings.isManaged) {
+      final reply = await _doManagedChat(messages);
+      lastModelUsed = 'managed';
+      return reply;
+    }
     final chosen = model ?? settings.aiModel;
     final resolved = _resolveModel(chosen, messages);
     final isOpenRouter = settings.providerId == AppConfig.providerOpenRouter;
@@ -119,6 +124,13 @@ class OpenRouterService {
     required void Function(String delta) onDelta,
   }) async {
     final settings = AppSettings.instance;
+    // Managed proxy: no streaming protocol — do a single call and emit it whole.
+    if (settings.isManaged) {
+      final full = await _doManagedChat(messages);
+      lastModelUsed = 'managed';
+      if (full.isNotEmpty) onDelta(full);
+      return full;
+    }
     final chosen = model ?? settings.aiModel;
     final resolved = _resolveModel(chosen, messages);
 
@@ -187,6 +199,61 @@ class OpenRouterService {
     } catch (e) {
       if (e is OpenRouterException) rethrow;
       throw OpenRouterException('AI stream failed: $e');
+    }
+  }
+
+  /// Managed backend proxy (`/ai/chat`): no API key; server holds the key and
+  /// meters free usage. Content is flattened to text (proxy is text-focused).
+  Future<String> _doManagedChat(List<Map<String, dynamic>> messages) async {
+    final settings = AppSettings.instance;
+    final endpoint = settings.aiEndpoint;
+    final flat = messages.map((m) {
+      final c = m['content'];
+      String text;
+      if (c is String) {
+        text = c;
+      } else if (c is List) {
+        text = c
+            .whereType<Map>()
+            .where((p) => p['type'] == 'text')
+            .map((p) => p['text']?.toString() ?? '')
+            .join('\n');
+      } else {
+        text = c?.toString() ?? '';
+      }
+      return {'role': m['role'] ?? 'user', 'content': text};
+    }).toList();
+
+    final headers = <String, dynamic>{'Content-Type': 'application/json'};
+    final proToken = settings.proToken;
+    if (proToken != null && proToken.isNotEmpty) {
+      headers['X-Entitlement-Token'] = proToken; // unlimited for verified Pro
+    }
+    try {
+      final resp = await _dio.post(
+        endpoint,
+        options: Options(headers: headers),
+        data: {'messages': flat, 'use_advanced': false},
+      );
+      final data = resp.data;
+      final reply = (data is Map) ? data['reply']?.toString() : null;
+      if (reply == null || reply.trim().isEmpty) {
+        throw OpenRouterException('The AI returned no readable text.');
+      }
+      return reply.trim();
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 429) {
+        throw OpenRouterException(
+            'Daily free AI limit reached. Upgrade to Pro for unlimited AI.');
+      }
+      if (code == 503) {
+        throw OpenRouterException('Managed AI is not set up on the server yet.');
+      }
+      throw _mapDioError(e, 'managed');
+    } catch (e) {
+      if (e is OpenRouterException) rethrow;
+      throw OpenRouterException('AI request failed: $e');
     }
   }
 

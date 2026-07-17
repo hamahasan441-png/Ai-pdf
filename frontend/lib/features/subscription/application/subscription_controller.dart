@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../../../core/config/app_settings.dart';
 import '../../../core/observability/analytics_service.dart';
+import '../data/billing_verifier.dart';
 import '../data/entitlement_store.dart';
 import '../data/purchase_service.dart';
 import '../domain/entitlement.dart';
@@ -18,6 +20,7 @@ class SubscriptionState {
   final List<ProductDetails> products;
   final Entitlement entitlement;
   final bool purchaseInProgress;
+  final bool trialUsed;
   final String? error;
 
   const SubscriptionState({
@@ -27,10 +30,14 @@ class SubscriptionState {
     this.products = const [],
     this.entitlement = const Entitlement.free(),
     this.purchaseInProgress = false,
+    this.trialUsed = false,
     this.error,
   });
 
   bool get isPro => entitlement.isPro;
+
+  /// True if the one-time free trial can still be started.
+  bool get canStartTrial => !entitlement.isPro && !trialUsed;
 
   ProductDetails? productById(String id) {
     for (final p in products) {
@@ -46,6 +53,7 @@ class SubscriptionState {
     List<ProductDetails>? products,
     Entitlement? entitlement,
     bool? purchaseInProgress,
+    bool? trialUsed,
     String? error,
     bool clearError = false,
   }) {
@@ -56,6 +64,7 @@ class SubscriptionState {
       products: products ?? this.products,
       entitlement: entitlement ?? this.entitlement,
       purchaseInProgress: purchaseInProgress ?? this.purchaseInProgress,
+      trialUsed: trialUsed ?? this.trialUsed,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -65,12 +74,14 @@ int _tierRank(ProTier t) {
   switch (t) {
     case ProTier.free:
       return 0;
-    case ProTier.monthly:
+    case ProTier.trial:
       return 1;
-    case ProTier.yearly:
+    case ProTier.monthly:
       return 2;
-    case ProTier.lifetime:
+    case ProTier.yearly:
       return 3;
+    case ProTier.lifetime:
+      return 4;
   }
 }
 
@@ -80,6 +91,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
   final PurchaseService _purchases;
   final EntitlementStore _store;
+  final BillingVerifier _verifier = BillingVerifier();
   StreamSubscription<List<PurchaseDetails>>? _sub;
 
   /// Idempotent startup: load cached entitlement, connect to the store, start
@@ -88,7 +100,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     if (state.initialized) return;
 
     final cached = await _store.load();
-    state = state.copyWith(entitlement: cached);
+    final trialUsed = await _store.isTrialUsed();
+    state = state.copyWith(entitlement: cached, trialUsed: trialUsed);
 
     bool available = false;
     try {
@@ -126,6 +139,20 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         error: 'Could not load plans. Check your connection and Play account.',
       );
     }
+  }
+
+  /// Start the one-time 3-day free trial (unlocks all Pro features). No-op if
+  /// already Pro or the trial was used before.
+  Future<void> startFreeTrial() async {
+    if (!state.canStartTrial) return;
+    final entitlement = Entitlement(
+      tier: ProTier.trial,
+      expiry: DateTime.now().add(const Duration(days: 3)),
+    );
+    await _store.save(entitlement);
+    await _store.markTrialUsed();
+    Analytics.logEvent(AnalyticsEvents.trialStarted);
+    state = state.copyWith(entitlement: entitlement, trialUsed: true, clearError: true);
   }
 
   Future<void> buy(ProductDetails product) async {
@@ -188,10 +215,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   }
 
   Future<void> _grant(PurchaseDetails p) async {
-    // NOTE: production must verify p.verificationData server-side before
-    // granting. We optimistically grant + cache locally for a good UX and
-    // rely on server verification (follow-up) to be authoritative.
-    final tier = ProductIds.tierForProduct(p.productID);
+    var tier = ProductIds.tierForProduct(p.productID);
     if (tier == ProTier.free) return;
 
     DateTime? expiry;
@@ -199,6 +223,25 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       expiry = DateTime.now().add(const Duration(days: 31));
     } else if (tier == ProTier.yearly) {
       expiry = DateTime.now().add(const Duration(days: 366));
+    }
+
+    // Prefer authoritative server verification when a backend is configured.
+    // If it can't run (no server / offline), fall back to the optimistic grant.
+    final server = await _verifier.verify(
+      productId: p.productID,
+      purchaseToken: p.verificationData.serverVerificationData,
+      isSubscription: ProductIds.subscriptions.contains(p.productID),
+    );
+    if (server != null) {
+      if (!server.valid) {
+        state = state.copyWith(
+          purchaseInProgress: false,
+          error: 'Purchase could not be verified.',
+        );
+        return;
+      }
+      if (server.tier != ProTier.free) tier = server.tier;
+      expiry = server.expiry ?? expiry;
     }
 
     final candidate = Entitlement(tier: tier, expiry: expiry);
@@ -210,6 +253,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
     state = state.copyWith(entitlement: next, purchaseInProgress: false, clearError: true);
     await _store.save(next);
+    // Remember the purchase token so managed AI can prove Pro server-side.
+    if (next.isPro) {
+      await AppSettings.instance.setProToken(p.verificationData.serverVerificationData);
+    }
   }
 
   @override

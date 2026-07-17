@@ -10,6 +10,24 @@ import '../domain/entitlement.dart';
 /// purchase verification (see docs/CTO_REVIEW.md).
 class EntitlementStore {
   static const String _key = 'entitlement_v1';
+  static const String _trialUsedKey = 'trial_used_v1';
+
+  /// Whether the one-time free trial has already been claimed.
+  Future<bool> isTrialUsed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_trialUsedKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> markTrialUsed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_trialUsedKey, true);
+    } catch (_) {}
+  }
 
   Future<Entitlement> load() async {
     try {

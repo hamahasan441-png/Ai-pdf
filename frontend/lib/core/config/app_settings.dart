@@ -19,6 +19,7 @@ class AppSettings {
   static const _kApiBaseUrl = 'api_base_url';
   static const _kProvider = 'ai_provider';
   static const _kCustomEndpoint = 'ai_custom_endpoint';
+  static const _kProToken = 'pro_entitlement_token';
   // Per-provider keys/models use these prefixes.
   static const _kKeyPrefix = 'aikey_'; // secure storage
   static const _kModelPrefix = 'aimodel_'; // prefs
@@ -28,7 +29,17 @@ class AppSettings {
   String _apiBaseUrl = AppConfig.apiBaseUrl;
   String _provider = AppConfig.providerOpenRouter;
   String _customEndpoint = '';
+  String _proToken = ''; // Play purchase token -> managed-AI Pro bypass
   final Map<String, String> _models = {}; // providerId -> model slug
+
+  /// Play purchase token for the active Pro entitlement, sent as
+  /// `X-Entitlement-Token` so the managed AI proxy grants unlimited access.
+  String? get proToken => _proToken.isEmpty ? null : _proToken;
+
+  Future<void> setProToken(String? token) async {
+    _proToken = (token ?? '').trim();
+    await _putString(_kProToken, _proToken);
+  }
 
   // ---- Optional backend base URL (legacy/account flows) ----
   String get apiBaseUrl => _apiBaseUrl;
@@ -39,14 +50,25 @@ class AppSettings {
   AiProviderDef get provider => AppConfig.providerById(_provider);
 
   /// The chat/completions (or Anthropic messages) endpoint for the current
-  /// provider. For "custom", it's the user-provided URL.
-  String get aiEndpoint =>
-      provider.id == AppConfig.providerCustom ? _customEndpoint : provider.endpoint;
+  /// provider. For "custom", it's the user-provided URL. For "managed", it's
+  /// the app's backend proxy at <server>/ai/chat.
+  String get aiEndpoint {
+    if (provider.managed) {
+      final base = _apiBaseUrl.endsWith('/')
+          ? _apiBaseUrl.substring(0, _apiBaseUrl.length - 1)
+          : _apiBaseUrl;
+      return '$base/ai/chat';
+    }
+    return provider.id == AppConfig.providerCustom ? _customEndpoint : provider.endpoint;
+  }
 
   String get customEndpoint => _customEndpoint;
 
   /// True if the current provider uses the Anthropic Messages API.
   bool get isAnthropic => provider.anthropic;
+
+  /// True if the current provider is the app's managed backend proxy.
+  bool get isManaged => provider.managed;
 
   /// True if the current provider requires an API key.
   bool get needsKey => provider.needsKey;
@@ -69,6 +91,8 @@ class AppSettings {
 
       final ce = prefs.getString(_kCustomEndpoint);
       if (ce != null) _customEndpoint = ce.trim();
+
+      _proToken = prefs.getString(_kProToken) ?? '';
 
       for (final d in AppConfig.providers) {
         final m = prefs.getString('$_kModelPrefix${d.id}');

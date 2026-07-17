@@ -22,6 +22,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _keyCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   final _endpointCtrl = TextEditingController();
+  final _serverCtrl = TextEditingController();
 
   late String _provider = AppSettings.instance.providerId;
   late String _modelChoice;
@@ -42,6 +43,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final s = AppSettings.instance;
     _provider = s.providerId;
     _endpointCtrl.text = s.customEndpoint;
+    _serverCtrl.text = s.apiBaseUrl;
     final model = s.aiModel;
     final inList = _def.models.any((m) => m.$1 == model);
     _modelChoice = inList ? model : '__custom__';
@@ -56,6 +58,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     _keyCtrl.dispose();
     _modelCtrl.dispose();
     _endpointCtrl.dispose();
+    _serverCtrl.dispose();
     super.dispose();
   }
 
@@ -70,6 +73,9 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     await s.setProvider(_provider);
     if (_provider == AppConfig.providerCustom) {
       await s.setCustomEndpoint(_endpointCtrl.text);
+    }
+    if (_provider == AppConfig.providerManaged) {
+      await s.setApiBaseUrl(_serverCtrl.text);
     }
     if (_keyCtrl.text.trim().isNotEmpty) {
       await s.setApiKey(_keyCtrl.text);
@@ -129,6 +135,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
     final isCustom = _provider == AppConfig.providerCustom;
+    final isManaged = _provider == AppConfig.providerManaged;
     final needsKey = _def.needsKey;
 
     return Scaffold(
@@ -270,7 +277,27 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             const SizedBox(height: 16),
           ],
 
-          // Model
+          // Managed server URL (only for the managed provider)
+          if (isManaged) ...[
+            _sectionTitle(l10n.managedServerUrl, Icons.cloud_outlined),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _serverCtrl,
+              keyboardType: TextInputType.url,
+              decoration: InputDecoration(
+                labelText: l10n.managedServerUrl,
+                hintText: l10n.managedServerHint,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(l10n.managedNote, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 16),
+          ],
+
+          // Model (the managed provider chooses the model server-side)
+          if (!isManaged) ...[
           _sectionTitle('Model', Icons.smart_toy_outlined),
           const SizedBox(height: 8),
           if (_def.models.isNotEmpty)
@@ -306,6 +333,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
+          ],
 
           Row(children: [
             Expanded(

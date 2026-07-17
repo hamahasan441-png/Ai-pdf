@@ -9,6 +9,10 @@ class AiProviderDef {
   final String label;
   final String endpoint; // '' = user-provided (custom/local)
   final bool anthropic;
+
+  /// Managed provider: the app's own backend proxy (`/ai/chat`). No key needed;
+  /// the server holds the key and meters free usage.
+  final bool managed;
   final bool needsKey;
   final String keysUrl; // where to get an API key
   final String defaultModel;
@@ -21,6 +25,7 @@ class AiProviderDef {
     required this.defaultModel,
     required this.models,
     this.anthropic = false,
+    this.managed = false,
     this.needsKey = true,
     this.keysUrl = '',
   });
@@ -94,6 +99,7 @@ class AppConfig {
   // companies directly. "Custom" targets any OpenAI-compatible server incl. a
   // local/LAN one for offline use.
 
+  static const String providerManaged = 'managed';
   static const String providerOpenRouter = 'openrouter';
   static const String providerOpenAI = 'openai';
   static const String providerAnthropic = 'anthropic';
@@ -101,6 +107,15 @@ class AppConfig {
   static const String providerCustom = 'custom';
 
   static const List<AiProviderDef> providers = [
+    AiProviderDef(
+      id: providerManaged,
+      label: 'AI PDF (managed — no key needed)',
+      endpoint: '', // computed at runtime: <server>/ai/chat
+      managed: true,
+      needsKey: false,
+      defaultModel: '',
+      models: [],
+    ),
     AiProviderDef(
       id: providerOpenRouter,
       label: 'OpenRouter — all models, one key (recommended)',
