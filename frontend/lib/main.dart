@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
+import 'core/observability/crash_reporter.dart';
 import 'core/theme/app_theme.dart';
 import 'features/subscription/application/subscription_controller.dart';
 
@@ -12,11 +12,13 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Never show the red crash screen to users. Log in debug, show a
-    // friendly placeholder in release so the app keeps running.
+    // Never show the red crash screen to users. Report every framework error
+    // (to the console today; to Crashlytics/Sentry once a backend is wired via
+    // Crash.setReporter) and show a friendly placeholder so the app keeps running.
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
-      if (kDebugMode) debugPrint('Caught FlutterError: ${details.exception}');
+      Crash.recordError(details.exception, details.stack,
+          reason: details.context?.toString(), fatal: true);
     };
     ErrorWidget.builder = (details) => const _FriendlyErrorWidget();
 
@@ -25,8 +27,10 @@ void main() {
 
     runApp(const ProviderScope(child: AiPdfApp()));
   }, (error, stack) {
-    // Swallow uncaught async errors so a single failure never kills the app.
-    if (kDebugMode) debugPrint('Uncaught zone error: $error');
+    // Report uncaught async errors instead of silently dropping them. The app
+    // still keeps running (a single failure never kills it), but we are no
+    // longer blind to it in production.
+    Crash.recordError(error, stack, reason: 'uncaught zone error', fatal: true);
   });
 }
 

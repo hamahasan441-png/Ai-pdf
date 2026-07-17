@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../../../core/observability/analytics_service.dart';
 import '../data/entitlement_store.dart';
 import '../data/purchase_service.dart';
 import '../domain/entitlement.dart';
@@ -129,6 +130,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
   Future<void> buy(ProductDetails product) async {
     state = state.copyWith(purchaseInProgress: true, clearError: true);
+    Analytics.logEvent(AnalyticsEvents.purchaseStarted, params: {'product': product.id});
     try {
       final started = await _purchases.buy(product);
       if (!started) {
@@ -158,6 +160,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
           state = state.copyWith(purchaseInProgress: true, clearError: true);
           break;
         case PurchaseStatus.error:
+          Analytics.logEvent(AnalyticsEvents.purchaseFailed,
+              params: {'product': p.productID, 'error': p.error?.message});
           state = state.copyWith(
             purchaseInProgress: false,
             error: p.error?.message ?? 'The purchase could not be completed.',
@@ -167,8 +171,12 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
           state = state.copyWith(purchaseInProgress: false);
           break;
         case PurchaseStatus.purchased:
+          await _grant(p);
+          Analytics.logEvent(AnalyticsEvents.purchaseSucceeded, params: {'product': p.productID});
+          break;
         case PurchaseStatus.restored:
           await _grant(p);
+          Analytics.logEvent(AnalyticsEvents.purchaseRestored, params: {'product': p.productID});
           break;
       }
 
