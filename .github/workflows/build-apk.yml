@@ -17,7 +17,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -36,9 +36,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -96,7 +96,7 @@ jobs:
       # Keep the full log as an artifact for deeper inspection if needed.
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-log
           path: frontend/build.log
@@ -107,7 +107,7 @@ jobs:
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/AI-PDF.apk
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
