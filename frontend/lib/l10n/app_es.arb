@@ -19,6 +19,7 @@
   "smartFillNoMatch": "No se pudo emparejar ningún campo con seguridad. Asegúrate de que el documento sea legible, o abre el formulario en el editor y usa Relleno inteligente / Autocompletar para colocar los valores manualmente.",
   "smartFillPlaced": "Se colocaron {count} valor(es) — revisa y exporta.",
   "smartFillRun": "Rellenar el formulario",
+  "smartFillUncertain": "Baja confianza — verifica este valor",
   "smartDocuments": "Documentos inteligentes",
   "appTagline": "Abre, analiza y edita con IA",
   "openTools": "Abrir herramientas",

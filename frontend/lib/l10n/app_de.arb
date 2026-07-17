@@ -19,6 +19,7 @@
   "smartFillNoMatch": "Es konnten keine Felder sicher zugeordnet werden. Stelle sicher, dass das Datendokument klar und lesbar ist, oder öffne das Formular im Editor und nutze Intelligentes Ausfüllen / Auto-Ausfüllen, um Werte manuell zu setzen.",
   "smartFillPlaced": "{count} Wert(e) platziert — prüfen und exportieren.",
   "smartFillRun": "Formular ausfüllen",
+  "smartFillUncertain": "Geringe Sicherheit — diesen Wert überprüfen",
   "smartDocuments": "Intelligente Dokumente",
   "appTagline": "Mit KI öffnen, analysieren & bearbeiten",
   "openTools": "Werkzeuge öffnen",
