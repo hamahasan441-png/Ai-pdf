@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -43,11 +44,12 @@ class _OcrScreenState extends State<OcrScreen> {
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
     if (path == null) return;
+    final l10n = AppLocalizations.of(context)!;
 
     setState(() {
       _busy = true;
       _text = '';
-      _status = 'Reading…';
+      _status = l10n.reading;
       _fileName = result.files.first.name;
     });
 
@@ -58,7 +60,7 @@ class _OcrScreenState extends State<OcrScreen> {
         final doc = await pdfx.PdfDocument.openFile(path);
         try {
           for (var i = 1; i <= doc.pagesCount; i++) {
-            setState(() => _status = 'Reading page $i of ${doc.pagesCount}…');
+            setState(() => _status = l10n.readingPageOf(i, doc.pagesCount));
             final page = await doc.getPage(i);
             String? tmpPath;
             try {
@@ -94,19 +96,19 @@ class _OcrScreenState extends State<OcrScreen> {
           await doc.close();
         }
       } else {
-        setState(() => _status = 'Reading image…');
+        setState(() => _status = l10n.readingImage);
         buffer.write(await _ocr.recognizeText(path));
       }
 
       final text = buffer.toString().trim();
       setState(() {
-        _text = text.isEmpty ? 'No text found in this document.' : text;
+        _text = text.isEmpty ? l10n.noTextFound : text;
         _status = '';
       });
     } catch (e) {
       setState(() {
         _text = '';
-        _status = 'Could not read text: $e';
+        _status = l10n.couldNotReadText(e.toString());
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -115,13 +117,14 @@ class _OcrScreenState extends State<OcrScreen> {
 
   Future<void> _savePdf() async {
     if (_text.trim().isEmpty) return;
+    final l10n = AppLocalizations.of(context)!;
     try {
       final doc = pw.Document();
       doc.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         build: (_) => [
-          pw.Header(level: 0, text: 'Extracted Text'),
+          pw.Header(level: 0, text: l10n.extractedText),
           pw.SizedBox(height: 8),
           pw.Paragraph(text: _text),
         ],
@@ -131,11 +134,11 @@ class _OcrScreenState extends State<OcrScreen> {
       await File(outPath).writeAsBytes(await doc.save());
       if (mounted) {
         await showResultSheet(context,
-            paths: [outPath], title: 'Extracted Text', subtitle: 'Saved as PDF');
+            paths: [outPath], title: l10n.extractedText, subtitle: l10n.savedAsPdf);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.saveFailed(e.toString()))));
       }
     }
   }
@@ -143,24 +146,25 @@ class _OcrScreenState extends State<OcrScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Extract Text (OCR)'),
+        title: Text(l10n.ocrTitle),
         actions: [
           if (_text.trim().isNotEmpty && !_busy) ...[
             IconButton(
-              tooltip: 'Copy',
+              tooltip: l10n.copy,
               icon: const Icon(Icons.copy),
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: _text));
                 if (mounted) {
                   ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Copied')));
+                      .showSnackBar(SnackBar(content: Text(l10n.copied)));
                 }
               },
             ),
             IconButton(
-              tooltip: 'Save as PDF',
+              tooltip: l10n.saveAsPdf,
               icon: const Icon(Icons.picture_as_pdf_outlined),
               onPressed: _savePdf,
             ),
@@ -181,13 +185,13 @@ class _OcrScreenState extends State<OcrScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _fileName ?? 'Choose a PDF or image to extract text',
+                      _fileName ?? l10n.chooseFileForOcr,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  Text(_status.isNotEmpty ? _status : (_fileName == null ? '' : 'Change'),
+                  Text(_status.isNotEmpty ? _status : (_fileName == null ? '' : l10n.change),
                       style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ]),
               ),
@@ -201,16 +205,18 @@ class _OcrScreenState extends State<OcrScreen> {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.text_snippet_outlined, size: 64, color: cs.primary),
                         const SizedBox(height: 16),
-                        const Text('Extract text from scans & images',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+                        Text(l10n.extractTextHeadline,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
                         const SizedBox(height: 6),
-                        Text('Works fully offline, on your device.',
+                        Text(l10n.worksOfflineOnDevice,
+                            textAlign: TextAlign.center,
                             style: TextStyle(color: cs.onSurfaceVariant)),
                         const SizedBox(height: 20),
                         FilledButton.icon(
                           onPressed: _busy ? null : _pick,
                           icon: const Icon(Icons.folder_open),
-                          label: const Text('Choose file'),
+                          label: Text(l10n.chooseFile),
                         ),
                       ]),
                     ),
