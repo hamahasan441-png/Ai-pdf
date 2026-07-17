@@ -17,7 +17,7 @@ import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
-enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
+enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser, check, cross, dot, dash, checkbox }
 
 /// Inferred type of a detected form field, so tapping it opens the right input.
 enum FieldType { text, number, date, email, phone, name, signature }
@@ -590,6 +590,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final n = _norm(local, canvas);
     if (_tool == EditTool.text) {
       _editTextBox(_TextBox(n, '', _color, _textSize, _bold), isNew: true);
+    } else if (_tool == EditTool.check) {
+      _placeMark(n, '✓', const Color(0xFF16A34A));
+    } else if (_tool == EditTool.cross) {
+      _placeMark(n, '✕', const Color(0xFFDC2626));
+    } else if (_tool == EditTool.dot) {
+      _placeMark(n, '●', Colors.black);
+    } else if (_tool == EditTool.dash) {
+      _placeMark(n, '—', Colors.black);
+    } else if (_tool == EditTool.checkbox) {
+      _placeMark(n, '☑', Colors.black);
     } else if (_tool == EditTool.eraser) {
       setState(() {
         if (_layer.items.isNotEmpty) {
@@ -901,6 +911,20 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _layer.items.add(a);
     _layer.redo.clear();
     _hasUnsavedChanges = true;
+  }
+
+  /// Fill & Sign: drop a single glyph (check / cross / dot / dash / checkbox)
+  /// as a movable text box at the tapped position. Great for forms.
+  void _placeMark(Offset n, String glyph, Color color) {
+    setState(() => _pushItem(_TextBox(n, glyph, color, 0.04, false)));
+  }
+
+  /// Fill & Sign: place today's date (dd.MM.yyyy) as a movable text box.
+  void _placeSignatureDate() {
+    final d = DateTime.now();
+    final s = '${d.day.toString().padLeft(2, '0')}.'
+        '${d.month.toString().padLeft(2, '0')}.${d.year}';
+    setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
   }
 
   Future<void> _editTextBox(_TextBox box, {bool isNew = false}) async {
@@ -1834,6 +1858,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
 
   Widget _toolbar(ColorScheme cs) {
+    final l10n = AppLocalizations.of(context)!;
     final showStyle = _tool == EditTool.draw ||
         _tool == EditTool.highlight ||
         _tool == EditTool.text ||
@@ -1852,26 +1877,34 @@ class _PickEditScreenState extends State<PickEditScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(children: [
-                _actionBtn(Icons.auto_awesome, _detecting ? 'Scanning…' : 'Smart Fill',
+                _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
                 if (_pageFields.isNotEmpty)
                   _actionBtn(_showFields ? Icons.visibility_off : Icons.visibility,
-                      _showFields ? 'Hide' : 'Fields',
+                      _showFields ? l10n.toolHide : l10n.toolFields,
                       () => setState(() => _showFields = !_showFields), cs),
-                _toolBtn(Icons.pan_tool_alt, 'Move', EditTool.pan, cs),
-                _toolBtn(Icons.select_all, 'Select', EditTool.select, cs),
-                _toolBtn(Icons.edit, 'Draw', EditTool.draw, cs),
-                _toolBtn(Icons.highlight, 'Highlight', EditTool.highlight, cs),
-                _toolBtn(Icons.title, 'Text', EditTool.text, cs),
-                _toolBtn(Icons.horizontal_rule, 'Line', EditTool.line, cs),
-                _toolBtn(Icons.north_east, 'Arrow', EditTool.arrow, cs),
-                _toolBtn(Icons.crop_square, 'Box', EditTool.rect, cs),
-                _toolBtn(Icons.circle_outlined, 'Oval', EditTool.oval, cs),
-                _toolBtn(Icons.format_color_fill, 'Whiteout', EditTool.whiteout, cs),
-                _actionBtn(Icons.gesture, 'Sign', _addSignature, cs),
-                _toolBtn(Icons.cleaning_services, 'Eraser', EditTool.eraser, cs),
-                _actionBtn(Icons.rotate_right, 'Rotate', _rotatePage, cs),
-                _actionBtn(Icons.folder_open, 'Open', _pick, cs),
+                _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
+                _toolBtn(Icons.select_all, l10n.toolSelect, EditTool.select, cs),
+                // --- Fill & Sign (form marks) ---
+                _actionBtn(Icons.gesture, l10n.toolSign, _addSignature, cs),
+                _actionBtn(Icons.event_available, l10n.signatureDate, _placeSignatureDate, cs),
+                _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
+                _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
+                _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox, cs),
+                _toolBtn(Icons.fiber_manual_record, l10n.markDot, EditTool.dot, cs),
+                _toolBtn(Icons.remove, l10n.markDash, EditTool.dash, cs),
+                // --- Text & drawing ---
+                _toolBtn(Icons.title, l10n.toolText, EditTool.text, cs),
+                _toolBtn(Icons.edit, l10n.toolDraw, EditTool.draw, cs),
+                _toolBtn(Icons.highlight, l10n.toolHighlight, EditTool.highlight, cs),
+                _toolBtn(Icons.horizontal_rule, l10n.toolLine, EditTool.line, cs),
+                _toolBtn(Icons.north_east, l10n.toolArrow, EditTool.arrow, cs),
+                _toolBtn(Icons.crop_square, l10n.toolBox, EditTool.rect, cs),
+                _toolBtn(Icons.circle_outlined, l10n.toolOval, EditTool.oval, cs),
+                _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout, cs),
+                _toolBtn(Icons.cleaning_services, l10n.toolEraser, EditTool.eraser, cs),
+                _actionBtn(Icons.rotate_right, l10n.toolRotate, _rotatePage, cs),
+                _actionBtn(Icons.folder_open, l10n.toolOpen, _pick, cs),
               ]),
             ),
             if (showStyle)
