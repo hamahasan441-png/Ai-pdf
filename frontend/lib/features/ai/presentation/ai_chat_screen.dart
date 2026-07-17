@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -85,7 +86,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   bool get _isForm => widget.mode == AiChatMode.fillForm;
 
-  String get _title => _isForm ? 'Fill Form with AI' : 'Understand with AI';
 
   String get _systemPrompt {
     if (_isForm) {
@@ -637,7 +637,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
       await File(outPath).writeAsBytes(await doc.save());
       if (mounted) {
         await showResultSheet(context,
-            paths: [outPath], title: 'AI Answer', subtitle: 'Saved as PDF');
+            paths: [outPath],
+            title: AppLocalizations.of(context)!.aiAnswer,
+            subtitle: AppLocalizations.of(context)!.savedAsPdf);
       }
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not save PDF: $e');
@@ -647,13 +649,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_title),
+        title: Text(_isForm ? l10n.fillFormWithAi : l10n.understandWithAi),
         actions: [
           if (_messages.isNotEmpty && !_busy)
             IconButton(
-              tooltip: 'New chat',
+              tooltip: l10n.newChat,
               icon: const Icon(Icons.restart_alt),
               onPressed: _newChat,
             ),
@@ -664,11 +667,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 return TextButton.icon(
                   onPressed: () => context.push('/settings'),
                   icon: const Icon(Icons.key, size: 16),
-                  label: const Text('Add key'),
+                  label: Text(l10n.addKey),
                 );
               }
               return IconButton(
-                tooltip: 'AI settings',
+                tooltip: l10n.aiSettings,
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: () => context.push('/settings'),
               );
@@ -801,7 +804,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     MaterialPageRoute(builder: (_) => const ProfileScreen()),
                   ),
                   icon: const Icon(Icons.badge_outlined, size: 18),
-                  label: const Text('Set up profile for instant auto-fill'),
+                  label: Text(AppLocalizations.of(context)!.setUpProfile),
                 ),
               ],
             ],
@@ -847,11 +850,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _bubbleAction(cs, Icons.copy, 'Copy', () async {
+                  _bubbleAction(cs, Icons.copy, AppLocalizations.of(context)!.copy, () async {
                     await Clipboard.setData(ClipboardData(text: m.text));
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Copied')));
+                          SnackBar(content: Text(AppLocalizations.of(context)!.copied)));
                     }
                   }),
                   const SizedBox(width: 14),
@@ -918,7 +921,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       children: [
         Icon(Icons.auto_awesome, size: 40, color: cs.primary),
         const SizedBox(height: 10),
-        Text('Ask about your document, or tap a suggestion:',
+        Text(AppLocalizations.of(context)!.askAboutYourDocument,
             textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
         const SizedBox(height: 16),
         Wrap(
@@ -972,7 +975,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               decoration: InputDecoration(
-                hintText: _isForm ? 'Type your info…' : 'Ask about the document…',
+                hintText: _isForm
+                    ? AppLocalizations.of(context)!.typeYourInfo
+                    : AppLocalizations.of(context)!.askAboutTheDocument,
                 filled: true,
                 fillColor: cs.surfaceContainerHighest,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1037,6 +1042,7 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final count = _include.where((e) => e).length;
     return DraggableScrollableSheet(
       expand: false,
@@ -1052,9 +1058,9 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
             child: Row(children: [
               Icon(Icons.fact_check_outlined, color: cs.primary),
               const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Review before placing',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Expanded(
+                child: Text(l10n.reviewBeforePlacing,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ]),
           ),
@@ -1062,7 +1068,7 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Edit any value or untick what you don\'t want. Then place them on the form.',
+              child: Text(l10n.editAnyValue,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
           ),
@@ -1119,7 +1125,7 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancel),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1127,7 +1133,7 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                   child: FilledButton.icon(
                     onPressed: count == 0 ? null : _confirm,
                     icon: const Icon(Icons.auto_fix_high),
-                    label: Text('Place $count value(s)'),
+                    label: Text(l10n.placeNValues(count)),
                   ),
                 ),
               ]),

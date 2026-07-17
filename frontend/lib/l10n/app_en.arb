@@ -242,5 +242,19 @@
   "signHere": "Sign Here",
   "done": "Done",
   "pageOfPages": "Page {current} of {total}",
-  "@pageOfPages": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } }
+  "@pageOfPages": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } },
+  "fillFormWithAi": "Fill Form with AI",
+  "understandWithAi": "Understand with AI",
+  "aiAnswer": "AI Answer",
+  "addKey": "Add key",
+  "newChat": "New chat",
+  "aiSettings": "AI settings",
+  "setUpProfile": "Set up profile for instant auto-fill",
+  "askAboutYourDocument": "Ask about your document, or tap a suggestion:",
+  "typeYourInfo": "Type your info…",
+  "askAboutTheDocument": "Ask about the document…",
+  "reviewBeforePlacing": "Review before placing",
+  "editAnyValue": "Edit any value or untick what you don't want. Then place them on the form.",
+  "placeNValues": "Place {count} value(s)",
+  "@placeNValues": { "placeholders": { "count": { "type": "int" } } }
 }

@@ -218,5 +218,18 @@
   "openPdfOrImageToEdit": "Abre un PDF o imagen para editar",
   "signHere": "Firma aquí",
   "done": "Listo",
-  "pageOfPages": "Página {current} de {total}"
+  "pageOfPages": "Página {current} de {total}",
+  "fillFormWithAi": "Rellenar formulario con IA",
+  "understandWithAi": "Entender con IA",
+  "aiAnswer": "Respuesta de la IA",
+  "addKey": "Añadir clave",
+  "newChat": "Nuevo chat",
+  "aiSettings": "Ajustes de IA",
+  "setUpProfile": "Configura tu perfil para autocompletar al instante",
+  "askAboutYourDocument": "Pregunta sobre tu documento o toca una sugerencia:",
+  "typeYourInfo": "Escribe tu información…",
+  "askAboutTheDocument": "Pregunta sobre el documento…",
+  "reviewBeforePlacing": "Revisa antes de colocar",
+  "editAnyValue": "Edita cualquier valor o desmarca lo que no quieras. Luego colócalos en el formulario.",
+  "placeNValues": "Colocar {count} valor(es)"
 }

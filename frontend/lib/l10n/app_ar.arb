@@ -218,5 +218,18 @@
   "openPdfOrImageToEdit": "افتح ملف PDF أو صورة للتحرير",
   "signHere": "وقّع هنا",
   "done": "تم",
-  "pageOfPages": "صفحة {current} من {total}"
+  "pageOfPages": "صفحة {current} من {total}",
+  "fillFormWithAi": "تعبئة النموذج بالذكاء الاصطناعي",
+  "understandWithAi": "الفهم بالذكاء الاصطناعي",
+  "aiAnswer": "إجابة الذكاء الاصطناعي",
+  "addKey": "إضافة مفتاح",
+  "newChat": "محادثة جديدة",
+  "aiSettings": "إعدادات الذكاء الاصطناعي",
+  "setUpProfile": "أعدّ ملفك الشخصي للتعبئة التلقائية الفورية",
+  "askAboutYourDocument": "اسأل عن مستندك أو اضغط على اقتراح:",
+  "typeYourInfo": "اكتب معلوماتك…",
+  "askAboutTheDocument": "اسأل عن المستند…",
+  "reviewBeforePlacing": "راجِع قبل الوضع",
+  "editAnyValue": "عدّل أي قيمة أو ألغِ تحديد ما لا تريده. ثم ضعها في النموذج.",
+  "placeNValues": "وضع {count} قيمة"
 }
