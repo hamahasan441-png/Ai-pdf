@@ -210,5 +210,13 @@
   "firstPageOnlySubtitle": "De lo contrario, se estampa cada página",
   "stamping": "Estampando…",
   "stampOntoPdf": "Estampar en el PDF",
-  "chooseImage": "Elegir imagen"
+  "chooseImage": "Elegir imagen",
+  "undo": "Deshacer",
+  "redo": "Rehacer",
+  "export": "Exportar",
+  "readingTheForm": "Leyendo el formulario…",
+  "openPdfOrImageToEdit": "Abre un PDF o imagen para editar",
+  "signHere": "Firma aquí",
+  "done": "Listo",
+  "pageOfPages": "Página {current} de {total}"
 }

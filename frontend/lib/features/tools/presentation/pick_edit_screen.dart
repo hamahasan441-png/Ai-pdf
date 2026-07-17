@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -1375,6 +1376,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final bytes = _pageCache[_current];
 
     return PopScope(
@@ -1407,10 +1409,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_fileName ?? 'PDF Editor',
+            Text(_fileName ?? l10n.toolEditor,
                 style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (_pageCount > 0)
-              Text('Page ${_current + 1} of $_pageCount',
+              Text(l10n.pageOfPages(_current + 1, _pageCount),
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           ],
         ),
@@ -1418,17 +1420,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
           if (bytes != null) ...[
             IconButton(
               icon: const Icon(Icons.undo),
-              tooltip: 'Undo',
+              tooltip: l10n.undo,
               onPressed: _layer.items.isEmpty ? null : _undo,
             ),
             IconButton(
               icon: const Icon(Icons.redo),
-              tooltip: 'Redo',
+              tooltip: l10n.redo,
               onPressed: _layer.redo.isEmpty ? null : _redoAction,
             ),
             IconButton(
               icon: const Icon(Icons.ios_share),
-              tooltip: 'Export',
+              tooltip: l10n.export,
               onPressed: _loading ? null : _export,
             ),
           ],
@@ -1465,7 +1467,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           const CircularProgressIndicator(),
                           if (_detecting) ...[
                             const SizedBox(height: 12),
-                            const Text('Reading the form…', style: TextStyle(color: Colors.white)),
+                            Text(l10n.readingTheForm, style: const TextStyle(color: Colors.white)),
                           ],
                         ]),
                       ),
@@ -1818,13 +1820,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
           children: [
             const Icon(Icons.draw_outlined, size: 72, color: Colors.white38),
             const SizedBox(height: 16),
-            const Text('Open a PDF or image to edit',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+            Text(AppLocalizations.of(context)!.openPdfOrImageToEdit,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _loading ? null : _pick,
               icon: const Icon(Icons.folder_open),
-              label: const Text('Choose File'),
+              label: Text(AppLocalizations.of(context)!.chooseFile),
             ),
           ],
         ),
@@ -2147,13 +2150,13 @@ class _SignaturePadState extends State<_SignaturePad> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Sign Here'),
+        title: Text(AppLocalizations.of(context)!.signHere),
         actions: [
-          TextButton(onPressed: () => setState(() => _points.clear()), child: const Text('Clear')),
+          TextButton(onPressed: () => setState(() => _points.clear()), child: Text(AppLocalizations.of(context)!.clear)),
           FilledButton(
               onPressed: () => Navigator.pop(
                   context, _points.where((p) => p.isFinite).toList()),
-              child: const Text('Done')),
+              child: Text(AppLocalizations.of(context)!.done)),
           const SizedBox(width: 8),
         ],
       ),

@@ -210,5 +210,13 @@
   "firstPageOnlySubtitle": "وإلا، سيتم الختم على كل صفحة",
   "stamping": "جارٍ الختم…",
   "stampOntoPdf": "ختم على PDF",
-  "chooseImage": "اختيار صورة"
+  "chooseImage": "اختيار صورة",
+  "undo": "تراجع",
+  "redo": "إعادة",
+  "export": "تصدير",
+  "readingTheForm": "جارٍ قراءة النموذج…",
+  "openPdfOrImageToEdit": "افتح ملف PDF أو صورة للتحرير",
+  "signHere": "وقّع هنا",
+  "done": "تم",
+  "pageOfPages": "صفحة {current} من {total}"
 }

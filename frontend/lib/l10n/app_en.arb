@@ -233,5 +233,14 @@
   "firstPageOnlySubtitle": "Otherwise, stamp every page",
   "stamping": "Stamping…",
   "stampOntoPdf": "Stamp onto PDF",
-  "chooseImage": "Choose Image"
+  "chooseImage": "Choose Image",
+  "undo": "Undo",
+  "redo": "Redo",
+  "export": "Export",
+  "readingTheForm": "Reading the form…",
+  "openPdfOrImageToEdit": "Open a PDF or image to edit",
+  "signHere": "Sign Here",
+  "done": "Done",
+  "pageOfPages": "Page {current} of {total}",
+  "@pageOfPages": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } }
 }
