@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -17,11 +18,6 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
   final List<String> _files = [];
   bool _busy = false;
   List<String> _outputs = [];
-
-  String get _title => switch (widget.mode) {
-        PdfToolMode.merge => 'Merge PDFs',
-        PdfToolMode.split => 'Split PDF',
-      };
 
   Future<void> _pick() async {
     final result = await FilePicker.platform.pickFiles(
@@ -45,6 +41,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
 
   Future<void> _run() async {
     if (_files.isEmpty) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final svc = OfflinePdfService.instance;
@@ -59,14 +56,14 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
       if (mounted && _outputs.isNotEmpty) {
         await showResultSheet(context,
             paths: _outputs,
-            title: widget.mode == PdfToolMode.merge ? 'Merged' : 'Split Complete',
+            title: widget.mode == PdfToolMode.merge ? l10n.mergedTitle : l10n.splitComplete,
             subtitle: widget.mode == PdfToolMode.merge
-                ? '${_files.length} PDFs combined'
-                : '${_outputs.length} page(s) created');
+                ? l10n.pdfsCombined(_files.length)
+                : l10n.pagesCreated(_outputs.length));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -74,17 +71,21 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
   }
 
   Future<void> _shareAll() async {
+    final l10n = AppLocalizations.of(context)!;
     if (_outputs.isNotEmpty) {
-      await showResultSheet(context, paths: _outputs, title: 'Your Files');
+      await showResultSheet(context, paths: _outputs, title: l10n.yourFiles);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final isMerge = widget.mode == PdfToolMode.merge;
+    final title = isMerge ? l10n.mergePdfsTitle : l10n.toolSplit;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_title),
+        title: Text(title),
         actions: [
           if (_outputs.isNotEmpty)
             IconButton(icon: const Icon(Icons.share), onPressed: _shareAll),
@@ -102,7 +103,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.picture_as_pdf_outlined, size: 64, color: cs.outline),
                         const SizedBox(height: 12),
-                        Text(widget.mode == PdfToolMode.merge ? 'Choose PDFs to merge' : 'Choose a PDF',
+                        Text(isMerge ? l10n.choosePdfsToMerge : l10n.chooseAPdf,
                             style: const TextStyle(fontWeight: FontWeight.w600)),
                       ]),
                     )
@@ -120,7 +121,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                             )),
                         if (_outputs.isNotEmpty) ...[
                           const Divider(height: 32),
-                          Text('Results (${_outputs.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(l10n.resultsCount(_outputs.length), style: const TextStyle(fontWeight: FontWeight.w700)),
                           ..._outputs.map((o) => Card(
                                 color: cs.primaryContainer.withOpacity(0.3),
                                 child: ListTile(
@@ -137,7 +138,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _pick,
                   icon: const Icon(Icons.folder_open),
-                  label: Text(widget.mode == PdfToolMode.merge ? 'Add PDFs' : 'Choose PDF'),
+                  label: Text(isMerge ? l10n.addPdfs : l10n.choosePdf),
                 ),
               ),
               const SizedBox(width: 12),
@@ -147,7 +148,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                   icon: _busy
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.play_arrow),
-                  label: Text(_busy ? 'Working...' : 'Run'),
+                  label: Text(_busy ? l10n.working : l10n.run),
                 ),
               ),
             ]),
