@@ -20,6 +20,7 @@ import '../../features/tools/presentation/stamp_image_screen.dart';
 import '../../features/tools/presentation/delete_pages_screen.dart';
 import '../../features/tools/presentation/read_aloud_screen.dart';
 import '../../features/tools/presentation/convert_screen.dart';
+import '../../features/tools/presentation/import_pdf_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
@@ -57,6 +58,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/delete-pages', builder: (_, __) => const DeletePagesScreen()),
       GoRoute(path: '/tools/read-aloud', builder: (_, __) => const ReadAloudScreen()),
       GoRoute(path: '/tools/convert', builder: (_, __) => const ConvertScreen()),
+      GoRoute(path: '/tools/import-pdf', builder: (_, __) => const ImportPdfScreen()),
 
       // Recent files (created / edited / saved on device)
       GoRoute(path: '/recent', builder: (_, __) => const RecentFilesScreen()),

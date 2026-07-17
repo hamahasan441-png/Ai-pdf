@@ -59,3 +59,18 @@
 # Kotlin metadata / coroutines used by several plugins.
 -keep class kotlin.Metadata { *; }
 -dontwarn kotlinx.coroutines.**
+
+
+# --- OkHttp (used by PDF Import Engine) ---
+-keep class okhttp3.** { *; }
+-keep class okio.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+
+# --- PDF Import Engine: keep JS bridge interface methods ---
+-keepclassmembers class com.aidocassistant.app.pdfimport.** {
+    @android.webkit.JavascriptInterface <methods>;
+}
