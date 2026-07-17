@@ -14,6 +14,17 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
     # Startup
     print(f"Starting {settings.APP_NAME} in {settings.APP_ENV} mode")
+    # Ensure tables exist (idempotent; skips tables already created by Alembic).
+    # Import models so they register on Base.metadata before create_all.
+    try:
+        from app.db.database import init_db
+        from app.models import user as _user  # noqa: F401
+        from app.models import document as _document  # noqa: F401
+        from app.models import entitlement as _entitlement  # noqa: F401
+
+        await init_db()
+    except Exception as e:  # noqa: BLE001 - never block boot on DB init
+        print(f"[startup] init_db skipped/failed: {e}")
     yield
     # Shutdown
     print("Shutting down application")

@@ -8,9 +8,13 @@ makes Pro spoof-proof (the on-device entitlement is only a UX cache).
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.database import get_db
+from app.models.entitlement import Entitlement
 from app.services.billing.play_verifier import play_verifier
 
 logger = logging.getLogger(__name__)
@@ -30,8 +34,38 @@ class VerifyResponse(BaseModel):
     expiry_millis: int | None = None
 
 
+async def _persist(db: AsyncSession, req: "VerifyRequest", result) -> None:
+    """Upsert the verified entitlement keyed by purchase token. Best-effort:
+    a persistence failure must not break the verification response."""
+    try:
+        existing = (
+            await db.execute(
+                select(Entitlement).where(Entitlement.purchase_token == req.purchase_token)
+            )
+        ).scalar_one_or_none()
+        if existing:
+            existing.product_id = req.product_id
+            existing.tier = result.tier
+            existing.valid = result.valid
+            existing.expiry_millis = result.expiry_millis
+        else:
+            db.add(
+                Entitlement(
+                    purchase_token=req.purchase_token,
+                    product_id=req.product_id,
+                    tier=result.tier,
+                    valid=result.valid,
+                    expiry_millis=result.expiry_millis,
+                )
+            )
+        await db.flush()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Entitlement persist failed: %s", e)
+        await db.rollback()
+
+
 @router.post("/verify", response_model=VerifyResponse)
-async def verify_purchase(req: VerifyRequest):
+async def verify_purchase(req: VerifyRequest, db: AsyncSession = Depends(get_db)):
     """Verify a Play purchase/subscription token and return the entitlement."""
     if not play_verifier.configured:
         raise HTTPException(
@@ -55,6 +89,7 @@ async def verify_purchase(req: VerifyRequest):
         logger.exception("Play verify error")
         raise HTTPException(status_code=502, detail=f"Verification error: {e}")
 
+    await _persist(db, req, result)
     return VerifyResponse(
         valid=result.valid, tier=result.tier, expiry_millis=result.expiry_millis
     )

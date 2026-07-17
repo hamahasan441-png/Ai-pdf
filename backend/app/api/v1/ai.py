@@ -16,9 +16,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.auth import get_optional_user
 from app.core.config import settings
+from app.db.database import get_db
+from app.models.entitlement import Entitlement
 from app.models.user import User
 from app.services.ai.provider import ai_provider
 
@@ -56,12 +60,28 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
+async def _is_pro(db: AsyncSession, token: Optional[str]) -> bool:
+    """True if the X-Entitlement-Token maps to an active verified purchase."""
+    if not token:
+        return False
+    try:
+        ent = (
+            await db.execute(
+                select(Entitlement).where(Entitlement.purchase_token == token)
+            )
+        ).scalar_one_or_none()
+        return bool(ent and ent.is_active())
+    except Exception:  # noqa: BLE001 - DB issues must not break AI
+        return False
+
+
 async def managed_chat(
     req: ChatRequest,
     request: Request,
     user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Managed chat completion. Metered by the free daily limit."""
+    """Managed chat completion. Unlimited for verified Pro; else metered."""
     if not settings.AI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -70,20 +90,22 @@ async def managed_chat(
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty")
 
-    identity = str(user.id) if user else (request.client.host if request.client else "anon")
-    allowed, count = _check_and_increment(identity)
-    if not allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily free AI limit reached. Upgrade to Pro for unlimited AI.",
-        )
+    # Verified Pro (via purchase token) bypasses the free daily limit.
+    pro = await _is_pro(db, request.headers.get("X-Entitlement-Token"))
+    remaining = -1  # -1 => unlimited
+    if not pro:
+        identity = str(user.id) if user else (request.client.host if request.client else "anon")
+        allowed, count = _check_and_increment(identity)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Daily free AI limit reached. Upgrade to Pro for unlimited AI.",
+            )
+        remaining = max(0, settings.AI_FREE_DAILY_LIMIT - count)
 
     reply = await ai_provider.chat_completion(
         messages=[m.model_dump() for m in req.messages],
         temperature=req.temperature,
         use_advanced=req.use_advanced,
     )
-    return ChatResponse(
-        reply=reply,
-        remaining=max(0, settings.AI_FREE_DAILY_LIMIT - count),
-    )
+    return ChatResponse(reply=reply, remaining=remaining)
