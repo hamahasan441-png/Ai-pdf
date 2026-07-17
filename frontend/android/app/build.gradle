@@ -4,6 +4,26 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// ---------------------------------------------------------------------------
+// Release signing (optional, non-breaking).
+// If android/key.properties exists we sign the release build with the real
+// upload/release keystore. If it does NOT exist (e.g. CI without secrets, or a
+// fresh clone) we fall back to the debug key so `flutter build apk` still works.
+// Never commit key.properties or the .jks file — add them via CI secrets.
+//
+// key.properties format:
+//   storeFile=upload-keystore.jks
+//   storePassword=****
+//   keyAlias=upload
+//   keyPassword=****
+// ---------------------------------------------------------------------------
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+def hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.aidocassistant.app"
     compileSdk = 35
@@ -25,18 +45,36 @@ android {
     defaultConfig {
         applicationId = "com.aidocassistant.app"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // Google Play requires targetSdk 35 for new apps and updates (2025).
+        targetSdk = 35
+        // Driven by pubspec `version: x.y.z+BUILD`. CI passes --build-number to
+        // auto-increment BUILD so every Play upload has a unique versionCode.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
         multiDexEnabled = true
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseKeystore) {
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+                storeFile = keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
+                storePassword = keystoreProperties["storePassword"]
+            }
+        }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
-            // Keep minification OFF so plugin classes are never stripped
-            minifyEnabled = false
-            shrinkResources = false
+            // Real release signing when a keystore is configured; otherwise
+            // debug signing so CI / local builds keep working.
+            signingConfig = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
+            // R8 shrink + obfuscate: smaller APK, harder to reverse-engineer.
+            // Keep rules for reflection-heavy plugins live in proguard-rules.pro.
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 }
