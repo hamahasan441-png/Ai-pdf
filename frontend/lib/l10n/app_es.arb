@@ -74,5 +74,16 @@
   "toolUnderstand": "Comprender",
   "toolUnderstandDesc": "La IA lee cualquier documento o imagen",
   "toolAutoFill": "Autocompletar formulario",
-  "toolAutoFillDesc": "Chatea y la IA lo rellena"
+  "toolAutoFillDesc": "Chatea y la IA lo rellena",
+  "clearList": "Borrar lista",
+  "noRecentFiles": "Aún no hay archivos recientes",
+  "noRecentFilesBody": "Los archivos que crees o edites aparecerán aquí",
+  "clearRecentTitle": "¿Borrar archivos recientes?",
+  "clearRecentBody": "Esto solo borra la lista. Tus archivos guardados no se eliminan.",
+  "cancel": "Cancelar",
+  "clear": "Borrar",
+  "preview": "Vista previa",
+  "save": "Guardar",
+  "share": "Compartir",
+  "remove": "Quitar"
 }

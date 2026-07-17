@@ -74,5 +74,16 @@
   "toolUnderstand": "فهم",
   "toolUnderstandDesc": "يقرأ الذكاء الاصطناعي أي مستند أو صورة",
   "toolAutoFill": "تعبئة النموذج تلقائيًا",
-  "toolAutoFillDesc": "تحدّث ويقوم الذكاء الاصطناعي بتعبئته"
+  "toolAutoFillDesc": "تحدّث ويقوم الذكاء الاصطناعي بتعبئته",
+  "clearList": "مسح القائمة",
+  "noRecentFiles": "لا توجد ملفات حديثة بعد",
+  "noRecentFilesBody": "ستظهر هنا الملفات التي تنشئها أو تحرّرها",
+  "clearRecentTitle": "مسح الملفات الحديثة؟",
+  "clearRecentBody": "هذا يمسح القائمة فقط. لن تُحذف ملفاتك المحفوظة.",
+  "cancel": "إلغاء",
+  "clear": "مسح",
+  "preview": "معاينة",
+  "save": "حفظ",
+  "share": "مشاركة",
+  "remove": "إزالة"
 }

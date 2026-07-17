@@ -74,5 +74,16 @@
   "toolUnderstand": "Understand",
   "toolUnderstandDesc": "AI reads any doc/image",
   "toolAutoFill": "Auto-Fill Form",
-  "toolAutoFillDesc": "Chat & AI fills it"
+  "toolAutoFillDesc": "Chat & AI fills it",
+  "clearList": "Clear list",
+  "noRecentFiles": "No recent files yet",
+  "noRecentFilesBody": "Files you create or edit will appear here",
+  "clearRecentTitle": "Clear recent files?",
+  "clearRecentBody": "This only clears the list. Your saved files are not deleted.",
+  "cancel": "Cancel",
+  "clear": "Clear",
+  "preview": "Preview",
+  "save": "Save",
+  "share": "Share",
+  "remove": "Remove"
 }
