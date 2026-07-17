@@ -1556,6 +1556,64 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return true;
   }
 
+  /// Convert a Flutter [Color] to a [PdfColor], applying [opacity] as alpha.
+  /// Uses bit extraction (no per-channel getters) to keep it version-stable.
+  PdfColor _pdfColor(Color c, [double opacity = 1.0]) {
+    final v = c.value;
+    return PdfColor(
+      ((v >> 16) & 0xFF) / 255.0,
+      ((v >> 8) & 0xFF) / 255.0,
+      (v & 0xFF) / 255.0,
+      opacity.clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  /// Build a crisp VECTOR rectangle / whiteout box for export (resolution
+  /// independent). Only axis-aligned box shapes are vectorized this way; other
+  /// shapes are rasterized in [_composePagePng]. Coordinates are top-left,
+  /// matching the on-screen model, so mapping is a direct scale by page size.
+  pw.Widget _buildPdfShape(_Shape s, double pageW, double pageH) {
+    final left = math.min(s.start.dx, s.end.dx) * pageW;
+    final top = math.min(s.start.dy, s.end.dy) * pageH;
+    final w = (s.start.dx - s.end.dx).abs() * pageW;
+    final h = (s.start.dy - s.end.dy).abs() * pageH;
+    // Scale stroke width to the export page like the on-screen renderer does
+    // (reference height 1000px).
+    final k = pageH / 1000.0;
+    if (s.type == ShapeType.whiteout) {
+      return pw.Positioned(
+        left: left,
+        top: top,
+        child: pw.Container(
+          width: w,
+          height: h,
+          decoration: pw.BoxDecoration(
+            color: const PdfColor(1, 1, 1),
+            border: pw.Border.all(
+              color: const PdfColor(0.62, 0.62, 0.62),
+              width: (k).clamp(0.3, 2.0).toDouble(),
+            ),
+          ),
+        ),
+      );
+    }
+    return pw.Positioned(
+      left: left,
+      top: top,
+      child: pw.Container(
+        width: w,
+        height: h,
+        decoration: pw.BoxDecoration(
+          color: s.filled ? _pdfColor(s.color, s.opacity * 0.25) : null,
+          border: pw.Border.all(
+            color: _pdfColor(s.color, s.opacity),
+            width: (s.width * k).clamp(0.3, 40.0).toDouble(),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _export() async {
     setState(() => _loading = true);
     try {
@@ -1585,6 +1643,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
         }
 
         final image = pw.MemoryImage(composed.bytes);
+        // Axis-aligned box shapes (rectangles + whiteout) are drawn as crisp
+        // vectors over the page image, under the text layer.
+        final shapes = (_layers[i]?.shapes ?? const <_Shape>[])
+            .where((s) =>
+                s.type == ShapeType.rect || s.type == ShapeType.whiteout)
+            .toList();
         // Latin text is overlaid as REAL, selectable vector text; other scripts
         // and glyphs were already rasterized into the composed page image.
         final texts = (_layers[i]?.texts ?? const <_TextBox>[])
@@ -1603,6 +1667,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   height: pageH,
                   child: pw.Image(image, fit: pw.BoxFit.fill),
                 ),
+                for (final s in shapes) _buildPdfShape(s, pageW, pageH),
                 for (final t in texts)
                   pw.Positioned(
                     left: t.pos.dx * pageW,
@@ -1700,6 +1765,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
           _AnnDraw.stroke(canvas, size, s.points, s.color, s.width);
         }
         for (final s in layer.shapes) {
+          // Axis-aligned boxes are exported as crisp vectors; skip them here.
+          if (s.type == ShapeType.rect || s.type == ShapeType.whiteout) {
+            continue;
+          }
           _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color,
               s.width, s.filled, s.opacity);
         }
