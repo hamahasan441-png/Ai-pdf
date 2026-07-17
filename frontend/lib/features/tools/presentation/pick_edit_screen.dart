@@ -13,6 +13,8 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/signature_store.dart';
+import '../../../core/services/user_profile_service.dart';
+import '../../profile/presentation/profile_screen.dart';
 import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
@@ -925,6 +927,66 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final s = '${d.day.toString().padLeft(2, '0')}.'
         '${d.month.toString().padLeft(2, '0')}.${d.year}';
     setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
+  }
+
+  /// Fill & Sign: pick a saved profile value (name, address, ID…) and drop it
+  /// as a movable text box. Prompts to set up the profile if none is saved.
+  Future<void> _insertProfileField() async {
+    final l10n = AppLocalizations.of(context)!;
+    await UserProfileService.instance.load();
+    final data = UserProfileService.instance.data;
+    final entries = UserProfileService.fields
+        .where((f) => (data[f.$1] ?? '').trim().isNotEmpty)
+        .toList();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        if (entries.isEmpty) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.badge_outlined, size: 48, color: Theme.of(ctx).colorScheme.outline),
+                const SizedBox(height: 12),
+                Text(l10n.noProfileData, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.badge_outlined),
+                  label: Text(l10n.setUpProfile),
+                ),
+              ]),
+            ),
+          );
+        }
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final f in entries)
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(data[f.$1]!),
+                  subtitle: Text(f.$2),
+                  onTap: () {
+                    final value = data[f.$1]!;
+                    Navigator.pop(ctx);
+                    setState(() => _pushItem(
+                        _TextBox(const Offset(0.5, 0.5), value, _color, _textSize, _bold)));
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _editTextBox(_TextBox box, {bool isNew = false}) async {
@@ -1888,6 +1950,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 // --- Fill & Sign (form marks) ---
                 _actionBtn(Icons.gesture, l10n.toolSign, _addSignature, cs),
                 _actionBtn(Icons.event_available, l10n.signatureDate, _placeSignatureDate, cs),
+                _actionBtn(Icons.badge_outlined, l10n.myProfile, _insertProfileField, cs),
                 _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
                 _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
                 _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox, cs),

@@ -291,5 +291,15 @@
   "markCheckbox": "Casilla",
   "signatureDate": "Fecha de firma",
   "smartFill": "Relleno inteligente",
-  "scanning": "Escaneando…"
+  "scanning": "Escaneando…",
+  "myProfile": "Mi perfil",
+  "noProfileData": "Aún no hay datos de perfil guardados",
+  "readAloud": "Leer en voz alta",
+  "readAloudDesc": "Escucha cualquier documento",
+  "chooseFileToRead": "Elige un PDF o imagen para leer en voz alta",
+  "nothingToRead": "No se encontró texto para leer",
+  "play": "Reproducir",
+  "pause": "Pausar",
+  "stop": "Detener",
+  "speed": "Velocidad"
 }

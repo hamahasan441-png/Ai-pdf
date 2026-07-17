@@ -58,6 +58,10 @@ dependencies:
   # Flutter/AGP toolchain.
   google_mlkit_text_recognition: '>=0.13.0 <1.0.0'
 
+  # On-device text-to-speech for the Read Aloud reading tool (uses the system
+  # TTS engine; no network, no extra permissions).
+  flutter_tts: ^4.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

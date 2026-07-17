@@ -291,5 +291,15 @@
   "markCheckbox": "مربع اختيار",
   "signatureDate": "تاريخ التوقيع",
   "smartFill": "تعبئة ذكية",
-  "scanning": "جارٍ المسح…"
+  "scanning": "جارٍ المسح…",
+  "myProfile": "ملفي الشخصي",
+  "noProfileData": "لا توجد بيانات ملف شخصي محفوظة بعد",
+  "readAloud": "قراءة بصوت عالٍ",
+  "readAloudDesc": "استمع إلى أي مستند",
+  "chooseFileToRead": "اختر ملف PDF أو صورة للقراءة بصوت عالٍ",
+  "nothingToRead": "لم يتم العثور على نص للقراءة",
+  "play": "تشغيل",
+  "pause": "إيقاف مؤقت",
+  "stop": "إيقاف",
+  "speed": "السرعة"
 }

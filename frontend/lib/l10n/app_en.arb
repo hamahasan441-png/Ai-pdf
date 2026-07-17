@@ -318,5 +318,15 @@
   "markCheckbox": "Checkbox",
   "signatureDate": "Signature Date",
   "smartFill": "Smart Fill",
-  "scanning": "Scanning…"
+  "scanning": "Scanning…",
+  "myProfile": "My Profile",
+  "noProfileData": "No profile info saved yet",
+  "readAloud": "Read Aloud",
+  "readAloudDesc": "Listen to any document",
+  "chooseFileToRead": "Choose a PDF or image to read aloud",
+  "nothingToRead": "No text found to read",
+  "play": "Play",
+  "pause": "Pause",
+  "stop": "Stop",
+  "speed": "Speed"
 }
