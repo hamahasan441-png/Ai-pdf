@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 
+import '../../../core/ads/ads_service.dart';
 import '../../../core/services/recent_files_service.dart';
 import '../services/output_actions.dart';
 
@@ -26,7 +27,11 @@ Future<void> showResultSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => _ResultSheet(paths: paths, title: title, subtitle: subtitle),
-  );
+  ).whenComplete(() {
+    // Finishing a tool is a natural break — maybe show a (capped) interstitial
+    // to free users. No-op for Pro.
+    AdsService.instance.maybeShowInterstitial();
+  });
 }
 
 class _ResultSheet extends StatelessWidget {
