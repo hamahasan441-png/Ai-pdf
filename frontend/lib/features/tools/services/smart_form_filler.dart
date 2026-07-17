@@ -200,13 +200,18 @@ class SmartFormFiller {
         final best = _resolve(key, kind, info, profile);
         if (best == null) continue;
 
+        // Normalize dates to German TT.MM.JJJJ format for consistency.
+        final value = kind == ValueKind.date
+            ? _normalizeDate(best.value)
+            : best.value;
+
         final x = (line.x + line.w + 0.012).clamp(0.0, 0.97).toDouble();
         final y = line.y.clamp(0.0, 0.97).toDouble();
         out.add(FilledField(
           page: p + 1,
           x: x,
           y: y,
-          text: best.value,
+          text: value,
           field: label.replaceAll(':', '').trim(),
           anchor: label,
           type: kind == ValueKind.signature ? 'signature' : 'text',
@@ -338,6 +343,35 @@ class SmartFormFiller {
   /// Strip label leftovers / trailing separators from an extracted value.
   static String _clean(String v) =>
       v.trim().replaceAll(RegExp(r'^[:\-–]+'), '').replaceAll(RegExp(r'[;,]+$'), '').trim();
+
+  /// Normalize a date value to German TT.MM.JJJJ format when possible.
+  /// Handles ISO (2024-03-15), slash (03/15/2024, 15/03/2024), and dot
+  /// (15.03.2024) formats. Returns the original if unrecognizable.
+  static String _normalizeDate(String v) {
+    final s = v.trim();
+    // ISO: YYYY-MM-DD
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(s);
+    if (iso != null) {
+      return '${iso.group(3)!.padLeft(2, '0')}.${iso.group(2)!.padLeft(2, '0')}.${iso.group(1)}';
+    }
+    // Already DD.MM.YYYY — pass through
+    if (RegExp(r'^\d{1,2}\.\d{1,2}\.\d{4}$').hasMatch(s)) return s;
+    // DD/MM/YYYY or DD-MM-YYYY (European order: day first when day > 12)
+    final slash = RegExp(r'^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$').firstMatch(s);
+    if (slash != null) {
+      var d = int.tryParse(slash.group(1)!) ?? 0;
+      var m = int.tryParse(slash.group(2)!) ?? 0;
+      final y = slash.group(3)!;
+      // Heuristic: if first part > 12, it's the day (European); else ambiguous, keep order
+      if (d > 12 && m <= 12) {
+        // already day/month
+      } else if (m > 12 && d <= 12) {
+        final tmp = d; d = m; m = tmp; // swap: was month/day (US)
+      }
+      return '${d.toString().padLeft(2, '0')}.${m.toString().padLeft(2, '0')}.$y';
+    }
+    return s;
+  }
 
   /// Keep one value per detected label position so we never stack two answers
   /// on the same line.

@@ -114,6 +114,23 @@ class FormOntology {
         'tatigkeit', 'profession', 'profesión', 'profesion'], 'job_title',
         ValueKind.text),
 
+    // --- family / personal (expanded) ---
+    _Entry(['religion', 'konfession', 'glaubensbekenntnis', 'religionszugehörigkeit',
+        'religionszugehorigkeit'], 'religion', ValueKind.text),
+    _Entry(['kinder', 'children', 'anzahl kinder', 'number of children',
+        'kinderzahl'], 'children_count', ValueKind.number),
+    _Entry(['steuerklasse', 'tax class', 'lohnsteuerklasse'], 'tax_class',
+        ValueKind.number),
+    _Entry(['bundesland', 'federal state', 'state', 'province'], 'federal_state',
+        ValueKind.text),
+    _Entry(['einzugsdatum', 'einzug', 'move-in date', 'date of move',
+        'umzugsdatum'], 'move_in_date', ValueKind.date),
+    _Entry(['vermieter', 'landlord', 'hausverwaltung'], 'landlord', ValueKind.text),
+    _Entry(['miete', 'rent', 'kaltmiete', 'warmmiete', 'monatsmiete'],
+        'rent_amount', ValueKind.number),
+    _Entry(['wohnfläche', 'wohnflache', 'living space', 'wohnungsgröße',
+        'wohnungsgrosse', 'quadratmeter', 'qm'], 'living_space', ValueKind.number),
+
     // --- signature / generic date (most generic, checked last) ---
     _Entry(['signature', 'unterschrift', 'sign here', 'signed'], 'signature',
         ValueKind.signature),
@@ -125,13 +142,24 @@ class FormOntology {
   };
 
   /// Normalize a label for matching: lower-case, turn separators into spaces,
-  /// collapse whitespace. Diacritics are preserved (keyword lists include both
-  /// accented and ASCII spellings).
+  /// collapse whitespace, AND fold German diacritics/ß so OCR misreads like
+  /// "Strasse" still match "Straße" and "Geburtsort" matches "Geburtsört".
   static String _norm(String s) => s
       .toLowerCase()
+      .replaceAll('ä', 'ae')
+      .replaceAll('ö', 'oe')
+      .replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss')
       .replaceAll(RegExp(r'[:._,/]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+
+  /// Also normalize the keyword lists at match time for consistency.
+  static String _normKw(String kw) => kw
+      .replaceAll('ä', 'ae')
+      .replaceAll('ö', 'oe')
+      .replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss');
 
   /// Canonical field key for [label], or null if nothing matches.
   static String? match(String label) {
@@ -139,7 +167,7 @@ class FormOntology {
     if (s.isEmpty) return null;
     for (final e in _entries) {
       for (final k in e.kw) {
-        if (s.contains(k)) return e.key;
+        if (s.contains(_normKw(k))) return e.key;
       }
     }
     return null;
