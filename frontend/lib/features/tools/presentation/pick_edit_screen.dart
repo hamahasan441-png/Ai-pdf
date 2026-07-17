@@ -7,7 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart' show PdfPageFormat;
+import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -359,10 +359,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
 
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(autoCount > 0
-          ? 'Auto-filled $autoCount field(s) from your profile'
-          : 'No saved profile matches — set up My Profile to auto-fill'),
+          ? l10n.autoFilledCount(autoCount)
+          : l10n.noProfileMatches),
     ));
 
     if (remaining.isNotEmpty) {
@@ -377,9 +378,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Fill remaining fields'),
-        content: Text(
-            '${fields.length} field(s) had no saved value. Fill them one by one now?'),
+        title: Text(AppLocalizations.of(ctx)!.fillRemainingFields),
+        content: Text(AppLocalizations.of(ctx)!.fillRemainingBody(fields.length)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -400,8 +400,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Fill & Sign: add a typed signature rendered in a script-like style. A fast
   /// alternative to drawing when the user just wants their name on the line.
   Future<void> _typeSignature() async {
-    final val =
-        await _promptValue('Type your signature', TextInputType.text, FieldType.name);
+    final val = await _promptValue(
+        AppLocalizations.of(context)!.typeYourSignature,
+        TextInputType.text,
+        FieldType.name);
     if (val != null && val.trim().isNotEmpty) {
       setState(() => _pushItem(_TextBox(
             const Offset(0.4, 0.68),
@@ -782,6 +784,43 @@ class _PickEditScreenState extends State<PickEditScreen> {
         }
       }
       _snapSelected();
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  /// Resize the selected object so its bounding box becomes [nb] (normalized).
+  /// Works uniformly for every annotation type: stroke points are remapped,
+  /// shape endpoints are remapped, and text scales its font size by the height
+  /// ratio. Used by the corner resize handles.
+  void _scaleSelectedTo(Rect nb) {
+    final sel = _selected;
+    if (sel == null) return;
+    final ob = _boundsOf(sel);
+    final ow = ob.width.abs() < 1e-6 ? 1e-6 : ob.width;
+    final oh = ob.height.abs() < 1e-6 ? 1e-6 : ob.height;
+    double mapX(double x) => nb.left + (x - ob.left) / ow * nb.width;
+    double mapY(double y) => nb.top + (y - ob.top) / oh * nb.height;
+    setState(() {
+      if (sel is _Stroke) {
+        for (var i = 0; i < sel.points.length; i++) {
+          sel.points[i] = Offset(
+            mapX(sel.points[i].dx).clamp(0.0, 1.0),
+            mapY(sel.points[i].dy).clamp(0.0, 1.0),
+          );
+        }
+      } else if (sel is _Shape) {
+        sel.start = Offset(
+          mapX(sel.start.dx).clamp(0.0, 1.0),
+          mapY(sel.start.dy).clamp(0.0, 1.0),
+        );
+        sel.end = Offset(
+          mapX(sel.end.dx).clamp(0.0, 1.0),
+          mapY(sel.end.dy).clamp(0.0, 1.0),
+        );
+      } else if (sel is _TextBox) {
+        sel.pos = Offset(nb.left.clamp(0.0, 0.98), nb.top.clamp(0.0, 0.98));
+        sel.size = (sel.size * (nb.height / oh)).clamp(0.01, 0.2);
+      }
       _hasUnsavedChanges = true;
     });
   }
@@ -1430,7 +1469,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.keyboard),
-              title: const Text('Type signature'),
+              title: Text(AppLocalizations.of(ctx)!.typeSignature),
               onTap: () => Navigator.pop(ctx, 'type'),
             ),
             if (_savedSignatures.isNotEmpty) const Divider(height: 1),
@@ -1545,21 +1584,153 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   static const double _exportMaxEdge = 1800;
 
+  /// True if [s] can be represented with the PDF standard (Latin-1) fonts, so
+  /// it can be exported as real, selectable/searchable text rather than pixels.
+  /// Other scripts (e.g. Arabic) and special glyphs (✓ ☑ ●) are rasterized
+  /// into the page image instead, so they always render correctly.
+  bool _isLatin1(String s) {
+    for (final c in s.codeUnits) {
+      if (c > 0xFF) return false;
+    }
+    return true;
+  }
+
+  /// Convert a Flutter [Color] to a [PdfColor], applying [opacity] as alpha.
+  /// Uses bit extraction (no per-channel getters) to keep it version-stable.
+  PdfColor _pdfColor(Color c, [double opacity = 1.0]) {
+    final v = c.value;
+    return PdfColor(
+      ((v >> 16) & 0xFF) / 255.0,
+      ((v >> 8) & 0xFF) / 255.0,
+      (v & 0xFF) / 255.0,
+      opacity.clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  /// Build a crisp VECTOR rectangle / whiteout box for export (resolution
+  /// independent). Only axis-aligned box shapes are vectorized this way; other
+  /// shapes are rasterized in [_composePagePng]. Coordinates are top-left,
+  /// matching the on-screen model, so mapping is a direct scale by page size.
+  pw.Widget _buildPdfShape(_Shape s, double pageW, double pageH) {
+    final left = math.min(s.start.dx, s.end.dx) * pageW;
+    final top = math.min(s.start.dy, s.end.dy) * pageH;
+    final w = (s.start.dx - s.end.dx).abs() * pageW;
+    final h = (s.start.dy - s.end.dy).abs() * pageH;
+    // Scale stroke width to the export page like the on-screen renderer does
+    // (reference height 1000px).
+    final k = pageH / 1000.0;
+    if (s.type == ShapeType.whiteout) {
+      return pw.Positioned(
+        left: left,
+        top: top,
+        child: pw.Container(
+          width: w,
+          height: h,
+          decoration: pw.BoxDecoration(
+            color: const PdfColor(1, 1, 1),
+            border: pw.Border.all(
+              color: const PdfColor(0.62, 0.62, 0.62),
+              width: (k).clamp(0.3, 2.0).toDouble(),
+            ),
+          ),
+        ),
+      );
+    }
+    return pw.Positioned(
+      left: left,
+      top: top,
+      child: pw.Container(
+        width: w,
+        height: h,
+        decoration: pw.BoxDecoration(
+          color: s.filled ? _pdfColor(s.color, s.opacity * 0.25) : null,
+          border: pw.Border.all(
+            color: _pdfColor(s.color, s.opacity),
+            width: (s.width * k).clamp(0.3, 40.0).toDouble(),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _export() async {
     setState(() => _loading = true);
     try {
       final doc = pw.Document();
+      // Standard PDF fonts, built once and reused across pages.
+      final fonts = _PdfFonts();
       var rendered = 0;
       for (var i = 0; i < _pageCount; i++) {
-        final png = await _composePagePng(i);
-        if (png != null) {
-          final image = pw.MemoryImage(png);
-          doc.addPage(pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
-          ));
-          rendered++;
+        final composed = await _composePagePng(i);
+        if (composed == null) {
+          // Yield to the event loop so the UI stays responsive on big files.
+          await Future<void>.delayed(Duration.zero);
+          continue;
         }
+
+        // Page size in points, matching the raster's aspect ratio so the image
+        // fills the page exactly (no letterboxing) and normalized annotation
+        // coordinates map straight onto the page.
+        const longPts = 842.0; // A4 long edge
+        final double pageW, pageH;
+        if (composed.width >= composed.height) {
+          pageW = longPts;
+          pageH = longPts * composed.height / composed.width;
+        } else {
+          pageH = longPts;
+          pageW = longPts * composed.width / composed.height;
+        }
+
+        final image = pw.MemoryImage(composed.bytes);
+        // Axis-aligned box shapes (rectangles + whiteout) are drawn as crisp
+        // vectors over the page image, under the text layer.
+        final shapes = (_layers[i]?.shapes ?? const <_Shape>[])
+            .where((s) =>
+                s.type == ShapeType.rect || s.type == ShapeType.whiteout)
+            .toList();
+        // Latin text is overlaid as REAL, selectable vector text; other scripts
+        // and glyphs were already rasterized into the composed page image.
+        final texts = (_layers[i]?.texts ?? const <_TextBox>[])
+            .where((t) => t.text.isNotEmpty && _isLatin1(t.text))
+            .toList();
+
+        doc.addPage(pw.Page(
+          pageFormat: PdfPageFormat(pageW, pageH, marginAll: 0),
+          build: (_) => pw.SizedBox(
+            width: pageW,
+            height: pageH,
+            child: pw.Stack(
+              children: [
+                pw.SizedBox(
+                  width: pageW,
+                  height: pageH,
+                  child: pw.Image(image, fit: pw.BoxFit.fill),
+                ),
+                for (final s in shapes) _buildPdfShape(s, pageW, pageH),
+                for (final t in texts)
+                  pw.Positioned(
+                    left: t.pos.dx * pageW,
+                    top: t.pos.dy * pageH,
+                    child: pw.SizedBox(
+                      width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
+                      child: pw.Text(
+                        t.text,
+                        style: pw.TextStyle(
+                          font: fonts.pick(t.fontFamily, t.bold, t.italic),
+                          fontSize: t.size * pageH,
+                          color: PdfColor.fromInt(t.color.value),
+                          decoration: t.underline
+                              ? pw.TextDecoration.underline
+                              : pw.TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ));
+        rendered++;
         // Yield to the event loop so the UI stays responsive on big files.
         await Future<void>.delayed(Duration.zero);
       }
@@ -1586,9 +1757,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  /// Render page [index] at high resolution and paint its annotation layer on
-  /// top, returning a PNG. Everything is disposed before returning.
-  Future<Uint8List?> _composePagePng(int index) async {
+  /// Render page [index] at high resolution and paint the strokes, shapes and
+  /// non-Latin text of its annotation layer on top, returning the PNG bytes
+  /// plus pixel dimensions. Latin text is intentionally NOT drawn here — it is
+  /// overlaid as real vector text during export. Everything is disposed before
+  /// returning.
+  Future<({Uint8List bytes, int width, int height})?> _composePagePng(
+      int index) async {
     // 1) Obtain the base image bytes for this page (high-res for PDFs).
     Uint8List? baseBytes;
     if (_doc != null) {
@@ -1621,12 +1796,35 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.width, size.height));
       canvas.drawImage(base, Offset.zero, Paint());
-      _AnnDraw.layer(canvas, size, _layers[index]);
+      // Composite strokes + shapes, and any text that can't be a standard PDF
+      // font (non-Latin scripts, mark glyphs). Latin text stays vector on export.
+      final layer = _layers[index];
+      if (layer != null) {
+        for (final s in layer.strokes) {
+          _AnnDraw.stroke(canvas, size, s.points, s.color, s.width);
+        }
+        for (final s in layer.shapes) {
+          // Axis-aligned boxes are exported as crisp vectors; skip them here.
+          if (s.type == ShapeType.rect || s.type == ShapeType.whiteout) {
+            continue;
+          }
+          _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color,
+              s.width, s.filled, s.opacity);
+        }
+        for (final t in layer.texts) {
+          if (!_isLatin1(t.text)) _AnnDraw.text(canvas, size, t);
+        }
+      }
       final picture = recorder.endRecording();
       final composed = await picture.toImage(base.width, base.height);
       try {
         final data = await composed.toByteData(format: ui.ImageByteFormat.png);
-        return data?.buffer.asUint8List();
+        if (data == null) return null;
+        return (
+          bytes: data.buffer.asUint8List(),
+          width: base.width,
+          height: base.height,
+        );
       } finally {
         composed.dispose();
         picture.dispose();
@@ -1884,22 +2082,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                 ),
               ),
-            // Selection indicator + resize handles for shapes
-            if (_selected is _Shape) ...[
-              _buildShapeSelection(size, _selected as _Shape),
-              _resizeHandle(size, (_selected as _Shape).start, (v) {
-                setState(() {
-                  (_selected as _Shape).start = v;
-                  _hasUnsavedChanges = true;
-                });
-              }),
-              _resizeHandle(size, (_selected as _Shape).end, (v) {
-                setState(() {
-                  (_selected as _Shape).end = v;
-                  _hasUnsavedChanges = true;
-                });
-              }),
-            ],
             // Text boxes
             ..._layer.texts.map((t) => Positioned(
                   left: t.pos.dx * size.width,
@@ -1943,6 +2125,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     ),
                   ),
                 )),
+            // Unified selection: bounding box + corner resize handles that work
+            // for ANY object (signature/stroke, text, rectangle, line, arrow,
+            // oval). Drag the object body to move; drag a handle to resize.
+            if (_selected != null) ...[
+              _selectionBox(size, _boundsOf(_selected!)),
+              _scaleHandle(size, bottomRight: false),
+              _scaleHandle(size, bottomRight: true),
+            ],
             // Selection action bar (appears when something is selected)
             if (_selected != null)
               Positioned(
@@ -2032,46 +2222,62 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ),
       );
 
-  Widget _buildShapeSelection(Size size, _Shape s) {
-    final left = math.min(s.start.dx, s.end.dx) * size.width - 4;
-    final top = math.min(s.start.dy, s.end.dy) * size.height - 4;
-    final w = (s.end.dx - s.start.dx).abs() * size.width + 8;
-    final h = (s.end.dy - s.start.dy).abs() * size.height + 8;
+  /// The blue selection outline drawn around the currently selected object of
+  /// any type. [b] is the object's normalized bounding box.
+  Widget _selectionBox(Size size, Rect b) {
     return Positioned(
-      left: left,
-      top: top,
-      width: w,
-      height: h,
+      left: b.left * size.width - 3,
+      top: b.top * size.height - 3,
+      width: (b.width * size.width + 6).clamp(8.0, size.width),
+      height: (b.height * size.height + 6).clamp(8.0, size.height),
       child: IgnorePointer(
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.blue, width: 2),
+            border: Border.all(color: Colors.blueAccent, width: 1.5),
           ),
         ),
       ),
     );
   }
 
-  /// A draggable blue dot for resizing a shape endpoint. [norm] is the current
-  /// normalized position; [onDrag] receives the new normalized position.
-  Widget _resizeHandle(Size size, Offset norm, void Function(Offset) onDrag) {
+  /// A draggable corner handle that resizes the selected object (any type) by
+  /// its bounding box. [bottomRight] chooses which corner; the opposite corner
+  /// stays anchored. Recomputes from the live bounds each frame so scaling is
+  /// stable as the object changes size.
+  Widget _scaleHandle(Size size, {required bool bottomRight}) {
+    final sel = _selected;
+    if (sel == null) return const SizedBox.shrink();
+    final b = _boundsOf(sel);
+    final hx = (bottomRight ? b.right : b.left) * size.width;
+    final hy = (bottomRight ? b.bottom : b.top) * size.height;
     return Positioned(
-      left: norm.dx * size.width - 14,
-      top: norm.dy * size.height - 14,
+      left: hx - 15,
+      top: hy - 15,
       child: GestureDetector(
         onPanUpdate: (d) {
-          final nx = (norm.dx + d.delta.dx / size.width).clamp(0.0, 1.0);
-          final ny = (norm.dy + d.delta.dy / size.height).clamp(0.0, 1.0);
-          onDrag(Offset(nx, ny));
+          final cur = _boundsOf(sel);
+          final dxN = d.delta.dx / size.width;
+          final dyN = d.delta.dy / size.height;
+          final Rect nb = bottomRight
+              ? Rect.fromLTRB(cur.left, cur.top, cur.right + dxN, cur.bottom + dyN)
+              : Rect.fromLTRB(cur.left + dxN, cur.top + dyN, cur.right, cur.bottom);
+          // Keep a sane minimum so the object never collapses to nothing.
+          if (nb.width < 0.02 || nb.height < 0.01) return;
+          _scaleSelectedTo(nb);
         },
         child: Container(
-          width: 28,
-          height: 28,
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
-            color: Colors.blue,
+            color: Colors.blueAccent,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
+          ),
+          child: Icon(
+            bottomRight ? Icons.open_in_full : Icons.close_fullscreen,
+            size: 12,
+            color: Colors.white,
           ),
         ),
       ),
@@ -2136,7 +2342,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
               child: Row(children: [
                 _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
-                _actionBtn(Icons.auto_fix_high, 'Auto-fill',
+                _actionBtn(Icons.auto_fix_high, l10n.autoFill,
                     _detecting ? () {} : _autoFill, cs),
                 _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
                     l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),
@@ -2259,6 +2465,38 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The 14 built-in PDF standard fonts, created once and reused across pages
+/// during export. Standard fonts keep the exported text selectable/searchable
+/// without bundling any TTF assets (Latin-1 coverage only — non-Latin text is
+/// rasterized into the page image instead).
+class _PdfFonts {
+  final pw.Font helv = pw.Font.helvetica();
+  final pw.Font helvB = pw.Font.helveticaBold();
+  final pw.Font helvO = pw.Font.helveticaOblique();
+  final pw.Font helvBO = pw.Font.helveticaBoldOblique();
+  final pw.Font times = pw.Font.times();
+  final pw.Font timesB = pw.Font.timesBold();
+  final pw.Font timesI = pw.Font.timesItalic();
+  final pw.Font timesBI = pw.Font.timesBoldItalic();
+  final pw.Font cour = pw.Font.courier();
+  final pw.Font courB = pw.Font.courierBold();
+  final pw.Font courO = pw.Font.courierOblique();
+  final pw.Font courBO = pw.Font.courierBoldOblique();
+
+  /// Pick the standard font matching the editor's [family] ('serif' -> Times,
+  /// 'monospace' -> Courier, else Helvetica) and bold/italic style.
+  pw.Font pick(String? family, bool bold, bool italic) {
+    switch (family) {
+      case 'serif':
+        return bold ? (italic ? timesBI : timesB) : (italic ? timesI : times);
+      case 'monospace':
+        return bold ? (italic ? courBO : courB) : (italic ? courO : cour);
+      default:
+        return bold ? (italic ? helvBO : helvB) : (italic ? helvO : helv);
+    }
   }
 }
 

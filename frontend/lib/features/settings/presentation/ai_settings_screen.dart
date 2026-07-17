@@ -196,6 +196,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               items: [
                 DropdownMenuItem(value: '', child: Text(l10n.systemDefault)),
                 const DropdownMenuItem(value: 'en', child: Text('English')),
+                const DropdownMenuItem(value: 'de', child: Text('Deutsch')),
                 const DropdownMenuItem(value: 'es', child: Text('Español')),
                 const DropdownMenuItem(value: 'ar', child: Text('العربية')),
               ],
