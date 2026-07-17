@@ -113,6 +113,24 @@ class SmartFormFiller {
         addKind(ValueKind.postalCode, m.group(0)!);
       }
     }
+
+    // Cross-derive name parts so a form that splits Vorname/Nachname can be
+    // filled from a single "Name", and vice versa. German forms almost always
+    // split the name, while ID docs often print it as one line.
+    final full = byKey['full_name'];
+    if (full != null) {
+      final parts =
+          full.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+      if (parts.length >= 2) {
+        byKey.putIfAbsent('first_name', () => parts.first);
+        byKey.putIfAbsent('last_name', () => parts.sublist(1).join(' '));
+      }
+    } else {
+      final f = byKey['first_name'];
+      final l = byKey['last_name'];
+      if (f != null && l != null) byKey['full_name'] = '$f $l';
+    }
+
     return InfoStore(byKey, byKind);
   }
 

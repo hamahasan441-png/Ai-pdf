@@ -36,8 +36,24 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
   String? _infoPath;
   String? _infoName;
   bool _busy = false;
+  bool _profileHasData = false;
   String? _status;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileFlag();
+  }
+
+  /// So the info document can be optional: if the saved profile has anything,
+  /// the form can be filled from it alone (fully standalone, one upload).
+  Future<void> _loadProfileFlag() async {
+    await UserProfileService.instance.load();
+    final has =
+        UserProfileService.instance.data.values.any((v) => v.trim().isNotEmpty);
+    if (mounted) setState(() => _profileHasData = has);
+  }
 
   Future<void> _pickForm() async {
     final picked = await _pickFile();
@@ -73,7 +89,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
   Future<void> _run() async {
     final formPath = _formPath;
     final infoPath = _infoPath;
-    if (formPath == null || infoPath == null || _busy) return;
+    if (formPath == null || _busy) return;
     final l10n = AppLocalizations.of(context)!;
     setState(() {
       _busy = true;
@@ -82,9 +98,14 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
     });
     try {
       final formPages = await _ocrDocument(formPath);
-      if (!mounted) return;
-      setState(() => _status = l10n.smartFillReadingInfo);
-      final infoPages = await _ocrDocument(infoPath);
+      // The info document is optional — when it's omitted we fill straight from
+      // the user's saved on-device profile (no second upload needed).
+      List<OcrResult> infoPages = const [];
+      if (infoPath != null) {
+        if (!mounted) return;
+        setState(() => _status = l10n.smartFillReadingInfo);
+        infoPages = await _ocrDocument(infoPath);
+      }
 
       await UserProfileService.instance.load();
       final profile = UserProfileService.instance.data;
@@ -170,7 +191,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
-    final ready = _formPath != null && _infoPath != null;
+    final ready = _formPath != null && (_infoPath != null || _profileHasData);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.smartFormFiller)),
       body: ListView(
@@ -211,6 +232,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
             title: l10n.smartFillInfoStep,
             fileName: _infoName,
             actionLabel: _infoName == null ? l10n.chooseFile : l10n.change,
+            emptyLabel: _profileHasData ? l10n.smartFillInfoOptional : null,
             onTap: _busy ? null : _pickInfo,
           ),
           const SizedBox(height: 20),
@@ -262,6 +284,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
     required String? fileName,
     required String actionLabel,
     required VoidCallback? onTap,
+    String? emptyLabel,
   }) {
     final chosen = fileName != null;
     return InkWell(
@@ -296,8 +319,10 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
                         fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  fileName ?? AppLocalizations.of(context)!.smartFillNotChosen,
-                  maxLines: 1,
+                  fileName ??
+                      emptyLabel ??
+                      AppLocalizations.of(context)!.smartFillNotChosen,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 12,

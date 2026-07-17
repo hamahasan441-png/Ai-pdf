@@ -51,6 +51,10 @@ class FormOntology {
         'prénom', 'nombre'], 'first_name', ValueKind.name),
     _Entry(['last name', 'surname', 'family name', 'nachname', 'familienname',
         'nom de famille', 'apellidos', 'apellido'], 'last_name', ValueKind.name),
+    _Entry(['geburtsname', 'birth name', 'maiden name', 'mädchenname',
+        'madchenname'], 'birth_name', ValueKind.name),
+    _Entry(['name des ehegatten', 'ehegatte', 'ehepartner', 'ehefrau',
+        'ehemann', 'spouse'], 'spouse_name', ValueKind.name),
     _Entry(['full name', 'vollständiger name', 'vollstandiger name',
         'vor- und nachname', 'name and surname', 'name'], 'full_name',
         ValueKind.name),
@@ -68,11 +72,14 @@ class FormOntology {
     _Entry(['telephone', 'phone', 'telefon', 'téléphone', 'telefono',
         'teléfono', 'mobile', 'mobil', 'handy'], 'phone_number',
         ValueKind.phone),
+    _Entry(['telefax', 'faxnummer', 'fax'], 'fax', ValueKind.phone),
 
     // --- address ---
     _Entry(['postal code', 'post code', 'postcode', 'postleitzahl', 'plz',
         'zip', 'código postal', 'codigo postal'], 'postal_code',
         ValueKind.postalCode),
+    _Entry(['hausnummer', 'house number', 'haus-nr', 'hausnr', 'house no'],
+        'house_number', ValueKind.number),
     _Entry(['street address', 'street', 'straße', 'strasse', 'anschrift',
         'adresse', 'address', 'dirección', 'direccion'], 'street_address',
         ValueKind.street),
@@ -93,7 +100,11 @@ class FormOntology {
     _Entry(['id number', 'identity card', 'personalausweis', 'ausweisnummer',
         'ausweis', 'identity', 'id no'], 'id_number', ValueKind.idNumber),
     _Entry(['iban'], 'iban', ValueKind.iban),
+    _Entry(['kontonummer', 'konto-nr', 'kontonr', 'account number'],
+        'bank_account', ValueKind.number),
     _Entry(['bic', 'swift'], 'bic', ValueKind.text),
+    _Entry(['krankenkasse', 'krankenversicherung', 'health insurance',
+        'gesundheitskasse'], 'health_insurance', ValueKind.text),
     _Entry(['bank', 'kreditinstitut'], 'bank_name', ValueKind.text),
 
     // --- work ---

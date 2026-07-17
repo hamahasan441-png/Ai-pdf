@@ -13,6 +13,7 @@
   "smartFillFormStep": "النموذج المراد تعبئته",
   "smartFillInfoStep": "مستند بياناتك",
   "smartFillNotChosen": "لم يُختَر بعد",
+  "smartFillInfoOptional": "اختياري — سنملأ من ملفك الشخصي المحفوظ",
   "smartFillReadingInfo": "جارٍ قراءة بياناتك…",
   "smartFillMatching": "جارٍ مطابقة الحقول…",
   "smartFillNoMatch": "تعذّرت مطابقة أي حقل بثقة. تأكد من وضوح المستند، أو افتح النموذج في المحرر واستخدم التعبئة الذكية / التعبئة التلقائية لوضع القيم يدويًا.",
