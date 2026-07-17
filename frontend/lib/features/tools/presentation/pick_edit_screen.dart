@@ -16,6 +16,7 @@ import '../../../core/services/signature_store.dart';
 import '../../../core/services/user_profile_service.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../models/filled_field.dart';
+import '../services/profile_field_matcher.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
@@ -312,6 +313,107 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pushItem(_TextBox(pos, text, Colors.black, size, false));
       _selected = null;
     });
+  }
+
+  // ---- Offline Smart Auto-Fill (form filler) --------------------------
+  //
+  // Uses the on-device profile + OCR-detected labels to fill known fields
+  // instantly and privately — no network, no AI call. Whatever can't be
+  // matched from the profile is offered as a quick guided pass, so the user
+  // taps through the rest with the correct keyboard / date picker per field.
+
+  Future<void> _autoFill() async {
+    if (_pageCache[_current] == null) return;
+    // Make sure we have fields to work with on this page.
+    if (_pageFields.isEmpty) {
+      await _detectFields();
+    }
+    final fields = _pageFields;
+    if (fields.isEmpty) return; // _detectFields already messaged the user.
+
+    await UserProfileService.instance.load();
+    final profile = UserProfileService.instance.data;
+
+    var autoCount = 0;
+    final remaining = <DetectedField>[];
+    for (final f in fields) {
+      // Signatures always need an explicit gesture/typed entry.
+      if (f.type == FieldType.signature) {
+        remaining.add(f);
+        continue;
+      }
+      final key = ProfileFieldMatcher.match(f.label);
+      final value = key == null ? null : profile[key];
+      if (value != null && value.trim().isNotEmpty) {
+        // Place the value just after the label, at the label's line height.
+        final pos = Offset(
+          (f.rect.left + f.rect.width + 0.012).clamp(0.0, 0.9),
+          f.rect.top,
+        );
+        final size = (f.rect.height * 0.85).clamp(0.014, 0.06);
+        _placeValue(pos, size, value.trim());
+        autoCount++;
+      } else {
+        remaining.add(f);
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(autoCount > 0
+          ? 'Auto-filled $autoCount field(s) from your profile'
+          : 'No saved profile matches — set up My Profile to auto-fill'),
+    ));
+
+    if (remaining.isNotEmpty) {
+      await _guidedFill(remaining);
+    }
+  }
+
+  /// Step through [fields] one-by-one, opening the right input for each so the
+  /// user can quickly complete anything the profile couldn't fill.
+  Future<void> _guidedFill(List<DetectedField> fields) async {
+    if (!mounted || fields.isEmpty) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fill remaining fields'),
+        content: Text(
+            '${fields.length} field(s) had no saved value. Fill them one by one now?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(AppLocalizations.of(ctx)!.ok)),
+        ],
+      ),
+    );
+    if (go != true) return;
+    for (final f in fields) {
+      if (!mounted) break;
+      await _openFieldInput(f);
+    }
+  }
+
+  /// Fill & Sign: add a typed signature rendered in a script-like style. A fast
+  /// alternative to drawing when the user just wants their name on the line.
+  Future<void> _typeSignature() async {
+    final val =
+        await _promptValue('Type your signature', TextInputType.text, FieldType.name);
+    if (val != null && val.trim().isNotEmpty) {
+      setState(() => _pushItem(_TextBox(
+            const Offset(0.4, 0.68),
+            val.trim(),
+            Colors.black,
+            0.045,
+            false, // bold
+            true, // italic (script-like)
+            false, // underline
+            'serif',
+          )));
+    }
   }
 
   Future<String?> _promptValue(String label, TextInputType kb, FieldType type) {
@@ -1313,49 +1415,53 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   Future<void> _addSignature() async {
-    // Show option: draw new or use saved
+    // Chooser: draw a new signature, type one, or reuse a saved drawing.
     List<Offset>? points;
-    if (_savedSignatures.isNotEmpty) {
-      final choice = await showModalBottomSheet<String>(
-        context: context,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.draw),
-                title: Text(AppLocalizations.of(ctx)!.drawNewSignature),
-                onTap: () => Navigator.pop(ctx, 'new'),
-              ),
-              const Divider(height: 1),
-              ...List.generate(_savedSignatures.length, (i) => ListTile(
-                    leading: const Icon(Icons.gesture),
-                    title: Text(AppLocalizations.of(ctx)!.savedSignatureN(i + 1)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                      onPressed: () {
-                        _savedSignatures.removeAt(i);
-                        SignatureStore.instance.save(_savedSignatures);
-                        Navigator.pop(ctx);
-                      },
-                    ),
-                    onTap: () => Navigator.pop(ctx, 'saved_$i'),
-                  )),
-            ],
-          ),
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.draw),
+              title: Text(AppLocalizations.of(ctx)!.drawNewSignature),
+              onTap: () => Navigator.pop(ctx, 'new'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.keyboard),
+              title: const Text('Type signature'),
+              onTap: () => Navigator.pop(ctx, 'type'),
+            ),
+            if (_savedSignatures.isNotEmpty) const Divider(height: 1),
+            ...List.generate(_savedSignatures.length, (i) => ListTile(
+                  leading: const Icon(Icons.gesture),
+                  title: Text(AppLocalizations.of(ctx)!.savedSignatureN(i + 1)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    onPressed: () {
+                      _savedSignatures.removeAt(i);
+                      SignatureStore.instance.save(_savedSignatures);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  onTap: () => Navigator.pop(ctx, 'saved_$i'),
+                )),
+          ],
         ),
-      );
-      if (choice == null) return;
-      if (choice == 'new') {
-        points = await _drawSignature();
-      } else if (choice.startsWith('saved_')) {
-        final idx = int.tryParse(choice.replaceFirst('saved_', ''));
-        if (idx != null && idx < _savedSignatures.length) {
-          points = _savedSignatures[idx];
-        }
-      }
-    } else {
+      ),
+    );
+    if (choice == null) return;
+    if (choice == 'type') {
+      await _typeSignature();
+      return;
+    } else if (choice == 'new') {
       points = await _drawSignature();
+    } else if (choice.startsWith('saved_')) {
+      final idx = int.tryParse(choice.replaceFirst('saved_', ''));
+      if (idx != null && idx < _savedSignatures.length) {
+        points = _savedSignatures[idx];
+      }
     }
 
     if (points != null && points.length > 1) {
@@ -2030,6 +2136,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
               child: Row(children: [
                 _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
+                _actionBtn(Icons.auto_fix_high, 'Auto-fill',
+                    _detecting ? () {} : _autoFill, cs),
                 _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
                     l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),
                 if (_pageFields.isNotEmpty)
