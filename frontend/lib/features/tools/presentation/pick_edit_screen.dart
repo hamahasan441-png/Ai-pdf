@@ -7,7 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart' show PdfPageFormat;
+import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -1545,21 +1545,88 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   static const double _exportMaxEdge = 1800;
 
+  /// True if [s] can be represented with the PDF standard (Latin-1) fonts, so
+  /// it can be exported as real, selectable/searchable text rather than pixels.
+  /// Other scripts (e.g. Arabic) and special glyphs (✓ ☑ ●) are rasterized
+  /// into the page image instead, so they always render correctly.
+  bool _isLatin1(String s) {
+    for (final c in s.codeUnits) {
+      if (c > 0xFF) return false;
+    }
+    return true;
+  }
+
   Future<void> _export() async {
     setState(() => _loading = true);
     try {
       final doc = pw.Document();
+      // Standard PDF fonts, built once and reused across pages.
+      final fonts = _PdfFonts();
       var rendered = 0;
       for (var i = 0; i < _pageCount; i++) {
-        final png = await _composePagePng(i);
-        if (png != null) {
-          final image = pw.MemoryImage(png);
-          doc.addPage(pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
-          ));
-          rendered++;
+        final composed = await _composePagePng(i);
+        if (composed == null) {
+          // Yield to the event loop so the UI stays responsive on big files.
+          await Future<void>.delayed(Duration.zero);
+          continue;
         }
+
+        // Page size in points, matching the raster's aspect ratio so the image
+        // fills the page exactly (no letterboxing) and normalized annotation
+        // coordinates map straight onto the page.
+        const longPts = 842.0; // A4 long edge
+        final double pageW, pageH;
+        if (composed.width >= composed.height) {
+          pageW = longPts;
+          pageH = longPts * composed.height / composed.width;
+        } else {
+          pageH = longPts;
+          pageW = longPts * composed.width / composed.height;
+        }
+
+        final image = pw.MemoryImage(composed.bytes);
+        // Latin text is overlaid as REAL, selectable vector text; other scripts
+        // and glyphs were already rasterized into the composed page image.
+        final texts = (_layers[i]?.texts ?? const <_TextBox>[])
+            .where((t) => t.text.isNotEmpty && _isLatin1(t.text))
+            .toList();
+
+        doc.addPage(pw.Page(
+          pageFormat: PdfPageFormat(pageW, pageH, marginAll: 0),
+          build: (_) => pw.SizedBox(
+            width: pageW,
+            height: pageH,
+            child: pw.Stack(
+              children: [
+                pw.SizedBox(
+                  width: pageW,
+                  height: pageH,
+                  child: pw.Image(image, fit: pw.BoxFit.fill),
+                ),
+                for (final t in texts)
+                  pw.Positioned(
+                    left: t.pos.dx * pageW,
+                    top: t.pos.dy * pageH,
+                    child: pw.SizedBox(
+                      width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
+                      child: pw.Text(
+                        t.text,
+                        style: pw.TextStyle(
+                          font: fonts.pick(t.fontFamily, t.bold, t.italic),
+                          fontSize: t.size * pageH,
+                          color: PdfColor.fromInt(t.color.value),
+                          decoration: t.underline
+                              ? pw.TextDecoration.underline
+                              : pw.TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ));
+        rendered++;
         // Yield to the event loop so the UI stays responsive on big files.
         await Future<void>.delayed(Duration.zero);
       }
@@ -1586,9 +1653,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  /// Render page [index] at high resolution and paint its annotation layer on
-  /// top, returning a PNG. Everything is disposed before returning.
-  Future<Uint8List?> _composePagePng(int index) async {
+  /// Render page [index] at high resolution and paint the strokes, shapes and
+  /// non-Latin text of its annotation layer on top, returning the PNG bytes
+  /// plus pixel dimensions. Latin text is intentionally NOT drawn here — it is
+  /// overlaid as real vector text during export. Everything is disposed before
+  /// returning.
+  Future<({Uint8List bytes, int width, int height})?> _composePagePng(
+      int index) async {
     // 1) Obtain the base image bytes for this page (high-res for PDFs).
     Uint8List? baseBytes;
     if (_doc != null) {
@@ -1621,12 +1692,31 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.width, size.height));
       canvas.drawImage(base, Offset.zero, Paint());
-      _AnnDraw.layer(canvas, size, _layers[index]);
+      // Composite strokes + shapes, and any text that can't be a standard PDF
+      // font (non-Latin scripts, mark glyphs). Latin text stays vector on export.
+      final layer = _layers[index];
+      if (layer != null) {
+        for (final s in layer.strokes) {
+          _AnnDraw.stroke(canvas, size, s.points, s.color, s.width);
+        }
+        for (final s in layer.shapes) {
+          _AnnDraw.shape(canvas, size, s.type, s.start, s.end, s.color,
+              s.width, s.filled, s.opacity);
+        }
+        for (final t in layer.texts) {
+          if (!_isLatin1(t.text)) _AnnDraw.text(canvas, size, t);
+        }
+      }
       final picture = recorder.endRecording();
       final composed = await picture.toImage(base.width, base.height);
       try {
         final data = await composed.toByteData(format: ui.ImageByteFormat.png);
-        return data?.buffer.asUint8List();
+        if (data == null) return null;
+        return (
+          bytes: data.buffer.asUint8List(),
+          width: base.width,
+          height: base.height,
+        );
       } finally {
         composed.dispose();
         picture.dispose();
@@ -2259,6 +2349,38 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The 14 built-in PDF standard fonts, created once and reused across pages
+/// during export. Standard fonts keep the exported text selectable/searchable
+/// without bundling any TTF assets (Latin-1 coverage only — non-Latin text is
+/// rasterized into the page image instead).
+class _PdfFonts {
+  final pw.Font helv = pw.Font.helvetica();
+  final pw.Font helvB = pw.Font.helveticaBold();
+  final pw.Font helvO = pw.Font.helveticaOblique();
+  final pw.Font helvBO = pw.Font.helveticaBoldOblique();
+  final pw.Font times = pw.Font.times();
+  final pw.Font timesB = pw.Font.timesBold();
+  final pw.Font timesI = pw.Font.timesItalic();
+  final pw.Font timesBI = pw.Font.timesBoldItalic();
+  final pw.Font cour = pw.Font.courier();
+  final pw.Font courB = pw.Font.courierBold();
+  final pw.Font courO = pw.Font.courierOblique();
+  final pw.Font courBO = pw.Font.courierBoldOblique();
+
+  /// Pick the standard font matching the editor's [family] ('serif' -> Times,
+  /// 'monospace' -> Courier, else Helvetica) and bold/italic style.
+  pw.Font pick(String? family, bool bold, bool italic) {
+    switch (family) {
+      case 'serif':
+        return bold ? (italic ? timesBI : timesB) : (italic ? timesI : times);
+      case 'monospace':
+        return bold ? (italic ? courBO : courB) : (italic ? courO : cour);
+      default:
+        return bold ? (italic ? helvBO : helvB) : (italic ? helvO : helv);
+    }
   }
 }
 
