@@ -303,5 +303,13 @@
   "stop": "إيقاف",
   "speed": "السرعة",
   "editTextTool": "تحرير النص",
-  "tapLineToEdit": "اضغط على سطر لتحرير نصه"
+  "tapLineToEdit": "اضغط على سطر لتحرير نصه",
+  "convert": "تحويل",
+  "convertDesc": "PDF إلى Word وExcel وPPT",
+  "convertToWord": "PDF إلى Word",
+  "convertToExcel": "PDF إلى Excel",
+  "convertToPpt": "PDF إلى PowerPoint",
+  "convertedTitle": "تم التحويل",
+  "convertNeedsServer": "يتطلب التحويل السحابي خادم AI PDF. اضبط عنوان الخادم في إعدادات الذكاء الاصطناعي.",
+  "badgeCloud": "سحابة"
 }

@@ -303,5 +303,13 @@
   "stop": "Detener",
   "speed": "Velocidad",
   "editTextTool": "Editar texto",
-  "tapLineToEdit": "Toca una línea para editar su texto"
+  "tapLineToEdit": "Toca una línea para editar su texto",
+  "convert": "Convertir",
+  "convertDesc": "PDF a Word, Excel, PPT",
+  "convertToWord": "PDF a Word",
+  "convertToExcel": "PDF a Excel",
+  "convertToPpt": "PDF a PowerPoint",
+  "convertedTitle": "Convertido",
+  "convertNeedsServer": "La conversión en la nube necesita el servidor de AI PDF. Configura la URL del servidor en Ajustes de IA.",
+  "badgeCloud": "Nube"
 }

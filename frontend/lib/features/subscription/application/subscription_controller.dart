@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../../../core/observability/analytics_service.dart';
+import '../data/billing_verifier.dart';
 import '../data/entitlement_store.dart';
 import '../data/purchase_service.dart';
 import '../domain/entitlement.dart';
@@ -80,6 +81,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
   final PurchaseService _purchases;
   final EntitlementStore _store;
+  final BillingVerifier _verifier = BillingVerifier();
   StreamSubscription<List<PurchaseDetails>>? _sub;
 
   /// Idempotent startup: load cached entitlement, connect to the store, start
@@ -188,10 +190,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
   }
 
   Future<void> _grant(PurchaseDetails p) async {
-    // NOTE: production must verify p.verificationData server-side before
-    // granting. We optimistically grant + cache locally for a good UX and
-    // rely on server verification (follow-up) to be authoritative.
-    final tier = ProductIds.tierForProduct(p.productID);
+    var tier = ProductIds.tierForProduct(p.productID);
     if (tier == ProTier.free) return;
 
     DateTime? expiry;
@@ -199,6 +198,25 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       expiry = DateTime.now().add(const Duration(days: 31));
     } else if (tier == ProTier.yearly) {
       expiry = DateTime.now().add(const Duration(days: 366));
+    }
+
+    // Prefer authoritative server verification when a backend is configured.
+    // If it can't run (no server / offline), fall back to the optimistic grant.
+    final server = await _verifier.verify(
+      productId: p.productID,
+      purchaseToken: p.verificationData.serverVerificationData,
+      isSubscription: ProductIds.subscriptions.contains(p.productID),
+    );
+    if (server != null) {
+      if (!server.valid) {
+        state = state.copyWith(
+          purchaseInProgress: false,
+          error: 'Purchase could not be verified.',
+        );
+        return;
+      }
+      if (server.tier != ProTier.free) tier = server.tier;
+      expiry = server.expiry ?? expiry;
     }
 
     final candidate = Entitlement(tier: tier, expiry: expiry);

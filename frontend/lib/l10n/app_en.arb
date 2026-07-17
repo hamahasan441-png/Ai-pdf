@@ -330,5 +330,13 @@
   "stop": "Stop",
   "speed": "Speed",
   "editTextTool": "Edit Text",
-  "tapLineToEdit": "Tap a line to edit its text"
+  "tapLineToEdit": "Tap a line to edit its text",
+  "convert": "Convert",
+  "convertDesc": "PDF to Word, Excel, PPT",
+  "convertToWord": "PDF to Word",
+  "convertToExcel": "PDF to Excel",
+  "convertToPpt": "PDF to PowerPoint",
+  "convertedTitle": "Converted",
+  "convertNeedsServer": "Cloud conversion needs the AI PDF server. Set your server URL in AI Settings.",
+  "badgeCloud": "Cloud"
 }
