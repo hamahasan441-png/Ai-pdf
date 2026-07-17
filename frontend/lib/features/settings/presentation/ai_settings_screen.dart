@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
 import '../../../core/config/app_config.dart';
 import '../../../core/config/app_settings.dart';
+import '../../../core/config/locale_controller.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/theme/theme_controller.dart';
 
 /// AI configuration: pick a provider (OpenRouter / OpenAI / Anthropic /
 /// Perplexity / custom-local), paste that provider's key, choose a model, and
@@ -123,6 +127,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final isCustom = _provider == AppConfig.providerCustom;
     final needsKey = _def.needsKey;
 
@@ -150,6 +155,48 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             ]),
           ),
           const SizedBox(height: 16),
+
+          // Appearance (theme mode)
+          _sectionTitle(l10n.appearance, Icons.brightness_6_outlined),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.instance.mode,
+            builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                    value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('System')),
+                ButtonSegment(
+                    value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('Light')),
+                ButtonSegment(
+                    value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('Dark')),
+              ],
+              selected: {mode},
+              onSelectionChanged: (s) => ThemeController.instance.set(s.first),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Language
+          _sectionTitle(l10n.language, Icons.language_outlined),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<Locale?>(
+            valueListenable: LocaleController.instance.locale,
+            builder: (context, locale, _) => DropdownButtonFormField<String>(
+              value: locale?.languageCode ?? '',
+              isExpanded: true,
+              decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+              items: [
+                DropdownMenuItem(value: '', child: Text(l10n.systemDefault)),
+                const DropdownMenuItem(value: 'en', child: Text('English')),
+                const DropdownMenuItem(value: 'es', child: Text('Español')),
+                const DropdownMenuItem(value: 'ar', child: Text('العربية')),
+              ],
+              onChanged: (v) => LocaleController.instance
+                  .set((v == null || v.isEmpty) ? null : Locale(v)),
+            ),
+          ),
+          const SizedBox(height: 20),
 
           // Provider
           _sectionTitle('Provider', Icons.hub_outlined),

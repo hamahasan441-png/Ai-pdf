@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
+import 'core/config/locale_controller.dart';
 import 'core/observability/crash_reporter.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'features/subscription/application/subscription_controller.dart';
 
 void main() {
@@ -22,8 +25,10 @@ void main() {
     };
     ErrorWidget.builder = (details) => const _FriendlyErrorWidget();
 
-    // Load persisted settings (e.g. AI server URL) before the app starts.
+    // Load persisted settings (AI server URL, theme, language) before start.
     await AppSettings.instance.load();
+    await ThemeController.instance.load();
+    await LocaleController.instance.load();
 
     runApp(const ProviderScope(child: AiPdfApp()));
   }, (error, stack) {
@@ -43,13 +48,22 @@ class AiPdfApp extends ConsumerWidget {
     // Keep the billing controller alive for the whole app lifetime so
     // subscription renewals / restores are always processed.
     ref.watch(subscriptionControllerProvider);
-    return MaterialApp.router(
-      title: 'AI PDF',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      routerConfig: router,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (context, themeMode, _) => ValueListenableBuilder<Locale?>(
+        valueListenable: LocaleController.instance.locale,
+        builder: (context, locale, __) => MaterialApp.router(
+          title: 'AI PDF',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: router,
+        ),
+      ),
     );
   }
 }
