@@ -224,10 +224,15 @@ class OpenRouterService {
       return {'role': m['role'] ?? 'user', 'content': text};
     }).toList();
 
+    final headers = <String, dynamic>{'Content-Type': 'application/json'};
+    final proToken = settings.proToken;
+    if (proToken != null && proToken.isNotEmpty) {
+      headers['X-Entitlement-Token'] = proToken; // unlimited for verified Pro
+    }
     try {
       final resp = await _dio.post(
         endpoint,
-        options: Options(headers: {'Content-Type': 'application/json'}),
+        options: Options(headers: headers),
         data: {'messages': flat, 'use_advanced': false},
       );
       final data = resp.data;

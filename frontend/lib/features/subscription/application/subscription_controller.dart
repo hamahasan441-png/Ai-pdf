@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../../../core/config/app_settings.dart';
 import '../../../core/observability/analytics_service.dart';
 import '../data/billing_verifier.dart';
 import '../data/entitlement_store.dart';
@@ -228,6 +229,10 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
     state = state.copyWith(entitlement: next, purchaseInProgress: false, clearError: true);
     await _store.save(next);
+    // Remember the purchase token so managed AI can prove Pro server-side.
+    if (next.isPro) {
+      await AppSettings.instance.setProToken(p.verificationData.serverVerificationData);
+    }
   }
 
   @override
