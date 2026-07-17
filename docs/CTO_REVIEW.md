@@ -319,3 +319,45 @@ background processing, M3 design, i18n, telemetry) are drawn from how the catego
 (Adobe Acrobat, UPDF, Smallpdf, ChatPDF) generally operate. If you add the PDFCraft source (or a
 link), I'll extract its specific best ideas and map them into this architecture — without copying
 code.
+
+
+---
+
+## Appendix A — Correction
+
+In §2.6 / §2.8 I listed `android:usesCleartextTraffic="true"` under both security and
+"Play Store policy." To be precise: cleartext traffic is a **security-hardening** issue and a
+pre-launch-report *warning*, **not** a hard Play policy rejection on its own. It has been
+hardened anyway (cleartext off by default; localhost/emulator still allowed) — see PR #51.
+
+## Appendix B — Delivered so far (PR #51, branch `phase0-ship-blockers-and-billing`)
+
+**Commit 1 — Phase 0 ship-blockers + security + UX + billing foundation**
+- `targetSdk` 35; `versionCode`/`versionName` from `flutter.*`; CI `--build-number`.
+- Release signing gated on `android/key.properties` with debug fallback; R8 minify +
+  `shrinkResources` + `proguard-rules.pro`.
+- `network_security_config.xml` (cleartext off by default), `allowBackup=false` +
+  `data_extraction_rules.xml`; removed global `usesCleartextTraffic`.
+- Removed dead backend screens/routes (auth, upload, backend document/editor + orphans);
+  home reworked to on-device only; re-enabled `const` lints; `.gitignore` blocks keystore.
+- Play Billing module (`lib/features/subscription/`): domain/data/application/presentation,
+  `PaywallScreen`, `subscriptionControllerProvider` / `isProProvider`, `/paywall` route.
+
+**Commit 2 — Performance (isolates) + test foundation**
+- `lib/core/image/image_ops.dart` (isolate-safe pure-Dart image pipeline); routed 5
+  image-heavy PDF operations through `compute()` → no more UI-thread jank/ANR. `pdfx` native
+  rendering stays on the main isolate (platform-channel constraint).
+- First unit tests (entitlement/money logic + image-op fallbacks); parallel CI `test` job.
+
+**Commit 3 — Observability foundation**
+- `lib/core/observability/`: backend-agnostic `Crash` + `Analytics` facades (console sink now;
+  swap in Crashlytics/Sentry/Firebase later without touching call sites); typed event catalog.
+- `main.dart` global handlers now **report** errors instead of silently dropping them.
+- Purchase funnel instrumented; facade-delegation tests added.
+
+### Still requires your accounts / a device (cannot be done from the sandbox)
+1. Server-side purchase verification + managed AI proxy (backend + provider keys).
+2. Firebase (or Sentry) project for real crash/analytics backends behind the new facades.
+3. Play Console: create `pro_monthly`/`pro_yearly`/`pro_lifetime`, upload keystore to CI
+   secrets, privacy policy + Data-safety form.
+4. Device smoke-test of the minified release APK (R8 runtime issues can't be caught by CI).
