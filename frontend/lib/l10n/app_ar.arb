@@ -311,5 +311,8 @@
   "convertToPpt": "PDF إلى PowerPoint",
   "convertedTitle": "تم التحويل",
   "convertNeedsServer": "يتطلب التحويل السحابي خادم AI PDF. اضبط عنوان الخادم في إعدادات الذكاء الاصطناعي.",
-  "badgeCloud": "سحابة"
+  "badgeCloud": "سحابة",
+  "managedServerUrl": "عنوان خادم AI PDF",
+  "managedServerHint": "https://your-server.com/api/v1",
+  "managedNote": "يستخدم خادم AI PDF الخاص بك — دون مفتاح شخصي. يُطبَّق حد يومي مجاني؛ ترقَّ إلى Pro للاستخدام غير المحدود."
 }

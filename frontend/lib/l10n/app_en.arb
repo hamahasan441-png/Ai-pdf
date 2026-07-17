@@ -338,5 +338,8 @@
   "convertToPpt": "PDF to PowerPoint",
   "convertedTitle": "Converted",
   "convertNeedsServer": "Cloud conversion needs the AI PDF server. Set your server URL in AI Settings.",
-  "badgeCloud": "Cloud"
+  "badgeCloud": "Cloud",
+  "managedServerUrl": "AI PDF server URL",
+  "managedServerHint": "https://your-server.com/api/v1",
+  "managedNote": "Uses your AI PDF server — no personal API key needed. A free daily limit applies; upgrade to Pro for unlimited."
 }

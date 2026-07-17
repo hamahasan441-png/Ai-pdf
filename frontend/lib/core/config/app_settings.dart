@@ -39,14 +39,25 @@ class AppSettings {
   AiProviderDef get provider => AppConfig.providerById(_provider);
 
   /// The chat/completions (or Anthropic messages) endpoint for the current
-  /// provider. For "custom", it's the user-provided URL.
-  String get aiEndpoint =>
-      provider.id == AppConfig.providerCustom ? _customEndpoint : provider.endpoint;
+  /// provider. For "custom", it's the user-provided URL. For "managed", it's
+  /// the app's backend proxy at <server>/ai/chat.
+  String get aiEndpoint {
+    if (provider.managed) {
+      final base = _apiBaseUrl.endsWith('/')
+          ? _apiBaseUrl.substring(0, _apiBaseUrl.length - 1)
+          : _apiBaseUrl;
+      return '$base/ai/chat';
+    }
+    return provider.id == AppConfig.providerCustom ? _customEndpoint : provider.endpoint;
+  }
 
   String get customEndpoint => _customEndpoint;
 
   /// True if the current provider uses the Anthropic Messages API.
   bool get isAnthropic => provider.anthropic;
+
+  /// True if the current provider is the app's managed backend proxy.
+  bool get isManaged => provider.managed;
 
   /// True if the current provider requires an API key.
   bool get needsKey => provider.needsKey;

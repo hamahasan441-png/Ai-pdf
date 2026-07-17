@@ -311,5 +311,8 @@
   "convertToPpt": "PDF a PowerPoint",
   "convertedTitle": "Convertido",
   "convertNeedsServer": "La conversión en la nube necesita el servidor de AI PDF. Configura la URL del servidor en Ajustes de IA.",
-  "badgeCloud": "Nube"
+  "badgeCloud": "Nube",
+  "managedServerUrl": "URL del servidor de AI PDF",
+  "managedServerHint": "https://tu-servidor.com/api/v1",
+  "managedNote": "Usa tu servidor de AI PDF — sin clave personal. Se aplica un límite diario gratuito; hazte Pro para uso ilimitado."
 }
