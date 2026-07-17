@@ -8,6 +8,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/user_profile_service.dart';
+import '../models/filled_field.dart';
 import '../services/smart_form_filler.dart';
 import 'pick_edit_screen.dart';
 
@@ -121,13 +122,24 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
         return;
       }
 
-      final placed = fields.length;
+      // Show the review sheet so the user can verify, untick or edit values
+      // before they are placed on the form.
+      setState(() => _busy = false);
+      if (!mounted) return;
+      final confirmed = await showModalBottomSheet<List<FilledField>>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => _ReviewSheet(fields: fields),
+      );
+      if (confirmed == null || confirmed.isEmpty || !mounted) return;
+
       await Navigator.of(context).push(MaterialPageRoute(
         builder: (_) =>
-            PickEditScreen(initialPath: formPath, initialFields: fields),
+            PickEditScreen(initialPath: formPath, initialFields: confirmed),
       ));
       if (mounted) {
-        setState(() => _status = l10n.smartFillPlaced(placed));
+        setState(() => _status = l10n.smartFillPlaced(confirmed.length));
       }
     } catch (e) {
       if (mounted) setState(() => _error = l10n.operationFailed(e.toString()));
@@ -335,6 +347,186 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
               style: TextStyle(
                   color: cs.primary, fontSize: 12, fontWeight: FontWeight.w600)),
         ]),
+      ),
+    );
+  }
+}
+
+
+
+/// A review sheet shown after the engine matches fields, before placing them.
+/// The user can untick fields they don't want, edit values inline, and see which
+/// ones are uncertain (low confidence). Dismissing returns the confirmed list;
+/// swiping away / tapping outside returns null (cancel).
+class _ReviewSheet extends StatefulWidget {
+  final List<FilledField> fields;
+  const _ReviewSheet({required this.fields});
+
+  @override
+  State<_ReviewSheet> createState() => _ReviewSheetState();
+}
+
+class _ReviewSheetState extends State<_ReviewSheet> {
+  late List<bool> _checked;
+  late List<FilledField> _fields;
+
+  @override
+  void initState() {
+    super.initState();
+    _fields = List.of(widget.fields);
+    _checked = List.filled(_fields.length, true);
+  }
+
+  void _editField(int i) async {
+    final ctrl = TextEditingController(text: _fields[i].text);
+    final l10n = AppLocalizations.of(context)!;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_fields[i].field.isNotEmpty ? _fields[i].field : l10n.editText),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            hintText: l10n.typeHere,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: Text(l10n.ok)),
+        ],
+      ),
+    );
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() => _fields[i] = _fields[i].withText(result.trim()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final count = _checked.where((c) => c).length;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (ctx, scrollCtrl) => Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Title bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(children: [
+                Icon(Icons.checklist, color: cs.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(l10n.reviewBeforePlacing,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(l10n.editAnyValue,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ),
+            const SizedBox(height: 8),
+            // Field list
+            Expanded(
+              child: ListView.separated(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _fields.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final f = _fields[i];
+                  return ListTile(
+                    leading: Checkbox(
+                      value: _checked[i],
+                      onChanged: (v) =>
+                          setState(() => _checked[i] = v ?? false),
+                    ),
+                    title: Text(
+                      f.field.isNotEmpty ? f.field : f.anchor,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _checked[i] ? cs.onSurface : cs.outline,
+                      ),
+                    ),
+                    subtitle: Text(
+                      f.text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _checked[i] ? cs.primary : cs.outline,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (f.uncertain)
+                          Tooltip(
+                            message: l10n.smartFillUncertain,
+                            child: Icon(Icons.warning_amber_rounded,
+                                size: 18, color: cs.error),
+                          ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          tooltip: l10n.editText,
+                          onPressed: _checked[i] ? () => _editField(i) : null,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Place button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton.icon(
+                onPressed: count > 0
+                    ? () {
+                        final result = <FilledField>[];
+                        for (var i = 0; i < _fields.length; i++) {
+                          if (_checked[i]) result.add(_fields[i]);
+                        }
+                        Navigator.pop(context, result);
+                      }
+                    : null,
+                icon: const Icon(Icons.check),
+                label: Text(l10n.placeNValues(count)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -22,6 +22,7 @@
   "smartFillPlaced": "Placed {count} value(s) — review and export.",
   "@smartFillPlaced": { "placeholders": { "count": { "type": "int" } } },
   "smartFillRun": "Fill the form",
+  "smartFillUncertain": "Low confidence — double-check this value",
   "smartDocuments": "Smart Documents",
   "appTagline": "Open, analyze & edit with AI",
   "openTools": "Open Tools",
