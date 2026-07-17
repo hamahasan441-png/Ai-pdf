@@ -8,6 +8,7 @@ import '../../features/tools/presentation/jpg_to_pdf_screen.dart';
 import '../../features/tools/presentation/compress_screen.dart';
 import '../../features/tools/presentation/pdf_tools_screen.dart';
 import '../../features/tools/presentation/pick_edit_screen.dart';
+import '../../features/tools/presentation/smart_fill_screen.dart';
 import '../../features/tools/presentation/organize_pages_screen.dart';
 import '../../features/tools/presentation/ocr_screen.dart';
 import '../../features/tools/presentation/pdf_to_images_screen.dart';
@@ -43,6 +44,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/merge', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.merge)),
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
       GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
+      GoRoute(path: '/tools/smart-fill', builder: (_, __) => const SmartFillScreen()),
       GoRoute(path: '/tools/organize', builder: (_, __) => const OrganizePagesScreen()),
       GoRoute(path: '/tools/ocr', builder: (_, __) => const OcrScreen()),
       GoRoute(path: '/tools/pdf-to-images', builder: (_, __) => const PdfToImagesScreen()),
