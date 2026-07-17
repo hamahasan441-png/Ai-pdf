@@ -12,5 +12,8 @@
   "openPdf": "Open PDF",
   "getStarted": "Get Started",
   "getStartedBody": "Edit, convert and sign PDFs, or ask AI about any document — all on your device.",
-  "upgradeToPro": "Upgrade to Pro"
+  "upgradeToPro": "Upgrade to Pro",
+  "appearance": "Appearance",
+  "language": "Language",
+  "systemDefault": "System default"
 }
