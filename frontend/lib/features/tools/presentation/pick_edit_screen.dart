@@ -149,6 +149,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final OcrService _ocr = OcrService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
   bool _showFields = false;
+
+  // --- Edit existing text (OCR line -> cover + editable box) ---
+  final Map<int, List<OcrLine>> _editLines = {}; // page -> recognized lines
+  bool _showEditLines = false;
   bool _detecting = false;
   List<DetectedField> get _pageFields => _fields[_current] ?? const [];
 
@@ -455,6 +459,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _selected = null;
       _multi.clear();
       _showFields = false;
+      _showEditLines = false;
       _loading = false;
     });
   }
@@ -927,6 +932,72 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final s = '${d.day.toString().padLeft(2, '0')}.'
         '${d.month.toString().padLeft(2, '0')}.${d.year}';
     setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
+  }
+
+  /// Edit existing text: OCR the current page and show every text line as a
+  /// tappable box. Tapping a line covers the original and opens a pre-filled,
+  /// editable text box on top — a practical, on-device "edit text" for both
+  /// scanned and flat PDFs. (Overlay-based, not glyph-level reflow.)
+  Future<void> _scanForEdit() async {
+    if (_showEditLines) {
+      setState(() => _showEditLines = false);
+      return;
+    }
+    final bytes = _pageCache[_current];
+    if (bytes == null) return;
+    final l10n = AppLocalizations.of(context)!;
+    setState(() => _detecting = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/edit_${DateTime.now().microsecondsSinceEpoch}.jpg');
+      await f.writeAsBytes(bytes);
+      final result = await _ocr.recognize(f.path);
+      try {
+        await f.delete();
+      } catch (_) {}
+      final lines = result.lines
+          .where((l) => l.text.trim().isNotEmpty && l.w > 0.02 && l.h > 0.004)
+          .toList();
+      setState(() {
+        _editLines[_current] = lines;
+        _showEditLines = lines.isNotEmpty;
+        _tool = EditTool.pan;
+      });
+      if (!mounted) return;
+      if (lines.isEmpty) {
+        _showError(l10n.noTextFound);
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.tapLineToEdit)));
+      }
+    } catch (e) {
+      _showError(l10n.operationFailed(e.toString()));
+    } finally {
+      if (mounted) setState(() => _detecting = false);
+    }
+  }
+
+  /// Cover an existing OCR line with white and open a pre-filled editable box.
+  Future<void> _editExistingLine(OcrLine line) async {
+    final double size = (line.h * 0.72).clamp(0.012, 0.08).toDouble();
+    setState(() {
+      _showEditLines = false;
+      _pushItem(_Shape(ShapeType.whiteout, Offset(line.x, line.y),
+          Offset(line.x + line.w, line.y + line.h), Colors.white, 1));
+    });
+    final before = _layer.items.length;
+    await _editTextBox(
+      _TextBox(Offset(line.x, line.y + line.h * 0.1), line.text.trim(),
+          Colors.black, size, false),
+      isNew: true,
+    );
+    // User cancelled -> remove the stray whiteout we added underneath.
+    if (_layer.items.length == before &&
+        _layer.items.isNotEmpty &&
+        _layer.items.last is _Shape &&
+        (_layer.items.last as _Shape).type == ShapeType.whiteout) {
+      setState(() => _layer.items.removeLast());
+    }
   }
 
   /// Fill & Sign: pick a saved profile value (name, address, ID…) and drop it
@@ -1636,6 +1707,24 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       ),
                     ),
                   )),
+            // Editable text lines (tap a line to replace its text)
+            if (_showEditLines)
+              ...(_editLines[_current] ?? const <OcrLine>[]).map((line) => Positioned(
+                    left: line.x * size.width,
+                    top: line.y * size.height,
+                    width: (line.w * size.width).clamp(10.0, size.width),
+                    height: (line.h * size.height).clamp(12.0, 80.0),
+                    child: GestureDetector(
+                      onTap: () => _editExistingLine(line),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.14),
+                          border: Border.all(color: Colors.blueAccent, width: 1),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  )),
             // Snapping guides (E3.4)
             if (_guideX != null)
               Positioned(
@@ -1941,6 +2030,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
               child: Row(children: [
                 _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
+                _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
+                    l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),
                 if (_pageFields.isNotEmpty)
                   _actionBtn(_showFields ? Icons.visibility_off : Icons.visibility,
                       _showFields ? l10n.toolHide : l10n.toolFields,

@@ -328,5 +328,7 @@
   "play": "Play",
   "pause": "Pause",
   "stop": "Stop",
-  "speed": "Speed"
+  "speed": "Speed",
+  "editTextTool": "Edit Text",
+  "tapLineToEdit": "Tap a line to edit its text"
 }
