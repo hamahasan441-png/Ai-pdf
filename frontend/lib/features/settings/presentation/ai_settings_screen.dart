@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/config/app_settings.dart';
 import '../../../core/network/openrouter_service.dart';
+import '../../../core/theme/theme_controller.dart';
 
 /// AI configuration: pick a provider (OpenRouter / OpenAI / Anthropic /
 /// Perplexity / custom-local), paste that provider's key, choose a model, and
@@ -150,6 +151,27 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             ]),
           ),
           const SizedBox(height: 16),
+
+          // Appearance (theme mode)
+          _sectionTitle('Appearance', Icons.brightness_6_outlined),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.instance.mode,
+            builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                    value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('System')),
+                ButtonSegment(
+                    value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('Light')),
+                ButtonSegment(
+                    value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('Dark')),
+              ],
+              selected: {mode},
+              onSelectionChanged: (s) => ThemeController.instance.set(s.first),
+            ),
+          ),
+          const SizedBox(height: 20),
 
           // Provider
           _sectionTitle('Provider', Icons.hub_outlined),
