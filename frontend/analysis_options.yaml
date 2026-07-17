@@ -2,8 +2,12 @@ include: package:flutter_lints/flutter.yaml
 
 linter:
   rules:
+    # Kept relaxed intentionally for this project's style.
     avoid_print: false
-    prefer_const_constructors: false
-    prefer_const_literals_to_create_immutables: false
     use_key_in_widget_constructors: false
     prefer_final_locals: false
+    # Re-enabled: `const` reduces widget rebuilds and allocations (perf win on
+    # low-RAM devices). These are info-level hints and do not fail the build.
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_const_constructors_in_immutables: true

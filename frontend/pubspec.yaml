@@ -42,6 +42,10 @@ dependencies:
   # Runtime permissions (storage / photos-gallery / camera)
   permission_handler: ^11.3.1
 
+  # Monetization: Google Play Billing (subscriptions + one-time lifetime).
+  # Digital goods MUST use Play Billing per Play policy.
+  in_app_purchase: ^3.2.0
+
   # On-device OCR (offline text recognition; bundled ML Kit model, API 21+).
   # Range (not caret) so pub resolves the newest 0.x that supports the current
   # Flutter/AGP toolchain.

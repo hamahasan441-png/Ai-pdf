@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
 import 'core/theme/app_theme.dart';
+import 'features/subscription/application/subscription_controller.dart';
 
 void main() {
   runZonedGuarded(() async {
@@ -35,6 +36,9 @@ class AiPdfApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    // Keep the billing controller alive for the whole app lifetime so
+    // subscription renewals / restores are always processed.
+    ref.watch(subscriptionControllerProvider);
     return MaterialApp.router(
       title: 'AI PDF',
       debugShowCheckedModeBanner: false,

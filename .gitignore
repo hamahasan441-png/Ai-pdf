@@ -8,3 +8,9 @@ frontend/build/
 frontend/.dart_tool/
 .DS_Store
 *.log
+
+
+# Android release signing secrets — NEVER commit these
+frontend/android/key.properties
+**/*.jks
+**/*.keystore

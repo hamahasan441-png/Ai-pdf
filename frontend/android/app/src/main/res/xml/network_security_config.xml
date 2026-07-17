@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security policy for AI PDF.
+
+  SECURE BY DEFAULT: cleartext (plain HTTP) is DISABLED for all traffic. Every
+  cloud AI provider the app ships with (OpenRouter, OpenAI, Anthropic,
+  Perplexity) uses HTTPS, so this protects user documents and API keys from
+  being sent in plaintext and blocks accidental downgrade / MITM.
+
+  LOCAL DEV / EMULATOR: cleartext is permitted only for loopback and the
+  Android emulator host, so an on-device / adb-reverse local LLM keeps working.
+
+  NOTE (product tradeoff): a local LLM reached over HTTP on the LAN by a raw IP
+  (e.g. http://192.168.1.50:1234) will be BLOCKED by this policy, because
+  Android network-security-config cannot express private IP ranges. If you need
+  that power-user path, either serve the local model over HTTPS, add the
+  specific host below, or gate an "allow insecure local server" build flag.
+  See docs/CTO_REVIEW.md and the PR description for the follow-up plan.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Loopback + emulator host: allow cleartext for local development. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

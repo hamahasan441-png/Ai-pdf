@@ -1,47 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/network/api_client.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/recent_files_service.dart';
 import '../../../core/services/permission_service.dart';
 import '../../tools/widgets/result_sheet.dart';
 
-class HomeScreen extends ConsumerStatefulWidget {
+/// On-device home. No account / backend: everything here works offline and the
+/// only "recent" concept is files created/edited/saved on this device.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
-  List<dynamic> _docs = [];
-  bool _loading = true;
-
+class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
     RecentFilesService.instance.load();
     // Ask for storage / gallery / camera access on first launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) PermissionService.ensureOnStartup(context);
     });
-  }
-
-  Future<void> _load() async {
-    try {
-      final api = ref.read(apiClientProvider);
-      final hasAuth = await api.hasToken();
-      if (hasAuth) {
-        // Authenticated: load user's documents
-        final r = await api.dio.get(AppConstants.documentsEndpoint);
-        setState(() { _docs = (r.data['documents'] as List?) ?? []; _loading = false; });
-      } else {
-        // Guest mode: show empty state with upload prompt
-        setState(() { _docs = []; _loading = false; });
-      }
-    } catch (_) { setState(() => _loading = false); }
   }
 
   @override
@@ -51,7 +31,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: Row(children: [
           Container(
-            width: 36, height: 36,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
             child: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
           ),
@@ -61,7 +42,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         actions: [
           IconButton(
             icon: Container(
-              width: 36, height: 36,
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.workspace_premium, size: 20, color: Colors.white),
+            ),
+            tooltip: 'Upgrade to Pro',
+            onPressed: () => context.push('/paywall'),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Container(
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.key, size: 20),
             ),
@@ -71,7 +64,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(width: 4),
           IconButton(
             icon: Container(
-              width: 36, height: 36,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.history, size: 20),
             ),
@@ -81,99 +75,87 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(width: 4),
           IconButton(
             icon: Container(
-              width: 36, height: 36,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.person_outlined, size: 20),
             ),
+            tooltip: 'Profile',
             onPressed: () => context.push('/profile'),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.logout, size: 20),
-            ),
-            onPressed: () async {
-              await ref.read(apiClientProvider).clearTokens();
-              if (mounted) context.go('/login');
-            },
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(slivers: [
-              // Hero banner
-              SliverToBoxAdapter(child: Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
-                ),
-                child: Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Smart Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-                    const SizedBox(height: 6),
-                    Text('Upload, analyze & edit with AI', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
-                    const SizedBox(height: 16),
-                    SizedBox(height: 40, child: ElevatedButton.icon(
+      body: CustomScrollView(slivers: [
+        // Hero banner
+        SliverToBoxAdapter(
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Smart Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                  const SizedBox(height: 6),
+                  Text('Open, analyze & edit with AI', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 40,
+                    child: ElevatedButton.icon(
                       onPressed: () => context.push('/tools'),
                       icon: const Icon(Icons.grid_view_rounded, size: 18),
                       label: const Text('Open Tools', style: TextStyle(fontWeight: FontWeight.w600)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppColors.primary, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    )),
-                  ])),
-                  const SizedBox(width: 16),
-                  Container(
-                    width: 64, height: 64,
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16)),
-                    child: const Icon(Icons.auto_awesome, size: 32, color: Colors.white),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppColors.primary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
                   ),
                 ]),
-              )),
-              // Quick actions
-              SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(children: [
-                  _QuickAction(icon: Icons.grid_view_rounded, label: 'Tools', color: AppColors.primary, onTap: () => context.push('/tools')),
-                  const SizedBox(width: 12),
-                  _QuickAction(icon: Icons.psychology, label: 'Ask AI', color: const Color(0xFF7C3AED), onTap: () => context.push('/ai')),
-                  const SizedBox(width: 12),
-                  _QuickAction(icon: Icons.edit_note, label: 'Fill Form', color: const Color(0xFFDB2777), onTap: () => context.push('/ai-form')),
-                  const SizedBox(width: 12),
-                  _QuickAction(icon: Icons.draw, label: 'Editor', color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
-                ]),
-              )),
-              // Recent files (created / edited / saved on this device)
-              _recentFilesSliver(cs),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              // Documents header
-              SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(children: [
-                  Text('Recent Documents', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  Text('${_docs.length} files', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-                ]),
-              )),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-              // Documents list
-              _docs.isEmpty
-                  ? SliverFillRemaining(child: _buildEmpty(cs))
-                  : SliverList(delegate: SliverChildBuilderDelegate(
-                      (_, i) => _DocCard(doc: _docs[i]),
-                      childCount: _docs.length,
-                    )),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.auto_awesome, size: 32, color: Colors.white),
+              ),
             ]),
+          ),
+        ),
+        // Quick actions
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              _QuickAction(icon: Icons.grid_view_rounded, label: 'Tools', color: AppColors.primary, onTap: () => context.push('/tools')),
+              const SizedBox(width: 12),
+              _QuickAction(icon: Icons.psychology, label: 'Ask AI', color: const Color(0xFF7C3AED), onTap: () => context.push('/ai')),
+              const SizedBox(width: 12),
+              _QuickAction(icon: Icons.edit_note, label: 'Fill Form', color: const Color(0xFFDB2777), onTap: () => context.push('/ai-form')),
+              const SizedBox(width: 12),
+              _QuickAction(icon: Icons.draw, label: 'Editor', color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
+            ]),
+          ),
+        ),
+        // Recent files (created / edited / saved on this device)
+        _recentFilesSliver(cs),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        // Empty-state hint when there are no recent files yet.
+        SliverToBoxAdapter(child: _RecentEmptyHint(cs: cs)),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ]),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/upload'),
-        icon: const Icon(Icons.add),
-        label: const Text('Upload', style: TextStyle(fontWeight: FontWeight.w600)),
+        onPressed: () => context.push('/tools/pick-edit'),
+        icon: const Icon(Icons.file_open_outlined),
+        label: const Text('Open PDF', style: TextStyle(fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -192,8 +174,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(children: [
-                  Text('Recent Files',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text('Recent Files', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   const Spacer(),
                   TextButton(
                     onPressed: () => context.push('/recent'),
@@ -232,14 +213,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 color: (f.isPdf ? Colors.red : Colors.blue).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image,
-                                  color: f.isPdf ? Colors.red : Colors.blue, size: 22),
+                              child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image, color: f.isPdf ? Colors.red : Colors.blue, size: 22),
                             ),
                             const Spacer(),
-                            Text(f.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text(f.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -253,112 +230,86 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+}
 
-  Widget _buildEmpty(ColorScheme cs) => Center(child: Padding(
-    padding: const EdgeInsets.all(40),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        width: 100, height: 100,
-        decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(28)),
-        child: Icon(Icons.description_outlined, size: 48, color: cs.outline),
-      ),
-      const SizedBox(height: 24),
-      Text('Get Started', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      Text('Edit, convert and sign PDFs, or ask AI about any document — all on your device.',
-          style: TextStyle(color: cs.onSurfaceVariant), textAlign: TextAlign.center),
-      const SizedBox(height: 20),
-      Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        alignment: WrapAlignment.center,
-        children: [
-          FilledButton.icon(
-            onPressed: () => context.push('/tools'),
-            icon: const Icon(Icons.grid_view_rounded, size: 18),
-            label: const Text('Open Tools'),
+/// Shown only when there are no recent files: a friendly "get started" panel.
+class _RecentEmptyHint extends StatelessWidget {
+  final ColorScheme cs;
+  const _RecentEmptyHint({required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<RecentFile>>(
+      valueListenable: RecentFilesService.instance.notifier,
+      builder: (context, items, _) {
+        if (items.isNotEmpty) return const SizedBox.shrink();
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(28)),
+                child: Icon(Icons.description_outlined, size: 48, color: cs.outline),
+              ),
+              const SizedBox(height: 24),
+              Text('Get Started', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                'Edit, convert and sign PDFs, or ask AI about any document — all on your device.',
+                style: TextStyle(color: cs.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => context.push('/tools'),
+                    icon: const Icon(Icons.grid_view_rounded, size: 18),
+                    label: const Text('Open Tools'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/ai'),
+                    icon: const Icon(Icons.psychology, size: 18),
+                    label: const Text('Ask AI'),
+                  ),
+                ],
+              ),
+            ]),
           ),
-          OutlinedButton.icon(
-            onPressed: () => context.push('/ai'),
-            icon: const Icon(Icons.psychology, size: 18),
-            label: const Text('Ask AI'),
-          ),
-        ],
-      ),
-    ]),
-  ));
+        );
+      },
+    );
+  }
 }
 
 class _QuickAction extends StatelessWidget {
-  final IconData icon; final String label; final Color color; final VoidCallback onTap;
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
   const _QuickAction({required this.icon, required this.label, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: color.withOpacity(0.15))),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 6),
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-        ]),
-      ),
-    ));
-  }
-}
-
-class _DocCard extends StatelessWidget {
-  final dynamic doc;
-  const _DocCard({required this.doc});
-
-  @override
-  Widget build(BuildContext context) {
-    final name = doc['original_filename'] ?? 'Document';
-    final status = doc['status'] ?? 'uploaded';
-    final id = doc['id'] ?? '';
-    final cs = Theme.of(context).colorScheme;
-    final statusColor = status == 'filled' || status == 'exported' ? AppColors.success : status == 'error' ? AppColors.error : AppColors.primary;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push('/document/$id'),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(children: [
-            Container(
-              width: 48, height: 48,
-              decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              const SizedBox(height: 4),
-              Row(children: [
-                Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-                const SizedBox(width: 6),
-                Text(status.toString().toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
-              ]),
-            ])),
-            IconButton(
-              icon: Container(
-                width: 34, height: 34,
-                decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.edit_note, size: 18, color: AppColors.accent),
-              ),
-              onPressed: () => context.push('/editor/$id'),
-            ),
-            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.15)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 6),
+            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
           ]),
         ),
       ),
