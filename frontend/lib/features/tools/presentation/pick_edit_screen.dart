@@ -1167,6 +1167,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   /// Fill & Sign: place today's date (dd.MM.yyyy) as a movable text box.
   void _placeSignatureDate() {
+    final d = DateTime.now();
+    final s = '${d.day.toString().padLeft(2, '0')}.'
+        '${d.month.toString().padLeft(2, '0')}.${d.year}';
+    setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
+  }
 
   // ---- Integrated Smart AI Fill (standalone, no API) ----------------------
   //
@@ -1307,13 +1312,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
-  }
-
-  /// Fill & Sign: place today's date as a movable text box.
-    final d = DateTime.now();
-    final s = '${d.day.toString().padLeft(2, '0')}.'
-        '${d.month.toString().padLeft(2, '0')}.${d.year}';
-    setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
   }
 
   /// Edit existing text: OCR the current page and show every text line as a
