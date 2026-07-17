@@ -1,0 +1,16 @@
+{
+  "@@locale": "en",
+  "smartDocuments": "Smart Documents",
+  "appTagline": "Open, analyze & edit with AI",
+  "openTools": "Open Tools",
+  "tools": "Tools",
+  "askAi": "Ask AI",
+  "fillForm": "Fill Form",
+  "editor": "Editor",
+  "recentFiles": "Recent Files",
+  "seeAll": "See all",
+  "openPdf": "Open PDF",
+  "getStarted": "Get Started",
+  "getStartedBody": "Edit, convert and sign PDFs, or ask AI about any document — all on your device.",
+  "upgradeToPro": "Upgrade to Pro"
+}

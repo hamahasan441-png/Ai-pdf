@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/recent_files_service.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: Row(children: [
@@ -47,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
               child: const Icon(Icons.workspace_premium, size: 20, color: Colors.white),
             ),
-            tooltip: 'Upgrade to Pro',
+            tooltip: l10n.upgradeToPro,
             onPressed: () => context.push('/paywall'),
           ),
           const SizedBox(width: 4),
@@ -100,16 +102,16 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Smart Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                  Text(l10n.smartDocuments, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
                   const SizedBox(height: 6),
-                  Text('Open, analyze & edit with AI', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
+                  Text(l10n.appTagline, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
                   const SizedBox(height: 16),
                   SizedBox(
                     height: 40,
                     child: ElevatedButton.icon(
                       onPressed: () => context.push('/tools'),
                       icon: const Icon(Icons.grid_view_rounded, size: 18),
-                      label: const Text('Open Tools', style: TextStyle(fontWeight: FontWeight.w600)),
+                      label: Text(l10n.openTools, style: const TextStyle(fontWeight: FontWeight.w600)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: AppColors.primary,
@@ -135,13 +137,13 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
-              _QuickAction(icon: Icons.grid_view_rounded, label: 'Tools', color: AppColors.primary, onTap: () => context.push('/tools')),
+              _QuickAction(icon: Icons.grid_view_rounded, label: l10n.tools, color: AppColors.primary, onTap: () => context.push('/tools')),
               const SizedBox(width: 12),
-              _QuickAction(icon: Icons.psychology, label: 'Ask AI', color: const Color(0xFF7C3AED), onTap: () => context.push('/ai')),
+              _QuickAction(icon: Icons.psychology, label: l10n.askAi, color: const Color(0xFF7C3AED), onTap: () => context.push('/ai')),
               const SizedBox(width: 12),
-              _QuickAction(icon: Icons.edit_note, label: 'Fill Form', color: const Color(0xFFDB2777), onTap: () => context.push('/ai-form')),
+              _QuickAction(icon: Icons.edit_note, label: l10n.fillForm, color: const Color(0xFFDB2777), onTap: () => context.push('/ai-form')),
               const SizedBox(width: 12),
-              _QuickAction(icon: Icons.draw, label: 'Editor', color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
+              _QuickAction(icon: Icons.draw, label: l10n.editor, color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
             ]),
           ),
         ),
@@ -155,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/tools/pick-edit'),
         icon: const Icon(Icons.file_open_outlined),
-        label: const Text('Open PDF', style: TextStyle(fontWeight: FontWeight.w600)),
+        label: Text(l10n.openPdf, style: const TextStyle(fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -166,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
         valueListenable: RecentFilesService.instance.notifier,
         builder: (context, items, _) {
           if (items.isEmpty) return const SizedBox.shrink();
+          final l10n = AppLocalizations.of(context)!;
           final show = items.take(6).toList();
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,11 +177,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(children: [
-                  Text('Recent Files', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(l10n.recentFiles, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   const Spacer(),
                   TextButton(
                     onPressed: () => context.push('/recent'),
-                    child: const Text('See all'),
+                    child: Text(l10n.seeAll),
                   ),
                 ]),
               ),
@@ -243,6 +246,7 @@ class _RecentEmptyHint extends StatelessWidget {
       valueListenable: RecentFilesService.instance.notifier,
       builder: (context, items, _) {
         if (items.isNotEmpty) return const SizedBox.shrink();
+        final l10n = AppLocalizations.of(context)!;
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(40),
@@ -254,10 +258,10 @@ class _RecentEmptyHint extends StatelessWidget {
                 child: Icon(Icons.description_outlined, size: 48, color: cs.outline),
               ),
               const SizedBox(height: 24),
-              Text('Get Started', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              Text(l10n.getStarted, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Text(
-                'Edit, convert and sign PDFs, or ask AI about any document — all on your device.',
+                l10n.getStartedBody,
                 style: TextStyle(color: cs.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
@@ -270,12 +274,12 @@ class _RecentEmptyHint extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: () => context.push('/tools'),
                     icon: const Icon(Icons.grid_view_rounded, size: 18),
-                    label: const Text('Open Tools'),
+                    label: Text(l10n.openTools),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => context.push('/ai'),
                     icon: const Icon(Icons.psychology, size: 18),
-                    label: const Text('Ask AI'),
+                    label: Text(l10n.askAi),
                   ),
                 ],
               ),

@@ -1,0 +1,16 @@
+{
+  "@@locale": "es",
+  "smartDocuments": "Documentos inteligentes",
+  "appTagline": "Abre, analiza y edita con IA",
+  "openTools": "Abrir herramientas",
+  "tools": "Herramientas",
+  "askAi": "Preguntar a la IA",
+  "fillForm": "Rellenar formulario",
+  "editor": "Editor",
+  "recentFiles": "Archivos recientes",
+  "seeAll": "Ver todo",
+  "openPdf": "Abrir PDF",
+  "getStarted": "Empezar",
+  "getStartedBody": "Edita, convierte y firma PDF, o pregúntale a la IA sobre cualquier documento, todo en tu dispositivo.",
+  "upgradeToPro": "Hazte Pro"
+}
