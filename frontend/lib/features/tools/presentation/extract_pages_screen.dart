@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -41,11 +42,12 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
 
   Future<void> _extract() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     final from = int.tryParse(_fromCtrl.text.trim()) ?? 1;
     final to = int.tryParse(_toCtrl.text.trim()) ?? _pageCount;
     if (from < 1 || to < from || from > _pageCount) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid page range')),
+        SnackBar(content: Text(l10n.invalidPageRange)),
       );
       return;
     }
@@ -56,13 +58,13 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
       if (mounted) {
         await showResultSheet(context,
             paths: [out],
-            title: 'Extracted pages $from–$to',
-            subtitle: '${to - from + 1} page${to - from > 0 ? 's' : ''}');
+            title: l10n.extractedPagesRange(from, to),
+            subtitle: l10n.nPages(to - from + 1));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -72,8 +74,9 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Extract Pages')),
+      appBar: AppBar(title: Text(l10n.toolExtractPages)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -96,8 +99,8 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _path == null
-                        ? 'Tap to choose a PDF'
-                        : '${_path!.split('/').last} ($_pageCount pages)',
+                        ? l10n.tapToChoosePdf
+                        : '${_path!.split('/').last} (${l10n.nPages(_pageCount)})',
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -108,8 +111,8 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
             ),
             if (_path != null) ...[
               const SizedBox(height: 28),
-              const Text('Page range',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(l10n.pageRange,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
@@ -117,25 +120,25 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
                     controller: _fromCtrl,
                     keyboardType: TextInputType.number,
                     enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'From',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.fromLabel,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('to', style: TextStyle(fontSize: 16)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(l10n.toLower, style: const TextStyle(fontSize: 16)),
                 ),
                 Expanded(
                   child: TextField(
                     controller: _toCtrl,
                     keyboardType: TextInputType.number,
                     enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'To',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.toLabel,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                   ),
@@ -143,7 +146,7 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
               ]),
               const SizedBox(height: 8),
               Text(
-                'Total pages in file: $_pageCount',
+                l10n.totalPagesInFile(_pageCount),
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
             ],
@@ -157,7 +160,7 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.content_cut),
-              label: Text(_busy ? 'Extracting...' : 'Extract Pages'),
+              label: Text(_busy ? l10n.extracting : l10n.toolExtractPages),
             ),
           ],
         ),
