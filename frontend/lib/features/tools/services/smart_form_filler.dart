@@ -142,6 +142,47 @@ class SmartFormFiller {
     Map<String, String> profile,
   ) {
     final out = <FilledField>[];
+
+    // --- Pass 1: option / checkbox fields (Geschlecht, Familienstand) ---
+    //
+    // German forms usually offer these as tick-boxes rather than a blank. We
+    // resolve the user's value to a canonical option and place a check 'X' on
+    // the matching option word instead of writing text. [checkedCats] records
+    // which groups we ticked so pass 2 doesn't also write text next to the
+    // group's label.
+    final genderVal =
+        _canonicalOption('gender', info.byKey['gender'] ?? profile['gender'] ?? '');
+    final maritalVal = _canonicalOption('marital',
+        info.byKey['marital_status'] ?? profile['marital_status'] ?? '');
+    final checkedCats = <String>{};
+    if (genderVal != null || maritalVal != null) {
+      for (var p = 0; p < formPages.length; p++) {
+        for (final line in formPages[p].lines) {
+          final t = line.text.trim();
+          if (t.isEmpty || t.length > 24) continue;
+          final opt = _identifyOption(t);
+          if (opt == null) continue;
+          final want = opt.$1 == 'gender' ? genderVal : maritalVal;
+          if (want == null || want != opt.$2) continue;
+          // Checkboxes usually sit just left of the option word.
+          final x = (line.x - 0.022).clamp(0.0, 0.97).toDouble();
+          final y = line.y.clamp(0.0, 0.97).toDouble();
+          out.add(FilledField(
+            page: p + 1,
+            x: x,
+            y: y,
+            text: 'X',
+            field: t,
+            anchor: t,
+            type: 'check',
+            uncertain: true,
+          ));
+          checkedCats.add(opt.$1);
+        }
+      }
+    }
+
+    // --- Pass 2: normal labelled fields ---
     for (var p = 0; p < formPages.length; p++) {
       for (final line in formPages[p].lines) {
         final label = line.text.trim();
@@ -150,6 +191,11 @@ class SmartFormFiller {
         final key = FormOntology.match(label);
         if (key == null) continue; // only fill fields we recognize (precision)
         final kind = FormOntology.kindOf(key);
+
+        // If we already ticked this option group, don't also write text next to
+        // the group's label (avoids a redundant/mislocated value).
+        if (kind == ValueKind.gender && checkedCats.contains('gender')) continue;
+        if (key == 'marital_status' && checkedCats.contains('marital')) continue;
 
         final best = _resolve(key, kind, info, profile);
         if (best == null) continue;
@@ -169,6 +215,43 @@ class SmartFormFiller {
       }
     }
     return _dedupe(out);
+  }
+
+  /// Resolve a raw gender/marital value to a canonical option token. Handles
+  /// German + English words and single-letter abbreviations. Female is checked
+  /// before male so "female" is never mistaken for "male" (substring).
+  static String? _canonicalOption(String category, String raw) {
+    final s = raw.toLowerCase().trim();
+    if (s.isEmpty) return null;
+    if (category == 'gender') {
+      if (s.contains('weib') || s.contains('female') || s.contains('frau') ||
+          s == 'w' || s == 'f') {
+        return 'female';
+      }
+      if (s.contains('divers') || s == 'd') return 'diverse';
+      // 'mannl' catches an OCR'd "mannlich" (umlaut lost); avoid bare 'mann'
+      // so surnames/occupations like "Kaufmann" don't get mistaken for male.
+      if (s.contains('männ') || s.contains('mannl') || s.contains('male') ||
+          s.contains('herr') || s == 'm') {
+        return 'male';
+      }
+    } else {
+      if (s.contains('ledig') || s.contains('single')) return 'single';
+      if (s.contains('verheir') || s.contains('married')) return 'married';
+      if (s.contains('geschied') || s.contains('divorc')) return 'divorced';
+      if (s.contains('verwitw') || s.contains('widow')) return 'widowed';
+    }
+    return null;
+  }
+
+  /// Identify whether a short form line is a gender/marital OPTION word, and if
+  /// so return its (category, canonical value).
+  static (String, String)? _identifyOption(String text) {
+    final g = _canonicalOption('gender', text);
+    if (g != null) return ('gender', g);
+    final m = _canonicalOption('marital', text);
+    if (m != null) return ('marital', m);
+    return null;
   }
 
   // ---- Resolution / scoring ----------------------------------------------
