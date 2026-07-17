@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -34,6 +35,7 @@ class _CompressScreenState extends State<CompressScreen> {
 
   Future<void> _compress() async {
     if (_filePath == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final svc = OfflinePdfService.instance;
@@ -44,12 +46,12 @@ class _CompressScreenState extends State<CompressScreen> {
       if (mounted) {
         await showResultSheet(context,
             paths: [result.outputPath],
-            title: 'Compressed',
-            subtitle: '${result.reductionPercent.toStringAsFixed(0)}% smaller');
+            title: l10n.compressedTitle,
+            subtitle: l10n.percentSmaller(result.reductionPercent.toStringAsFixed(0)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compression failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressionFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -57,19 +59,21 @@ class _CompressScreenState extends State<CompressScreen> {
   }
 
   Future<void> _saveShare() async {
+    final l10n = AppLocalizations.of(context)!;
     if (_result != null) {
       await showResultSheet(context,
           paths: [_result!.outputPath],
-          title: 'Compressed',
-          subtitle: '${_result!.reductionPercent.toStringAsFixed(0)}% smaller');
+          title: l10n.compressedTitle,
+          subtitle: l10n.percentSmaller(_result!.reductionPercent.toStringAsFixed(0)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Compress File')),
+      appBar: AppBar(title: Text(l10n.compressTitle)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -90,14 +94,14 @@ class _CompressScreenState extends State<CompressScreen> {
                       size: 48, color: cs.primary),
                   const SizedBox(height: 12),
                   Text(
-                    _filePath == null ? 'Tap to choose a file' : _filePath!.split('/').last,
+                    _filePath == null ? l10n.tapToChooseFile : _filePath!.split('/').last,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
-                  Text('JPG, PNG, or PDF', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                  Text(l10n.fileTypesJpgPngPdf, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                 ]),
               ),
             ),
@@ -106,12 +110,12 @@ class _CompressScreenState extends State<CompressScreen> {
             // Quality slider (images only)
             if (_filePath != null && !_isPdf) ...[
               Row(children: [
-                const Text('Quality', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(l10n.quality, style: const TextStyle(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Text('${_quality.toInt()}%', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700)),
               ]),
               Slider(value: _quality, min: 10, max: 95, divisions: 17, onChanged: (v) => setState(() => _quality = v)),
-              Text('Lower quality = smaller file', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(l10n.lowerQualitySmaller, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               const SizedBox(height: 16),
             ],
 
@@ -125,23 +129,23 @@ class _CompressScreenState extends State<CompressScreen> {
                 ),
                 child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                    _stat('Before', _result!.originalSizeLabel, cs.onSurfaceVariant),
+                    _stat(l10n.before, _result!.originalSizeLabel, cs.onSurfaceVariant),
                     const Icon(Icons.arrow_forward),
-                    _stat('After', _result!.compressedSizeLabel, cs.primary),
+                    _stat(l10n.after, _result!.compressedSizeLabel, cs.primary),
                   ]),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(color: const Color(0xFF10B981), borderRadius: BorderRadius.circular(20)),
                     child: Text(
-                      '${_result!.reductionPercent.toStringAsFixed(0)}% smaller',
+                      l10n.percentSmaller(_result!.reductionPercent.toStringAsFixed(0)),
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ]),
               ),
               const SizedBox(height: 16),
-              FilledButton.icon(onPressed: _saveShare, icon: const Icon(Icons.check_circle_outline), label: const Text('Save / Share')),
+              FilledButton.icon(onPressed: _saveShare, icon: const Icon(Icons.check_circle_outline), label: Text(l10n.saveShare)),
             ],
 
             const Spacer(),
@@ -150,7 +154,7 @@ class _CompressScreenState extends State<CompressScreen> {
               icon: _busy
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.compress),
-              label: Text(_busy ? 'Compressing...' : 'Compress'),
+              label: Text(_busy ? l10n.compressing : l10n.compress),
             ),
           ],
         ),

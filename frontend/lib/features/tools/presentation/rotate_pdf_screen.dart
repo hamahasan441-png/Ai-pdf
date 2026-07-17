@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -26,6 +27,7 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
 
   Future<void> _apply() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final out =
@@ -33,13 +35,13 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
       if (mounted) {
         await showResultSheet(context,
             paths: [out],
-            title: 'Rotated $_degrees\u00B0',
-            subtitle: 'Every page rotated');
+            title: l10n.rotatedDegrees(_degrees),
+            subtitle: l10n.everyPageRotated);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -49,8 +51,9 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Rotate PDF')),
+      appBar: AppBar(title: Text(l10n.toolRotate)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -72,7 +75,7 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
                       size: 48, color: cs.primary),
                   const SizedBox(height: 12),
                   Text(
-                    _path == null ? 'Tap to choose a PDF' : _path!.split('/').last,
+                    _path == null ? l10n.tapToChoosePdf : _path!.split('/').last,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -82,7 +85,7 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
               ),
             ),
             const SizedBox(height: 28),
-            const Text('Rotation', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text(l10n.rotation, style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             SegmentedButton<int>(
               segments: const [
@@ -97,10 +100,10 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
             const SizedBox(height: 8),
             Text(
               _degrees == 90
-                  ? 'Clockwise quarter turn'
+                  ? l10n.rotateCw90
                   : _degrees == 180
-                      ? 'Upside down'
-                      : 'Counter-clockwise quarter turn',
+                      ? l10n.rotate180
+                      : l10n.rotateCcw270,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             const Spacer(),
@@ -113,7 +116,7 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.rotate_right),
-              label: Text(_busy ? 'Rotating...' : 'Rotate All Pages'),
+              label: Text(_busy ? l10n.rotating : l10n.rotateAllPages),
             ),
           ],
         ),

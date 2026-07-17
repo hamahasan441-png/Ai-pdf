@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -28,7 +29,7 @@ class _PdfPicker extends StatelessWidget {
               size: 48, color: cs.primary),
           const SizedBox(height: 12),
           Text(
-            fileName ?? 'Tap to choose a PDF',
+            fileName ?? AppLocalizations.of(context)!.tapToChoosePdf,
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -77,18 +78,19 @@ class _WatermarkScreenState extends State<WatermarkScreen> {
 
   Future<void> _apply() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final out = await OfflinePdfService.instance
           .watermarkPdf(_path!, _ctrl.text, opacity: _opacity);
       if (mounted) {
         await showResultSheet(context,
-            paths: [out], title: 'Watermark added', subtitle: 'Every page stamped');
+            paths: [out], title: l10n.watermarkAdded, subtitle: l10n.everyPageStamped);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -98,8 +100,9 @@ class _WatermarkScreenState extends State<WatermarkScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Watermark')),
+      appBar: AppBar(title: Text(l10n.addWatermark)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -111,15 +114,15 @@ class _WatermarkScreenState extends State<WatermarkScreen> {
             TextField(
               controller: _ctrl,
               enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Watermark text',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.watermarkText,
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
             const SizedBox(height: 20),
             Row(children: [
-              const Text('Opacity', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(l10n.opacity, style: const TextStyle(fontWeight: FontWeight.w600)),
               Expanded(
                 child: Slider(
                   value: _opacity,
@@ -143,7 +146,7 @@ class _WatermarkScreenState extends State<WatermarkScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.branding_watermark_outlined),
-              label: Text(_busy ? 'Applying...' : 'Add Watermark'),
+              label: Text(_busy ? l10n.applying : l10n.addWatermark),
             ),
           ],
         ),
@@ -174,17 +177,18 @@ class _PageNumbersScreenState extends State<PageNumbersScreen> {
 
   Future<void> _apply() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final out = await OfflinePdfService.instance.addPageNumbers(_path!);
       if (mounted) {
         await showResultSheet(context,
-            paths: [out], title: 'Page numbers added', subtitle: 'Bottom-center of every page');
+            paths: [out], title: l10n.pageNumbersAdded, subtitle: l10n.bottomCenterEveryPage);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -194,8 +198,9 @@ class _PageNumbersScreenState extends State<PageNumbersScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Page Numbers')),
+      appBar: AppBar(title: Text(l10n.addPageNumbers)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -205,7 +210,7 @@ class _PageNumbersScreenState extends State<PageNumbersScreen> {
                 fileName: _path?.split('/').last, busy: _busy, onTap: _pick),
             const SizedBox(height: 20),
             Text(
-              'Adds a "page / total" badge to the bottom-center of every page.',
+              l10n.pageNumbersHint,
               style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
             ),
             const Spacer(),
@@ -218,7 +223,7 @@ class _PageNumbersScreenState extends State<PageNumbersScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.numbers),
-              label: Text(_busy ? 'Applying...' : 'Add Page Numbers'),
+              label: Text(_busy ? l10n.applying : l10n.addPageNumbers),
             ),
           ],
         ),

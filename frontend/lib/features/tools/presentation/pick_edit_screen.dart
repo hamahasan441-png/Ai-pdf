@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -12,11 +13,13 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/signature_store.dart';
+import '../../../core/services/user_profile_service.dart';
+import '../../profile/presentation/profile_screen.dart';
 import '../models/filled_field.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
-enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser }
+enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser, check, cross, dot, dash, checkbox }
 
 /// Inferred type of a detected form field, so tapping it opens the right input.
 enum FieldType { text, number, date, email, phone, name, signature }
@@ -146,6 +149,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final OcrService _ocr = OcrService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
   bool _showFields = false;
+
+  // --- Edit existing text (OCR line -> cover + editable box) ---
+  final Map<int, List<OcrLine>> _editLines = {}; // page -> recognized lines
+  bool _showEditLines = false;
   bool _detecting = false;
   List<DetectedField> get _pageFields => _fields[_current] ?? const [];
 
@@ -321,11 +328,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
           controller: c,
           autofocus: true,
           keyboardType: kb,
-          decoration: const InputDecoration(hintText: 'Type here…', border: OutlineInputBorder()),
+          decoration: InputDecoration(hintText: AppLocalizations.of(ctx)!.typeHere, border: const OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Add')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text(AppLocalizations.of(ctx)!.add)),
         ],
       ),
     );
@@ -452,6 +459,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _selected = null;
       _multi.clear();
       _showFields = false;
+      _showEditLines = false;
       _loading = false;
     });
   }
@@ -589,6 +597,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final n = _norm(local, canvas);
     if (_tool == EditTool.text) {
       _editTextBox(_TextBox(n, '', _color, _textSize, _bold), isNew: true);
+    } else if (_tool == EditTool.check) {
+      _placeMark(n, '✓', const Color(0xFF16A34A));
+    } else if (_tool == EditTool.cross) {
+      _placeMark(n, '✕', const Color(0xFFDC2626));
+    } else if (_tool == EditTool.dot) {
+      _placeMark(n, '●', Colors.black);
+    } else if (_tool == EditTool.dash) {
+      _placeMark(n, '—', Colors.black);
+    } else if (_tool == EditTool.checkbox) {
+      _placeMark(n, '☑', Colors.black);
     } else if (_tool == EditTool.eraser) {
       setState(() {
         if (_layer.items.isNotEmpty) {
@@ -902,6 +920,146 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _hasUnsavedChanges = true;
   }
 
+  /// Fill & Sign: drop a single glyph (check / cross / dot / dash / checkbox)
+  /// as a movable text box at the tapped position. Great for forms.
+  void _placeMark(Offset n, String glyph, Color color) {
+    setState(() => _pushItem(_TextBox(n, glyph, color, 0.04, false)));
+  }
+
+  /// Fill & Sign: place today's date (dd.MM.yyyy) as a movable text box.
+  void _placeSignatureDate() {
+    final d = DateTime.now();
+    final s = '${d.day.toString().padLeft(2, '0')}.'
+        '${d.month.toString().padLeft(2, '0')}.${d.year}';
+    setState(() => _pushItem(_TextBox(const Offset(0.5, 0.5), s, _color, _textSize, _bold)));
+  }
+
+  /// Edit existing text: OCR the current page and show every text line as a
+  /// tappable box. Tapping a line covers the original and opens a pre-filled,
+  /// editable text box on top — a practical, on-device "edit text" for both
+  /// scanned and flat PDFs. (Overlay-based, not glyph-level reflow.)
+  Future<void> _scanForEdit() async {
+    if (_showEditLines) {
+      setState(() => _showEditLines = false);
+      return;
+    }
+    final bytes = _pageCache[_current];
+    if (bytes == null) return;
+    final l10n = AppLocalizations.of(context)!;
+    setState(() => _detecting = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/edit_${DateTime.now().microsecondsSinceEpoch}.jpg');
+      await f.writeAsBytes(bytes);
+      final result = await _ocr.recognize(f.path);
+      try {
+        await f.delete();
+      } catch (_) {}
+      final lines = result.lines
+          .where((l) => l.text.trim().isNotEmpty && l.w > 0.02 && l.h > 0.004)
+          .toList();
+      setState(() {
+        _editLines[_current] = lines;
+        _showEditLines = lines.isNotEmpty;
+        _tool = EditTool.pan;
+      });
+      if (!mounted) return;
+      if (lines.isEmpty) {
+        _showError(l10n.noTextFound);
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.tapLineToEdit)));
+      }
+    } catch (e) {
+      _showError(l10n.operationFailed(e.toString()));
+    } finally {
+      if (mounted) setState(() => _detecting = false);
+    }
+  }
+
+  /// Cover an existing OCR line with white and open a pre-filled editable box.
+  Future<void> _editExistingLine(OcrLine line) async {
+    final double size = (line.h * 0.72).clamp(0.012, 0.08).toDouble();
+    setState(() {
+      _showEditLines = false;
+      _pushItem(_Shape(ShapeType.whiteout, Offset(line.x, line.y),
+          Offset(line.x + line.w, line.y + line.h), Colors.white, 1));
+    });
+    final before = _layer.items.length;
+    await _editTextBox(
+      _TextBox(Offset(line.x, line.y + line.h * 0.1), line.text.trim(),
+          Colors.black, size, false),
+      isNew: true,
+    );
+    // User cancelled -> remove the stray whiteout we added underneath.
+    if (_layer.items.length == before &&
+        _layer.items.isNotEmpty &&
+        _layer.items.last is _Shape &&
+        (_layer.items.last as _Shape).type == ShapeType.whiteout) {
+      setState(() => _layer.items.removeLast());
+    }
+  }
+
+  /// Fill & Sign: pick a saved profile value (name, address, ID…) and drop it
+  /// as a movable text box. Prompts to set up the profile if none is saved.
+  Future<void> _insertProfileField() async {
+    final l10n = AppLocalizations.of(context)!;
+    await UserProfileService.instance.load();
+    final data = UserProfileService.instance.data;
+    final entries = UserProfileService.fields
+        .where((f) => (data[f.$1] ?? '').trim().isNotEmpty)
+        .toList();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        if (entries.isEmpty) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.badge_outlined, size: 48, color: Theme.of(ctx).colorScheme.outline),
+                const SizedBox(height: 12),
+                Text(l10n.noProfileData, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.badge_outlined),
+                  label: Text(l10n.setUpProfile),
+                ),
+              ]),
+            ),
+          );
+        }
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final f in entries)
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(data[f.$1]!),
+                  subtitle: Text(f.$2),
+                  onTap: () {
+                    final value = data[f.$1]!;
+                    Navigator.pop(ctx);
+                    setState(() => _pushItem(
+                        _TextBox(const Offset(0.5, 0.5), value, _color, _textSize, _bold)));
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _editTextBox(_TextBox box, {bool isNew = false}) async {
     final ctrl = TextEditingController(text: box.text);
     double size = box.size;
@@ -923,14 +1081,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 controller: ctrl,
                 autofocus: true,
                 maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Type text...',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(ctx)!.typeText,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               Row(children: [
-                const Text('Size'),
+                Text(AppLocalizations.of(ctx)!.sizeLabel),
                 Expanded(
                   child: Slider(
                     value: size,
@@ -940,35 +1098,35 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Bold',
+                  tooltip: AppLocalizations.of(ctx)!.bold,
                   isSelected: bold,
                   icon: const Icon(Icons.format_bold),
                   onPressed: () => setLocal(() => bold = !bold),
                 ),
                 IconButton(
-                  tooltip: 'Italic',
+                  tooltip: AppLocalizations.of(ctx)!.italic,
                   isSelected: italic,
                   icon: const Icon(Icons.format_italic),
                   onPressed: () => setLocal(() => italic = !italic),
                 ),
                 IconButton(
-                  tooltip: 'Underline',
+                  tooltip: AppLocalizations.of(ctx)!.underline,
                   isSelected: underline,
                   icon: const Icon(Icons.format_underlined),
                   onPressed: () => setLocal(() => underline = !underline),
                 ),
               ]),
               Row(children: [
-                const Text('Font'),
+                Text(AppLocalizations.of(ctx)!.font),
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButton<String?>(
                     value: font,
                     isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Default')),
-                      DropdownMenuItem(value: 'serif', child: Text('Serif', style: TextStyle(fontFamily: 'serif'))),
-                      DropdownMenuItem(value: 'monospace', child: Text('Mono', style: TextStyle(fontFamily: 'monospace'))),
+                    items: [
+                      DropdownMenuItem(value: null, child: Text(AppLocalizations.of(ctx)!.fontDefault)),
+                      const DropdownMenuItem(value: 'serif', child: Text('Serif', style: TextStyle(fontFamily: 'serif'))),
+                      const DropdownMenuItem(value: 'monospace', child: Text('Mono', style: TextStyle(fontFamily: 'monospace'))),
                     ],
                     onChanged: (v) => setLocal(() => font = v),
                   ),
@@ -1000,10 +1158,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (!isNew)
               TextButton(
                 onPressed: () => Navigator.pop(ctx, '__delete__'),
-                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                child: Text(AppLocalizations.of(ctx)!.delete, style: const TextStyle(color: Colors.red)),
               ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(ctx)!.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(AppLocalizations.of(ctx)!.ok)),
           ],
         ),
       ),
@@ -1041,16 +1199,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Shape style'),
+          title: Text(AppLocalizations.of(ctx)!.shapeStyle),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
-              const SizedBox(width: 56, child: Text('Width')),
+              SizedBox(width: 56, child: Text(AppLocalizations.of(ctx)!.width)),
               Expanded(
                 child: Slider(value: width, min: 1, max: 14, onChanged: (v) => setLocal(() => width = v)),
               ),
             ]),
             Row(children: [
-              const SizedBox(width: 56, child: Text('Opacity')),
+              SizedBox(width: 56, child: Text(AppLocalizations.of(ctx)!.opacity)),
               Expanded(
                 child: Slider(value: opacity, min: 0.1, max: 1, onChanged: (v) => setLocal(() => opacity = v)),
               ),
@@ -1058,7 +1216,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (canFill)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Fill'),
+                title: Text(AppLocalizations.of(ctx)!.fill),
                 value: filled,
                 onChanged: (v) => setLocal(() => filled = v),
               ),
@@ -1084,8 +1242,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.ok)),
           ],
         ),
       ),
@@ -1166,13 +1324,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.draw),
-                title: const Text('Draw new signature'),
+                title: Text(AppLocalizations.of(ctx)!.drawNewSignature),
                 onTap: () => Navigator.pop(ctx, 'new'),
               ),
               const Divider(height: 1),
               ...List.generate(_savedSignatures.length, (i) => ListTile(
                     leading: const Icon(Icons.gesture),
-                    title: Text('Saved signature ${i + 1}'),
+                    title: Text(AppLocalizations.of(ctx)!.savedSignatureN(i + 1)),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline, size: 20),
                       onPressed: () {
@@ -1221,11 +1379,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final save = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Save this signature?'),
-          content: const Text('Saved signatures can be reused instantly next time.'),
+          title: Text(AppLocalizations.of(ctx)!.saveThisSignature),
+          content: Text(AppLocalizations.of(ctx)!.savedSignaturesReused),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.no)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.save)),
           ],
         ),
       );
@@ -1375,6 +1533,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final bytes = _pageCache[_current];
 
     return PopScope(
@@ -1384,11 +1543,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
         final action = await showDialog<String>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Unsaved changes'),
-            content: const Text('You have unsaved edits. What would you like to do?'),
+            title: Text(AppLocalizations.of(ctx)!.unsavedChanges),
+            content: Text(AppLocalizations.of(ctx)!.unsavedEditsBody),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: const Text('Discard')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save & exit')),
+              TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: Text(AppLocalizations.of(ctx)!.discard)),
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(AppLocalizations.of(ctx)!.saveAndExit)),
             ],
           ),
         );
@@ -1407,10 +1566,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_fileName ?? 'PDF Editor',
+            Text(_fileName ?? l10n.toolEditor,
                 style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (_pageCount > 0)
-              Text('Page ${_current + 1} of $_pageCount',
+              Text(l10n.pageOfPages(_current + 1, _pageCount),
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
           ],
         ),
@@ -1418,17 +1577,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
           if (bytes != null) ...[
             IconButton(
               icon: const Icon(Icons.undo),
-              tooltip: 'Undo',
+              tooltip: l10n.undo,
               onPressed: _layer.items.isEmpty ? null : _undo,
             ),
             IconButton(
               icon: const Icon(Icons.redo),
-              tooltip: 'Redo',
+              tooltip: l10n.redo,
               onPressed: _layer.redo.isEmpty ? null : _redoAction,
             ),
             IconButton(
               icon: const Icon(Icons.ios_share),
-              tooltip: 'Export',
+              tooltip: l10n.export,
               onPressed: _loading ? null : _export,
             ),
           ],
@@ -1465,7 +1624,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           const CircularProgressIndicator(),
                           if (_detecting) ...[
                             const SizedBox(height: 12),
-                            const Text('Reading the form…', style: TextStyle(color: Colors.white)),
+                            Text(l10n.readingTheForm, style: const TextStyle(color: Colors.white)),
                           ],
                         ]),
                       ),
@@ -1545,6 +1704,24 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Icon(_typeIcon(f.type), size: 14, color: Colors.amber.shade900),
+                      ),
+                    ),
+                  )),
+            // Editable text lines (tap a line to replace its text)
+            if (_showEditLines)
+              ...(_editLines[_current] ?? const <OcrLine>[]).map((line) => Positioned(
+                    left: line.x * size.width,
+                    top: line.y * size.height,
+                    width: (line.w * size.width).clamp(10.0, size.width),
+                    height: (line.h * size.height).clamp(12.0, 80.0),
+                    child: GestureDetector(
+                      onTap: () => _editExistingLine(line),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.14),
+                          border: Border.all(color: Colors.blueAccent, width: 1),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
                   )),
@@ -1673,22 +1850,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_selected is _TextBox) ...[
-                      _miniBtn(Icons.edit, 'Edit text', () => _editTextBox(_selected as _TextBox)),
+                      _miniBtn(Icons.edit, AppLocalizations.of(context)!.editText, () => _editTextBox(_selected as _TextBox)),
                       const SizedBox(width: 10),
                     ],
                     if (_selected is _Shape) ...[
-                      _miniBtn(Icons.tune, 'Style', () => _editShapeStyle(_selected as _Shape)),
+                      _miniBtn(Icons.tune, AppLocalizations.of(context)!.style, () => _editShapeStyle(_selected as _Shape)),
                       const SizedBox(width: 10),
                     ],
-                    _miniBtn(Icons.copy_all, 'Duplicate', _duplicateSelected),
+                    _miniBtn(Icons.copy_all, AppLocalizations.of(context)!.duplicate, _duplicateSelected),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.flip_to_front, 'Bring to front', _bringToFront),
+                    _miniBtn(Icons.flip_to_front, AppLocalizations.of(context)!.bringToFront, _bringToFront),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.flip_to_back, 'Send to back', _sendToBack),
+                    _miniBtn(Icons.flip_to_back, AppLocalizations.of(context)!.sendToBack, _sendToBack),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.delete_outline, 'Delete', _deleteSelected),
+                    _miniBtn(Icons.delete_outline, AppLocalizations.of(context)!.delete, _deleteSelected),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.close, 'Deselect', () => setState(() => _selected = null)),
+                    _miniBtn(Icons.close, AppLocalizations.of(context)!.deselect, () => setState(() => _selected = null)),
                   ]),
                 ),
               ),
@@ -1707,30 +1884,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
-                      Text('${_multi.length} selected',
+                      Text(AppLocalizations.of(context)!.nSelected(_multi.length),
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_left, 'Align left', () => _alignMulti('left')),
+                      _miniBtn(Icons.align_horizontal_left, AppLocalizations.of(context)!.alignLeft, () => _alignMulti('left')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_center, 'Align center', () => _alignMulti('hcenter')),
+                      _miniBtn(Icons.align_horizontal_center, AppLocalizations.of(context)!.alignCenter, () => _alignMulti('hcenter')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_right, 'Align right', () => _alignMulti('right')),
+                      _miniBtn(Icons.align_horizontal_right, AppLocalizations.of(context)!.alignRight, () => _alignMulti('right')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_top, 'Align top', () => _alignMulti('top')),
+                      _miniBtn(Icons.align_vertical_top, AppLocalizations.of(context)!.alignTop, () => _alignMulti('top')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_center, 'Align middle', () => _alignMulti('vcenter')),
+                      _miniBtn(Icons.align_vertical_center, AppLocalizations.of(context)!.alignMiddle, () => _alignMulti('vcenter')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_bottom, 'Align bottom', () => _alignMulti('bottom')),
+                      _miniBtn(Icons.align_vertical_bottom, AppLocalizations.of(context)!.alignBottom, () => _alignMulti('bottom')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.horizontal_distribute, 'Distribute H', () => _distributeMulti(Axis.horizontal)),
+                      _miniBtn(Icons.horizontal_distribute, AppLocalizations.of(context)!.distributeH, () => _distributeMulti(Axis.horizontal)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.vertical_distribute, 'Distribute V', () => _distributeMulti(Axis.vertical)),
+                      _miniBtn(Icons.vertical_distribute, AppLocalizations.of(context)!.distributeV, () => _distributeMulti(Axis.vertical)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.copy_all, 'Duplicate', _duplicateMulti),
+                      _miniBtn(Icons.copy_all, AppLocalizations.of(context)!.duplicate, _duplicateMulti),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.delete_outline, 'Delete', _deleteMulti),
+                      _miniBtn(Icons.delete_outline, AppLocalizations.of(context)!.delete, _deleteMulti),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.close, 'Deselect', () => setState(() => _multi.clear())),
+                      _miniBtn(Icons.close, AppLocalizations.of(context)!.deselect, () => setState(() => _multi.clear())),
                     ]),
                   ),
                 ),
@@ -1818,19 +1995,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
           children: [
             const Icon(Icons.draw_outlined, size: 72, color: Colors.white38),
             const SizedBox(height: 16),
-            const Text('Open a PDF or image to edit',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
+            Text(AppLocalizations.of(context)!.openPdfOrImageToEdit,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white70)),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _loading ? null : _pick,
               icon: const Icon(Icons.folder_open),
-              label: const Text('Choose File'),
+              label: Text(AppLocalizations.of(context)!.chooseFile),
             ),
           ],
         ),
       );
 
   Widget _toolbar(ColorScheme cs) {
+    final l10n = AppLocalizations.of(context)!;
     final showStyle = _tool == EditTool.draw ||
         _tool == EditTool.highlight ||
         _tool == EditTool.text ||
@@ -1849,26 +2028,37 @@ class _PickEditScreenState extends State<PickEditScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(children: [
-                _actionBtn(Icons.auto_awesome, _detecting ? 'Scanning…' : 'Smart Fill',
+                _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
+                _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
+                    l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),
                 if (_pageFields.isNotEmpty)
                   _actionBtn(_showFields ? Icons.visibility_off : Icons.visibility,
-                      _showFields ? 'Hide' : 'Fields',
+                      _showFields ? l10n.toolHide : l10n.toolFields,
                       () => setState(() => _showFields = !_showFields), cs),
-                _toolBtn(Icons.pan_tool_alt, 'Move', EditTool.pan, cs),
-                _toolBtn(Icons.select_all, 'Select', EditTool.select, cs),
-                _toolBtn(Icons.edit, 'Draw', EditTool.draw, cs),
-                _toolBtn(Icons.highlight, 'Highlight', EditTool.highlight, cs),
-                _toolBtn(Icons.title, 'Text', EditTool.text, cs),
-                _toolBtn(Icons.horizontal_rule, 'Line', EditTool.line, cs),
-                _toolBtn(Icons.north_east, 'Arrow', EditTool.arrow, cs),
-                _toolBtn(Icons.crop_square, 'Box', EditTool.rect, cs),
-                _toolBtn(Icons.circle_outlined, 'Oval', EditTool.oval, cs),
-                _toolBtn(Icons.format_color_fill, 'Whiteout', EditTool.whiteout, cs),
-                _actionBtn(Icons.gesture, 'Sign', _addSignature, cs),
-                _toolBtn(Icons.cleaning_services, 'Eraser', EditTool.eraser, cs),
-                _actionBtn(Icons.rotate_right, 'Rotate', _rotatePage, cs),
-                _actionBtn(Icons.folder_open, 'Open', _pick, cs),
+                _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
+                _toolBtn(Icons.select_all, l10n.toolSelect, EditTool.select, cs),
+                // --- Fill & Sign (form marks) ---
+                _actionBtn(Icons.gesture, l10n.toolSign, _addSignature, cs),
+                _actionBtn(Icons.event_available, l10n.signatureDate, _placeSignatureDate, cs),
+                _actionBtn(Icons.badge_outlined, l10n.myProfile, _insertProfileField, cs),
+                _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
+                _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
+                _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox, cs),
+                _toolBtn(Icons.fiber_manual_record, l10n.markDot, EditTool.dot, cs),
+                _toolBtn(Icons.remove, l10n.markDash, EditTool.dash, cs),
+                // --- Text & drawing ---
+                _toolBtn(Icons.title, l10n.toolText, EditTool.text, cs),
+                _toolBtn(Icons.edit, l10n.toolDraw, EditTool.draw, cs),
+                _toolBtn(Icons.highlight, l10n.toolHighlight, EditTool.highlight, cs),
+                _toolBtn(Icons.horizontal_rule, l10n.toolLine, EditTool.line, cs),
+                _toolBtn(Icons.north_east, l10n.toolArrow, EditTool.arrow, cs),
+                _toolBtn(Icons.crop_square, l10n.toolBox, EditTool.rect, cs),
+                _toolBtn(Icons.circle_outlined, l10n.toolOval, EditTool.oval, cs),
+                _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout, cs),
+                _toolBtn(Icons.cleaning_services, l10n.toolEraser, EditTool.eraser, cs),
+                _actionBtn(Icons.rotate_right, l10n.toolRotate, _rotatePage, cs),
+                _actionBtn(Icons.folder_open, l10n.toolOpen, _pick, cs),
               ]),
             ),
             if (showStyle)
@@ -1910,7 +2100,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Bold',
+                      tooltip: AppLocalizations.of(context)!.bold,
                       isSelected: _bold,
                       icon: const Icon(Icons.format_bold),
                       onPressed: () => setState(() => _bold = !_bold),
@@ -2147,13 +2337,13 @@ class _SignaturePadState extends State<_SignaturePad> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Sign Here'),
+        title: Text(AppLocalizations.of(context)!.signHere),
         actions: [
-          TextButton(onPressed: () => setState(() => _points.clear()), child: const Text('Clear')),
+          TextButton(onPressed: () => setState(() => _points.clear()), child: Text(AppLocalizations.of(context)!.clear)),
           FilledButton(
               onPressed: () => Navigator.pop(
                   context, _points.where((p) => p.isFinite).toList()),
-              child: const Text('Done')),
+              child: Text(AppLocalizations.of(context)!.done)),
           const SizedBox(width: 8),
         ],
       ),

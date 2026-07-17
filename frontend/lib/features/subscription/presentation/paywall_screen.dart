@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -7,24 +8,25 @@ import '../application/subscription_controller.dart';
 import '../domain/entitlement.dart';
 
 /// Material 3 paywall. Reads live product prices from Play and drives the
-/// purchase / restore flows through [SubscriptionController].
+/// purchase / restore flows through [SubscriptionController]. Fully localized.
 class PaywallScreen extends ConsumerWidget {
   const PaywallScreen({super.key});
-
-  static const _benefits = <String>[
-    'Unlimited AI chat, summaries & translation',
-    'Premium models (GPT-4o, Claude, Gemini)',
-    'AI form auto-fill & data extraction',
-    'Unlimited OCR on scanned PDFs',
-    'Batch processing & large files',
-    'No ads, priority processing',
-  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(subscriptionControllerProvider);
     final controller = ref.read(subscriptionControllerProvider.notifier);
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+
+    final benefits = <String>[
+      l10n.proBenefit1,
+      l10n.proBenefit2,
+      l10n.proBenefit3,
+      l10n.proBenefit4,
+      l10n.proBenefit5,
+      l10n.proBenefit6,
+    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('AI PDF Pro')),
@@ -45,16 +47,15 @@ class PaywallScreen extends ConsumerWidget {
                     children: [
                       const Icon(Icons.workspace_premium, color: Colors.white, size: 36),
                       const SizedBox(height: 12),
-                      const Text('Unlock everything',
-                          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                      Text(l10n.proUnlockTitle,
+                          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
-                      Text('One membership for all AI features across your documents.',
-                          style: TextStyle(color: Colors.white.withOpacity(0.9))),
+                      Text(l10n.proTagline, style: TextStyle(color: Colors.white.withOpacity(0.9))),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-                ..._benefits.map((b) => Padding(
+                ...benefits.map((b) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(children: [
                         Icon(Icons.check_circle, color: AppColors.success, size: 20),
@@ -65,42 +66,32 @@ class PaywallScreen extends ConsumerWidget {
                 const SizedBox(height: 20),
 
                 if (!state.storeAvailable && state.initialized)
-                  _InfoBanner(
-                    icon: Icons.info_outline,
-                    color: cs.error,
-                    text: 'In-app purchases are unavailable on this device / account. '
-                        'Sign in to Google Play and try again.',
-                  )
+                  _InfoBanner(icon: Icons.info_outline, color: cs.error, text: l10n.proStoreUnavailable)
                 else if (state.loadingProducts)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: CircularProgressIndicator()),
                   )
                 else if (state.products.isEmpty && state.initialized)
-                  _InfoBanner(
-                    icon: Icons.storefront_outlined,
-                    color: cs.error,
-                    text: 'No plans available yet. Products must be created and active '
-                        'in the Play Console (IDs: pro_monthly, pro_yearly, pro_lifetime).',
-                  )
+                  _InfoBanner(icon: Icons.storefront_outlined, color: cs.error, text: l10n.proNoPlans)
                 else ...[
                   _PlanCard(
-                    title: 'Yearly',
-                    badge: 'Best value',
+                    title: l10n.planYearly,
+                    badge: l10n.planBestValue,
                     product: state.productById(ProductIds.yearly),
                     onBuy: state.purchaseInProgress ? null : controller.buy,
                     highlighted: true,
                   ),
                   const SizedBox(height: 12),
                   _PlanCard(
-                    title: 'Monthly',
+                    title: l10n.planMonthly,
                     product: state.productById(ProductIds.monthly),
                     onBuy: state.purchaseInProgress ? null : controller.buy,
                   ),
                   const SizedBox(height: 12),
                   _PlanCard(
-                    title: 'Lifetime',
-                    subtitle: 'Pay once, own forever',
+                    title: l10n.planLifetime,
+                    subtitle: l10n.planLifetimeSubtitle,
                     product: state.productById(ProductIds.lifetime),
                     onBuy: state.purchaseInProgress ? null : controller.buy,
                   ),
@@ -115,13 +106,12 @@ class PaywallScreen extends ConsumerWidget {
                 Center(
                   child: TextButton(
                     onPressed: state.purchaseInProgress ? null : controller.restore,
-                    child: const Text('Restore purchases'),
+                    child: Text(l10n.restorePurchases),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Subscriptions renew automatically until cancelled in Google Play. '
-                  'Lifetime is a one-time purchase.',
+                  l10n.proRenewDisclaimer,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                 ),
@@ -171,7 +161,7 @@ class _PlanCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Flexible(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
                   if (badge != null) ...[
                     const SizedBox(width: 8),
                     Container(
@@ -203,6 +193,7 @@ class _ProActive extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -211,13 +202,10 @@ class _ProActive extends StatelessWidget {
           children: [
             Icon(Icons.verified, size: 72, color: AppColors.success),
             const SizedBox(height: 16),
-            Text("You're on ${entitlement.tier.label}",
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            Text(l10n.proActiveTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text(
-              entitlement.isLifetime
-                  ? 'Lifetime access — thank you for supporting the app!'
-                  : 'All Pro features are unlocked. Manage or cancel anytime in Google Play.',
+              entitlement.isLifetime ? l10n.proActiveLifetime : l10n.proActiveSubscription,
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant),
             ),

@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -33,6 +34,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
 
   Future<void> _convert() async {
     if (_filePath == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final outputs =
@@ -41,21 +43,21 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
       if (mounted) {
         if (outputs.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No pages could be exported')),
+            SnackBar(content: Text(l10n.noPagesExported)),
           );
         } else {
           await showResultSheet(
             context,
             paths: outputs,
-            title: 'Exported ${outputs.length} image${outputs.length == 1 ? '' : 's'}',
-            subtitle: _png ? 'PNG pages' : 'JPG pages',
+            title: l10n.imagesExported(outputs.length),
+            subtitle: _png ? l10n.pngPages : l10n.jpgPages,
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -65,8 +67,9 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('PDF to Images')),
+      appBar: AppBar(title: Text(l10n.toolPdfToImages)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -89,7 +92,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _filePath == null
-                        ? 'Tap to choose a PDF'
+                        ? l10n.tapToChoosePdf
                         : _filePath!.split('/').last,
                     textAlign: TextAlign.center,
                     maxLines: 2,
@@ -97,14 +100,14 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
-                  Text('Each page becomes an image',
+                  Text(l10n.eachPageBecomesImage,
                       style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                 ]),
               ),
             ),
             const SizedBox(height: 24),
             Row(children: [
-              const Text('Format', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(l10n.format, style: const TextStyle(fontWeight: FontWeight.w600)),
               const Spacer(),
               SegmentedButton<bool>(
                 segments: const [
@@ -119,9 +122,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
             ]),
             const SizedBox(height: 8),
             Text(
-              _png
-                  ? 'PNG: lossless, larger files'
-                  : 'JPG: smaller files, great for sharing',
+              _png ? l10n.pngHint : l10n.jpgHint,
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
             ),
             if (_outputs != null && _outputs!.isNotEmpty) ...[
@@ -137,7 +138,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Exported ${_outputs!.length} image${_outputs!.length == 1 ? '' : 's'}',
+                      l10n.imagesExported(_outputs!.length),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -148,11 +149,11 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
                 onPressed: () => showResultSheet(
                   context,
                   paths: _outputs!,
-                  title: 'Exported ${_outputs!.length} images',
-                  subtitle: _png ? 'PNG pages' : 'JPG pages',
+                  title: l10n.imagesExported(_outputs!.length),
+                  subtitle: _png ? l10n.pngPages : l10n.jpgPages,
                 ),
                 icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Save / Share'),
+                label: Text(l10n.saveShare),
               ),
             ],
             const Spacer(),
@@ -165,7 +166,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.image_outlined),
-              label: Text(_busy ? 'Exporting...' : 'Export to Images'),
+              label: Text(_busy ? l10n.exporting : l10n.exportToImages),
             ),
           ],
         ),

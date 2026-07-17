@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/recent_files_service.dart';
@@ -24,16 +25,17 @@ class _RecentFilesScreenState extends State<RecentFilesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Recent Files'),
+        title: Text(l10n.recentFiles),
         actions: [
           ValueListenableBuilder<List<RecentFile>>(
             valueListenable: RecentFilesService.instance.notifier,
             builder: (_, items, __) => items.isEmpty
                 ? const SizedBox.shrink()
                 : IconButton(
-                    tooltip: 'Clear list',
+                    tooltip: l10n.clearList,
                     icon: const Icon(Icons.delete_sweep_outlined),
                     onPressed: () => _confirmClear(context),
                   ),
@@ -55,38 +57,41 @@ class _RecentFilesScreenState extends State<RecentFilesScreen> {
     );
   }
 
-  Widget _empty(ColorScheme cs) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: Icon(Icons.history, size: 48, color: cs.outline),
+  Widget _empty(ColorScheme cs) {
+    final l10n = AppLocalizations.of(context)!;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(28),
             ),
-            const SizedBox(height: 20),
-            Text('No recent files yet',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text('Files you create or edit will appear here',
-                style: TextStyle(color: cs.onSurfaceVariant)),
-          ],
-        ),
-      );
+            child: Icon(Icons.history, size: 48, color: cs.outline),
+          ),
+          const SizedBox(height: 20),
+          Text(l10n.noRecentFiles,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(l10n.noRecentFilesBody, style: TextStyle(color: cs.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
 
   Future<void> _confirmClear(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear recent files?'),
-        content: const Text('This only clears the list. Your saved files are not deleted.'),
+        title: Text(l10n.clearRecentTitle),
+        content: Text(l10n.clearRecentBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.clear)),
         ],
       ),
     );
@@ -101,6 +106,7 @@ class _RecentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final when = DateFormat('MMM d, h:mm a').format(file.date);
     return Container(
       decoration: BoxDecoration(
@@ -125,11 +131,11 @@ class _RecentTile extends StatelessWidget {
             maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant)),
         trailing: PopupMenuButton<String>(
           onSelected: (v) => _onAction(context, v),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'preview', child: Row(children: [Icon(Icons.visibility_outlined), SizedBox(width: 10), Text('Preview')])),
-            PopupMenuItem(value: 'save', child: Row(children: [Icon(Icons.download_outlined), SizedBox(width: 10), Text('Save')])),
-            PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share_outlined), SizedBox(width: 10), Text('Share')])),
-            PopupMenuItem(value: 'remove', child: Row(children: [Icon(Icons.close), SizedBox(width: 10), Text('Remove')])),
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'preview', child: Row(children: [const Icon(Icons.visibility_outlined), const SizedBox(width: 10), Text(l10n.preview)])),
+            PopupMenuItem(value: 'save', child: Row(children: [const Icon(Icons.download_outlined), const SizedBox(width: 10), Text(l10n.save)])),
+            PopupMenuItem(value: 'share', child: Row(children: [const Icon(Icons.share_outlined), const SizedBox(width: 10), Text(l10n.share)])),
+            PopupMenuItem(value: 'remove', child: Row(children: [const Icon(Icons.close), const SizedBox(width: 10), Text(l10n.remove)])),
           ],
         ),
       ),

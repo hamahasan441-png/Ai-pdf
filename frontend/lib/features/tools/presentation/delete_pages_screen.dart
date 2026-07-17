@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -41,18 +42,19 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
 
   Future<void> _delete() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     final from = int.tryParse(_fromCtrl.text.trim()) ?? 1;
     final to = int.tryParse(_toCtrl.text.trim()) ?? from;
     if (from < 1 || to < from || from > _pageCount) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid page range')),
+        SnackBar(content: Text(l10n.invalidPageRange)),
       );
       return;
     }
     final removed = to.clamp(from, _pageCount) - from + 1;
     if (removed >= _pageCount) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That would delete every page')),
+        SnackBar(content: Text(l10n.wouldDeleteEveryPage)),
       );
       return;
     }
@@ -63,13 +65,13 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
       if (mounted) {
         await showResultSheet(context,
             paths: [out],
-            title: 'Deleted pages $from–$to',
-            subtitle: '${_pageCount - removed} page${_pageCount - removed == 1 ? '' : 's'} kept');
+            title: l10n.deletedPagesRange(from, to),
+            subtitle: l10n.pagesKept(_pageCount - removed));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -79,8 +81,9 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Delete Pages')),
+      appBar: AppBar(title: Text(l10n.toolDeletePages)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -103,8 +106,8 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _path == null
-                        ? 'Tap to choose a PDF'
-                        : '${_path!.split('/').last} ($_pageCount pages)',
+                        ? l10n.tapToChoosePdf
+                        : '${_path!.split('/').last} (${l10n.nPages(_pageCount)})',
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -115,8 +118,8 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
             ),
             if (_path != null) ...[
               const SizedBox(height: 28),
-              const Text('Pages to remove',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(l10n.pagesToRemove,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
@@ -124,25 +127,25 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                     controller: _fromCtrl,
                     keyboardType: TextInputType.number,
                     enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'From',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.fromLabel,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('to', style: TextStyle(fontSize: 16)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(l10n.toLower, style: const TextStyle(fontSize: 16)),
                 ),
                 Expanded(
                   child: TextField(
                     controller: _toCtrl,
                     keyboardType: TextInputType.number,
                     enabled: !_busy,
-                    decoration: const InputDecoration(
-                      labelText: 'To',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.toLabel,
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                   ),
@@ -150,7 +153,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
               ]),
               const SizedBox(height: 8),
               Text(
-                'Total pages: $_pageCount. The rest are kept in order.',
+                l10n.totalPagesKept(_pageCount),
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
             ],
@@ -164,7 +167,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.delete_sweep_outlined),
-              label: Text(_busy ? 'Removing...' : 'Delete Pages'),
+              label: Text(_busy ? l10n.removing : l10n.toolDeletePages),
             ),
           ],
         ),

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -34,6 +35,7 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
 
   Future<void> _extract() async {
     if (_path == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final out = await OfflinePdfService.instance.pdfToText(_path!);
@@ -44,12 +46,12 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
       });
       if (mounted) {
         await showResultSheet(context,
-            paths: [out], title: 'Text extracted', subtitle: '.txt file ready');
+            paths: [out], title: l10n.textExtracted, subtitle: l10n.txtFileReady);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -59,8 +61,9 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('PDF to Text')),
+      appBar: AppBar(title: Text(l10n.toolPdfToText)),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -82,14 +85,14 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
                       size: 48, color: cs.primary),
                   const SizedBox(height: 12),
                   Text(
-                    _path == null ? 'Tap to choose a PDF' : _path!.split('/').last,
+                    _path == null ? l10n.tapToChoosePdf : _path!.split('/').last,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
-                  Text('OCR extracts all text from every page',
+                  Text(l10n.ocrExtractsAllText,
                       style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                 ]),
               ),
@@ -101,16 +104,16 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: _preview!));
                     ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Copied to clipboard')));
+                        SnackBar(content: Text(l10n.copiedToClipboard)));
                   },
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Copy'),
+                  label: Text(l10n.copy),
                 ),
                 if (_outputPath != null)
                   TextButton.icon(
                     onPressed: () => Share.shareXFiles([XFile(_outputPath!)]),
                     icon: const Icon(Icons.share, size: 16),
-                    label: const Text('Share'),
+                    label: Text(l10n.share),
                   ),
               ]),
               Expanded(
@@ -138,7 +141,7 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.text_snippet_outlined),
-              label: Text(_busy ? 'Extracting text...' : 'Extract Text'),
+              label: Text(_busy ? l10n.extractingText : l10n.toolExtractText),
             ),
           ],
         ),

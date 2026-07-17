@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -44,6 +45,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
       allowMultiple: true,
     );
     if (result == null || result.files.isEmpty) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       for (final f in result.files) {
@@ -56,17 +58,18 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
         }
       }
     } catch (e) {
-      _status = 'Could not add file: $e';
+      _status = l10n.couldNotAddFile(e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _addPdf(String path) async {
+    final l10n = AppLocalizations.of(context)!;
     final doc = await pdfx.PdfDocument.openFile(path);
     try {
       for (var i = 1; i <= doc.pagesCount; i++) {
-        setState(() => _status = 'Loading page $i of ${doc.pagesCount}…');
+        setState(() => _status = l10n.loadingPageOf(i, doc.pagesCount));
         final page = await doc.getPage(i);
         try {
           final longEdge = page.width > page.height ? page.width : page.height;
@@ -132,14 +135,15 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
 
   Future<void> _export() async {
     if (_pages.isEmpty) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() {
       _busy = true;
-      _status = 'Building PDF…';
+      _status = l10n.buildingPdf;
     });
     try {
       final doc = pw.Document();
       for (var i = 0; i < _pages.length; i++) {
-        setState(() => _status = 'Adding page ${i + 1} of ${_pages.length}…');
+        setState(() => _status = l10n.addingPageOf(i + 1, _pages.length));
         final p = _pages[i];
         final bytes = await _rotatedBytes(p.bytes, p.rot);
         final image = pw.MemoryImage(bytes);
@@ -158,10 +162,10 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
           _status = '';
         });
         await showResultSheet(context,
-            paths: [outPath], title: 'Organized PDF', subtitle: '${_pages.length} page(s)');
+            paths: [outPath], title: l10n.organizedPdf, subtitle: l10n.nPages(_pages.length));
       }
     } catch (e) {
-      _status = 'Export failed: $e';
+      _status = l10n.operationFailed(e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -170,13 +174,14 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Organize Pages'),
+        title: Text(l10n.toolOrganize),
         actions: [
           if (_pages.isNotEmpty)
             IconButton(
-              tooltip: 'Add more',
+              tooltip: l10n.addMore,
               icon: const Icon(Icons.add),
               onPressed: _busy ? null : _addFiles,
             ),
@@ -191,11 +196,16 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(children: [
-                    Text('${_pages.length} page(s)',
+                    Text(l10n.nPages(_pages.length),
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     const Spacer(),
-                    Text(_status.isNotEmpty ? _status : 'Long-press & drag to reorder',
-                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    Expanded(
+                      child: Text(_status.isNotEmpty ? _status : l10n.longPressToReorder,
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    ),
                   ]),
                 ),
                 Expanded(
@@ -213,12 +223,14 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
           : FloatingActionButton.extended(
               onPressed: _busy ? null : _export,
               icon: const Icon(Icons.check),
-              label: const Text('Export PDF'),
+              label: Text(l10n.exportPdf),
             ),
     );
   }
 
-  Widget _empty(ColorScheme cs) => Center(
+  Widget _empty(ColorScheme cs) {
+    final l10n = AppLocalizations.of(context)!;
+    return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
@@ -226,11 +238,11 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
             children: [
               Icon(Icons.dashboard_customize_outlined, size: 72, color: cs.primary),
               const SizedBox(height: 16),
-              const Text('Organize your pages',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+              Text(l10n.organizeYourPages,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
               const SizedBox(height: 6),
               Text(
-                'Add PDFs and images, then reorder, rotate or delete pages and export one clean PDF.',
+                l10n.organizeYourPagesBody,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant),
               ),
@@ -238,15 +250,17 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
               FilledButton.icon(
                 onPressed: _busy ? null : _addFiles,
                 icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: const Text('Add files'),
+                label: Text(l10n.addFiles),
               ),
             ],
           ),
         ),
       );
+  }
 
   Widget _pageTile(ColorScheme cs, int i, {required Key key}) {
     final p = _pages[i];
+    final l10n = AppLocalizations.of(context)!;
     return Card(
       key: key,
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -268,15 +282,15 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
             ),
           ),
           const SizedBox(width: 14),
-          Text('Page ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(l10n.pageNumber(i + 1), style: const TextStyle(fontWeight: FontWeight.w600)),
           const Spacer(),
           IconButton(
-            tooltip: 'Rotate',
+            tooltip: l10n.rotate,
             icon: const Icon(Icons.rotate_right),
             onPressed: () => _rotate(i),
           ),
           IconButton(
-            tooltip: 'Delete',
+            tooltip: l10n.delete,
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: () => _delete(i),
           ),
