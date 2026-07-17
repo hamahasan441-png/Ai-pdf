@@ -24,7 +24,7 @@ import '../widgets/result_sheet.dart';
 enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser, check, cross, dot, dash, checkbox }
 
 /// Inferred type of a detected form field, so tapping it opens the right input.
-enum FieldType { text, number, date, email, phone, name, signature }
+enum FieldType { text, number, date, email, phone, name, signature, checkbox, radio }
 
 /// A fillable field the app detected on the page via OCR. [rect] is the label
 /// position (normalized 0..1); the value is placed just after it, at a font
@@ -217,6 +217,29 @@ class _PickEditScreenState extends State<PickEditScreen> {
           _inferType(line.text),
         ));
       }
+
+      // Shape-based detection: small, roughly-square OCR boxes with very short
+      // text (1-3 chars) that aren't already a label are likely checkbox/radio
+      // form elements. Catches drawn squares/circles that OCR reads as a random
+      // character rather than a known glyph.
+      for (final line in result.lines) {
+        final t = line.text.trim();
+        if (t.isEmpty || t.length > 3) continue;
+        if (_isFieldLabel(t)) continue; // already handled above
+        final aspect = line.w > 0 ? (line.h / line.w) : 1.0;
+        final isSmall = line.w < 0.06 && line.h < 0.04;
+        if (!isSmall) continue;
+        if (aspect >= 0.6 && aspect <= 1.6) {
+          final type = (t == 'O' || t == 'o' || t == '0')
+              ? FieldType.radio
+              : FieldType.checkbox;
+          detected.add(DetectedField(
+            Rect.fromLTWH(line.x, line.y, line.w, line.h),
+            t,
+            type,
+          ));
+        }
+      }
       setState(() {
         _fields[_current] = detected;
         _showFields = true;
@@ -237,13 +260,42 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (s.isEmpty || s.length > 60) return false;
     if (s.endsWith(':')) return true;
     if (RegExp(r'_{2,}').hasMatch(s)) return true; // underscore blanks
+    if (_isCheckboxGlyph(s)) return true;
+    if (_isRadioGlyph(s)) return true;
     return _inferType(s) != FieldType.text; // matched a typed keyword
+  }
+
+  /// Detect visual checkbox glyphs that OCR recognizes as characters.
+  bool _isCheckboxGlyph(String s) {
+    final t = s.trim();
+    if (t.length <= 3) {
+      if (RegExp(r'^[\[\]()\u25A1\u2610\u2611\u2612\u25A0\u25FB\u25FC\u2B1C□☐☑☒■◻◼⬜]+$')
+          .hasMatch(t)) return true;
+      if (RegExp(r'^[xX]$').hasMatch(t)) return true;
+    }
+    return false;
+  }
+
+  /// Detect visual radio button glyphs (circles).
+  bool _isRadioGlyph(String s) {
+    final t = s.trim();
+    if (t.length <= 2) {
+      if (RegExp(r'^[\u25CB\u25CE\u25C9\u25EF\u26AA\u26AB○◎◉◯⚪⚫]+$')
+          .hasMatch(t)) return true;
+      if (t == 'O' || t == 'o' || t == '()') return true;
+    }
+    return false;
   }
 
   FieldType _inferType(String label) {
     final s = label.toLowerCase();
     bool has(List<String> ks) => ks.any((k) => s.contains(k));
     if (has(['signature', 'unterschrift', 'sign here', 'signed'])) return FieldType.signature;
+    if (_isCheckboxGlyph(label.trim())) return FieldType.checkbox;
+    if (_isRadioGlyph(label.trim())) return FieldType.radio;
+    // Short option words that typically have a checkbox next to them.
+    if (s.trim().length <= 12 && has(['ja', 'nein', 'yes', 'no', 'männlich',
+        'weiblich', 'divers', 'ledig', 'verheiratet'])) return FieldType.checkbox;
     if (has(['e-mail', 'email', 'e mail'])) return FieldType.email;
     if (has(['date', 'datum', 'birth', 'geburt', 'geboren', 'dob', 'valid', 'expiry'])) {
       return FieldType.date;
@@ -264,25 +316,70 @@ class _PickEditScreenState extends State<PickEditScreen> {
         FieldType.number || FieldType.phone => Icons.pin,
         FieldType.email => Icons.alternate_email,
         FieldType.signature => Icons.gesture,
+        FieldType.checkbox => Icons.check_box_outlined,
+        FieldType.radio => Icons.radio_button_checked,
         _ => Icons.text_fields,
       };
 
-  /// Tapping a detected field opens the right input for its type and places the
-  /// value just after the label at a matched font size.
+  /// Tapping a detected field opens the right interaction for its type.
+  ///
+  /// SMART BEHAVIOR (marks are auto-sized from [field.rect] so they never
+  /// overflow the box):
+  /// - Checkbox/square: instantly places a ✓ sized to ~80% of the box, centered.
+  /// - Radio/circle: instantly places a ● dot sized to ~70% of the diameter.
+  /// - Text/name/email/phone/number: opens keyboard with the right type; places
+  ///   the value at a font size ~75% of the field height.
+  /// - Date: date picker → TT.MM.JJJJ, sized to fit.
+  /// - Signature: opens the signature pad.
   Future<void> _openFieldInput(DetectedField field) async {
-    // Where to write: just to the right of the label, same baseline.
-    final pos = Offset(
-      (field.rect.left + field.rect.width + 0.012).clamp(0.0, 0.9),
-      field.rect.top,
-    );
-    // Auto font size: match the label's line height (normalized to page).
-    final size = (field.rect.height * 0.85).clamp(0.014, 0.06);
-    final title = field.label.replaceAll(':', '').trim();
+    // --- Checkbox: instant check mark, fitted inside the square ---
+    if (field.type == FieldType.checkbox) {
+      final markSize = (field.rect.height * 0.80).clamp(0.012, 0.06).toDouble();
+      final cx = (field.rect.left + (field.rect.width - markSize * 0.5) * 0.5)
+          .clamp(0.0, 0.97)
+          .toDouble();
+      final cy = (field.rect.top + (field.rect.height - markSize) * 0.3)
+          .clamp(0.0, 0.97)
+          .toDouble();
+      setState(() {
+        _pushItem(_TextBox(
+            Offset(cx, cy), '✓', const Color(0xFF16A34A), markSize, true));
+        _selected = null;
+      });
+      return;
+    }
 
+    // --- Radio button / circle: instant filled dot, fitted inside ---
+    if (field.type == FieldType.radio) {
+      final dotSize = (field.rect.height * 0.70).clamp(0.010, 0.05).toDouble();
+      final cx = (field.rect.left + (field.rect.width - dotSize * 0.4) * 0.5)
+          .clamp(0.0, 0.97)
+          .toDouble();
+      final cy = (field.rect.top + (field.rect.height - dotSize) * 0.35)
+          .clamp(0.0, 0.97)
+          .toDouble();
+      setState(() {
+        _pushItem(_TextBox(Offset(cx, cy), '●', Colors.black, dotSize, false));
+        _selected = null;
+      });
+      return;
+    }
+
+    // --- Signature: open the signature pad ---
     if (field.type == FieldType.signature) {
       await _addSignature();
       return;
     }
+
+    // Text/date placement: just after the label, sized to ~75% of line height
+    // so it fits inside the field's writing area.
+    final size = (field.rect.height * 0.75).clamp(0.014, 0.05).toDouble();
+    final pos = Offset(
+      (field.rect.left + field.rect.width + 0.008).clamp(0.0, 0.90).toDouble(),
+      (field.rect.top + field.rect.height * 0.1).clamp(0.0, 0.97).toDouble(),
+    );
+    final title = field.label.replaceAll(':', '').trim();
+
     if (field.type == FieldType.date) {
       final d = await showDatePicker(
         context: context,
@@ -2137,24 +2234,40 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
             // Detected fields (tap to fill with the right typed input)
             if (_showFields)
-              ..._pageFields.map((f) => Positioned(
-                    left: f.rect.left * size.width,
-                    top: f.rect.top * size.height,
-                    child: GestureDetector(
-                      onTap: () => _openFieldInput(f),
-                      child: Container(
-                        constraints: const BoxConstraints(minWidth: 26, minHeight: 18),
-                        height: (f.rect.height * size.height).clamp(18.0, 60.0),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.18),
-                          border: Border.all(color: Colors.amber.shade700, width: 1.5),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Icon(_typeIcon(f.type), size: 14, color: Colors.amber.shade900),
+              ..._pageFields.map((f) {
+                // Color/shape code by type: green square = checkbox, blue circle
+                // = radio, amber rounded-rect = text/date/signature.
+                final isCheckbox = f.type == FieldType.checkbox;
+                final isRadio = f.type == FieldType.radio;
+                final base = isCheckbox
+                    ? Colors.green
+                    : isRadio
+                        ? Colors.blue
+                        : Colors.amber;
+                return Positioned(
+                  left: f.rect.left * size.width,
+                  top: f.rect.top * size.height,
+                  child: GestureDetector(
+                    onTap: () => _openFieldInput(f),
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 26, minHeight: 18),
+                      width: isCheckbox || isRadio
+                          ? (f.rect.width * size.width).clamp(18.0, 40.0)
+                          : null,
+                      height: (f.rect.height * size.height).clamp(18.0, 60.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: base.withOpacity(0.18),
+                        border: Border.all(color: base.shade700, width: 1.5),
+                        borderRadius: isRadio
+                            ? BorderRadius.circular(100)
+                            : BorderRadius.circular(4),
                       ),
+                      child: Icon(_typeIcon(f.type), size: 14, color: base.shade900),
                     ),
-                  )),
+                  ),
+                );
+              }),
             // Editable text lines (tap a line to replace its text)
             if (_showEditLines)
               ...(_editLines[_current] ?? const <OcrLine>[]).map((line) => Positioned(
@@ -2517,7 +2630,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 _toolBtn(Icons.circle_outlined, l10n.toolOval, EditTool.oval, cs),
                 _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout, cs),
                 _toolBtn(Icons.cleaning_services, l10n.toolEraser, EditTool.eraser, cs),
-                _actionBtn(Icons.rotate_right, l10n.toolRotate, _rotatePage, cs),
+                _actionBtn(Icons.rotate_right, l10n.rotate, _rotatePage, cs),
                 _actionBtn(Icons.folder_open, l10n.toolOpen, _pick, cs),
               ]),
             ),
