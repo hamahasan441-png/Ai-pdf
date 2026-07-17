@@ -788,6 +788,43 @@ class _PickEditScreenState extends State<PickEditScreen> {
     });
   }
 
+  /// Resize the selected object so its bounding box becomes [nb] (normalized).
+  /// Works uniformly for every annotation type: stroke points are remapped,
+  /// shape endpoints are remapped, and text scales its font size by the height
+  /// ratio. Used by the corner resize handles.
+  void _scaleSelectedTo(Rect nb) {
+    final sel = _selected;
+    if (sel == null) return;
+    final ob = _boundsOf(sel);
+    final ow = ob.width.abs() < 1e-6 ? 1e-6 : ob.width;
+    final oh = ob.height.abs() < 1e-6 ? 1e-6 : ob.height;
+    double mapX(double x) => nb.left + (x - ob.left) / ow * nb.width;
+    double mapY(double y) => nb.top + (y - ob.top) / oh * nb.height;
+    setState(() {
+      if (sel is _Stroke) {
+        for (var i = 0; i < sel.points.length; i++) {
+          sel.points[i] = Offset(
+            mapX(sel.points[i].dx).clamp(0.0, 1.0),
+            mapY(sel.points[i].dy).clamp(0.0, 1.0),
+          );
+        }
+      } else if (sel is _Shape) {
+        sel.start = Offset(
+          mapX(sel.start.dx).clamp(0.0, 1.0),
+          mapY(sel.start.dy).clamp(0.0, 1.0),
+        );
+        sel.end = Offset(
+          mapX(sel.end.dx).clamp(0.0, 1.0),
+          mapY(sel.end.dy).clamp(0.0, 1.0),
+        );
+      } else if (sel is _TextBox) {
+        sel.pos = Offset(nb.left.clamp(0.0, 0.98), nb.top.clamp(0.0, 0.98));
+        sel.size = (sel.size * (nb.height / oh)).clamp(0.01, 0.2);
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
   /// Magnetically snap the selected object's center to the page center (0.5)
   /// when close, and record guide lines to draw. Call inside setState.
   void _snapSelected() {
@@ -2045,22 +2082,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                 ),
               ),
-            // Selection indicator + resize handles for shapes
-            if (_selected is _Shape) ...[
-              _buildShapeSelection(size, _selected as _Shape),
-              _resizeHandle(size, (_selected as _Shape).start, (v) {
-                setState(() {
-                  (_selected as _Shape).start = v;
-                  _hasUnsavedChanges = true;
-                });
-              }),
-              _resizeHandle(size, (_selected as _Shape).end, (v) {
-                setState(() {
-                  (_selected as _Shape).end = v;
-                  _hasUnsavedChanges = true;
-                });
-              }),
-            ],
             // Text boxes
             ..._layer.texts.map((t) => Positioned(
                   left: t.pos.dx * size.width,
@@ -2104,6 +2125,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     ),
                   ),
                 )),
+            // Unified selection: bounding box + corner resize handles that work
+            // for ANY object (signature/stroke, text, rectangle, line, arrow,
+            // oval). Drag the object body to move; drag a handle to resize.
+            if (_selected != null) ...[
+              _selectionBox(size, _boundsOf(_selected!)),
+              _scaleHandle(size, bottomRight: false),
+              _scaleHandle(size, bottomRight: true),
+            ],
             // Selection action bar (appears when something is selected)
             if (_selected != null)
               Positioned(
@@ -2193,46 +2222,62 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ),
       );
 
-  Widget _buildShapeSelection(Size size, _Shape s) {
-    final left = math.min(s.start.dx, s.end.dx) * size.width - 4;
-    final top = math.min(s.start.dy, s.end.dy) * size.height - 4;
-    final w = (s.end.dx - s.start.dx).abs() * size.width + 8;
-    final h = (s.end.dy - s.start.dy).abs() * size.height + 8;
+  /// The blue selection outline drawn around the currently selected object of
+  /// any type. [b] is the object's normalized bounding box.
+  Widget _selectionBox(Size size, Rect b) {
     return Positioned(
-      left: left,
-      top: top,
-      width: w,
-      height: h,
+      left: b.left * size.width - 3,
+      top: b.top * size.height - 3,
+      width: (b.width * size.width + 6).clamp(8.0, size.width),
+      height: (b.height * size.height + 6).clamp(8.0, size.height),
       child: IgnorePointer(
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.blue, width: 2),
+            border: Border.all(color: Colors.blueAccent, width: 1.5),
           ),
         ),
       ),
     );
   }
 
-  /// A draggable blue dot for resizing a shape endpoint. [norm] is the current
-  /// normalized position; [onDrag] receives the new normalized position.
-  Widget _resizeHandle(Size size, Offset norm, void Function(Offset) onDrag) {
+  /// A draggable corner handle that resizes the selected object (any type) by
+  /// its bounding box. [bottomRight] chooses which corner; the opposite corner
+  /// stays anchored. Recomputes from the live bounds each frame so scaling is
+  /// stable as the object changes size.
+  Widget _scaleHandle(Size size, {required bool bottomRight}) {
+    final sel = _selected;
+    if (sel == null) return const SizedBox.shrink();
+    final b = _boundsOf(sel);
+    final hx = (bottomRight ? b.right : b.left) * size.width;
+    final hy = (bottomRight ? b.bottom : b.top) * size.height;
     return Positioned(
-      left: norm.dx * size.width - 14,
-      top: norm.dy * size.height - 14,
+      left: hx - 15,
+      top: hy - 15,
       child: GestureDetector(
         onPanUpdate: (d) {
-          final nx = (norm.dx + d.delta.dx / size.width).clamp(0.0, 1.0);
-          final ny = (norm.dy + d.delta.dy / size.height).clamp(0.0, 1.0);
-          onDrag(Offset(nx, ny));
+          final cur = _boundsOf(sel);
+          final dxN = d.delta.dx / size.width;
+          final dyN = d.delta.dy / size.height;
+          final Rect nb = bottomRight
+              ? Rect.fromLTRB(cur.left, cur.top, cur.right + dxN, cur.bottom + dyN)
+              : Rect.fromLTRB(cur.left + dxN, cur.top + dyN, cur.right, cur.bottom);
+          // Keep a sane minimum so the object never collapses to nothing.
+          if (nb.width < 0.02 || nb.height < 0.01) return;
+          _scaleSelectedTo(nb);
         },
         child: Container(
-          width: 28,
-          height: 28,
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
-            color: Colors.blue,
+            color: Colors.blueAccent,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 4)],
+          ),
+          child: Icon(
+            bottomRight ? Icons.open_in_full : Icons.close_fullscreen,
+            size: 12,
+            color: Colors.white,
           ),
         ),
       ),
