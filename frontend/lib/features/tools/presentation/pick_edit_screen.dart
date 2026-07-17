@@ -322,11 +322,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
           controller: c,
           autofocus: true,
           keyboardType: kb,
-          decoration: const InputDecoration(hintText: 'Type here…', border: OutlineInputBorder()),
+          decoration: InputDecoration(hintText: AppLocalizations.of(ctx)!.typeHere, border: const OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Add')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text(AppLocalizations.of(ctx)!.add)),
         ],
       ),
     );
@@ -924,14 +924,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 controller: ctrl,
                 autofocus: true,
                 maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Type text...',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(ctx)!.typeText,
+                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
               Row(children: [
-                const Text('Size'),
+                Text(AppLocalizations.of(ctx)!.sizeLabel),
                 Expanded(
                   child: Slider(
                     value: size,
@@ -941,35 +941,35 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Bold',
+                  tooltip: AppLocalizations.of(ctx)!.bold,
                   isSelected: bold,
                   icon: const Icon(Icons.format_bold),
                   onPressed: () => setLocal(() => bold = !bold),
                 ),
                 IconButton(
-                  tooltip: 'Italic',
+                  tooltip: AppLocalizations.of(ctx)!.italic,
                   isSelected: italic,
                   icon: const Icon(Icons.format_italic),
                   onPressed: () => setLocal(() => italic = !italic),
                 ),
                 IconButton(
-                  tooltip: 'Underline',
+                  tooltip: AppLocalizations.of(ctx)!.underline,
                   isSelected: underline,
                   icon: const Icon(Icons.format_underlined),
                   onPressed: () => setLocal(() => underline = !underline),
                 ),
               ]),
               Row(children: [
-                const Text('Font'),
+                Text(AppLocalizations.of(ctx)!.font),
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButton<String?>(
                     value: font,
                     isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Default')),
-                      DropdownMenuItem(value: 'serif', child: Text('Serif', style: TextStyle(fontFamily: 'serif'))),
-                      DropdownMenuItem(value: 'monospace', child: Text('Mono', style: TextStyle(fontFamily: 'monospace'))),
+                    items: [
+                      DropdownMenuItem(value: null, child: Text(AppLocalizations.of(ctx)!.fontDefault)),
+                      const DropdownMenuItem(value: 'serif', child: Text('Serif', style: TextStyle(fontFamily: 'serif'))),
+                      const DropdownMenuItem(value: 'monospace', child: Text('Mono', style: TextStyle(fontFamily: 'monospace'))),
                     ],
                     onChanged: (v) => setLocal(() => font = v),
                   ),
@@ -1001,10 +1001,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (!isNew)
               TextButton(
                 onPressed: () => Navigator.pop(ctx, '__delete__'),
-                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                child: Text(AppLocalizations.of(ctx)!.delete, style: const TextStyle(color: Colors.red)),
               ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(ctx)!.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(AppLocalizations.of(ctx)!.ok)),
           ],
         ),
       ),
@@ -1042,16 +1042,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Shape style'),
+          title: Text(AppLocalizations.of(ctx)!.shapeStyle),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
-              const SizedBox(width: 56, child: Text('Width')),
+              SizedBox(width: 56, child: Text(AppLocalizations.of(ctx)!.width)),
               Expanded(
                 child: Slider(value: width, min: 1, max: 14, onChanged: (v) => setLocal(() => width = v)),
               ),
             ]),
             Row(children: [
-              const SizedBox(width: 56, child: Text('Opacity')),
+              SizedBox(width: 56, child: Text(AppLocalizations.of(ctx)!.opacity)),
               Expanded(
                 child: Slider(value: opacity, min: 0.1, max: 1, onChanged: (v) => setLocal(() => opacity = v)),
               ),
@@ -1059,7 +1059,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (canFill)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Fill'),
+                title: Text(AppLocalizations.of(ctx)!.fill),
                 value: filled,
                 onChanged: (v) => setLocal(() => filled = v),
               ),
@@ -1085,8 +1085,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.ok)),
           ],
         ),
       ),
@@ -1167,13 +1167,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.draw),
-                title: const Text('Draw new signature'),
+                title: Text(AppLocalizations.of(ctx)!.drawNewSignature),
                 onTap: () => Navigator.pop(ctx, 'new'),
               ),
               const Divider(height: 1),
               ...List.generate(_savedSignatures.length, (i) => ListTile(
                     leading: const Icon(Icons.gesture),
-                    title: Text('Saved signature ${i + 1}'),
+                    title: Text(AppLocalizations.of(ctx)!.savedSignatureN(i + 1)),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline, size: 20),
                       onPressed: () {
@@ -1222,11 +1222,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final save = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Save this signature?'),
-          content: const Text('Saved signatures can be reused instantly next time.'),
+          title: Text(AppLocalizations.of(ctx)!.saveThisSignature),
+          content: Text(AppLocalizations.of(ctx)!.savedSignaturesReused),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.no)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.save)),
           ],
         ),
       );
@@ -1386,11 +1386,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
         final action = await showDialog<String>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Unsaved changes'),
-            content: const Text('You have unsaved edits. What would you like to do?'),
+            title: Text(AppLocalizations.of(ctx)!.unsavedChanges),
+            content: Text(AppLocalizations.of(ctx)!.unsavedEditsBody),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: const Text('Discard')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save & exit')),
+              TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: Text(AppLocalizations.of(ctx)!.discard)),
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(AppLocalizations.of(ctx)!.saveAndExit)),
             ],
           ),
         );
@@ -1675,22 +1675,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_selected is _TextBox) ...[
-                      _miniBtn(Icons.edit, 'Edit text', () => _editTextBox(_selected as _TextBox)),
+                      _miniBtn(Icons.edit, AppLocalizations.of(context)!.editText, () => _editTextBox(_selected as _TextBox)),
                       const SizedBox(width: 10),
                     ],
                     if (_selected is _Shape) ...[
-                      _miniBtn(Icons.tune, 'Style', () => _editShapeStyle(_selected as _Shape)),
+                      _miniBtn(Icons.tune, AppLocalizations.of(context)!.style, () => _editShapeStyle(_selected as _Shape)),
                       const SizedBox(width: 10),
                     ],
-                    _miniBtn(Icons.copy_all, 'Duplicate', _duplicateSelected),
+                    _miniBtn(Icons.copy_all, AppLocalizations.of(context)!.duplicate, _duplicateSelected),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.flip_to_front, 'Bring to front', _bringToFront),
+                    _miniBtn(Icons.flip_to_front, AppLocalizations.of(context)!.bringToFront, _bringToFront),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.flip_to_back, 'Send to back', _sendToBack),
+                    _miniBtn(Icons.flip_to_back, AppLocalizations.of(context)!.sendToBack, _sendToBack),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.delete_outline, 'Delete', _deleteSelected),
+                    _miniBtn(Icons.delete_outline, AppLocalizations.of(context)!.delete, _deleteSelected),
                     const SizedBox(width: 10),
-                    _miniBtn(Icons.close, 'Deselect', () => setState(() => _selected = null)),
+                    _miniBtn(Icons.close, AppLocalizations.of(context)!.deselect, () => setState(() => _selected = null)),
                   ]),
                 ),
               ),
@@ -1709,30 +1709,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
-                      Text('${_multi.length} selected',
+                      Text(AppLocalizations.of(context)!.nSelected(_multi.length),
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_left, 'Align left', () => _alignMulti('left')),
+                      _miniBtn(Icons.align_horizontal_left, AppLocalizations.of(context)!.alignLeft, () => _alignMulti('left')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_center, 'Align center', () => _alignMulti('hcenter')),
+                      _miniBtn(Icons.align_horizontal_center, AppLocalizations.of(context)!.alignCenter, () => _alignMulti('hcenter')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_horizontal_right, 'Align right', () => _alignMulti('right')),
+                      _miniBtn(Icons.align_horizontal_right, AppLocalizations.of(context)!.alignRight, () => _alignMulti('right')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_top, 'Align top', () => _alignMulti('top')),
+                      _miniBtn(Icons.align_vertical_top, AppLocalizations.of(context)!.alignTop, () => _alignMulti('top')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_center, 'Align middle', () => _alignMulti('vcenter')),
+                      _miniBtn(Icons.align_vertical_center, AppLocalizations.of(context)!.alignMiddle, () => _alignMulti('vcenter')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.align_vertical_bottom, 'Align bottom', () => _alignMulti('bottom')),
+                      _miniBtn(Icons.align_vertical_bottom, AppLocalizations.of(context)!.alignBottom, () => _alignMulti('bottom')),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.horizontal_distribute, 'Distribute H', () => _distributeMulti(Axis.horizontal)),
+                      _miniBtn(Icons.horizontal_distribute, AppLocalizations.of(context)!.distributeH, () => _distributeMulti(Axis.horizontal)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.vertical_distribute, 'Distribute V', () => _distributeMulti(Axis.vertical)),
+                      _miniBtn(Icons.vertical_distribute, AppLocalizations.of(context)!.distributeV, () => _distributeMulti(Axis.vertical)),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.copy_all, 'Duplicate', _duplicateMulti),
+                      _miniBtn(Icons.copy_all, AppLocalizations.of(context)!.duplicate, _duplicateMulti),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.delete_outline, 'Delete', _deleteMulti),
+                      _miniBtn(Icons.delete_outline, AppLocalizations.of(context)!.delete, _deleteMulti),
                       const SizedBox(width: 12),
-                      _miniBtn(Icons.close, 'Deselect', () => setState(() => _multi.clear())),
+                      _miniBtn(Icons.close, AppLocalizations.of(context)!.deselect, () => setState(() => _multi.clear())),
                     ]),
                   ),
                 ),
@@ -1913,7 +1913,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Bold',
+                      tooltip: AppLocalizations.of(context)!.bold,
                       isSelected: _bold,
                       icon: const Icon(Icons.format_bold),
                       onPressed: () => setState(() => _bold = !_bold),
