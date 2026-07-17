@@ -125,13 +125,24 @@ class FormOntology {
   };
 
   /// Normalize a label for matching: lower-case, turn separators into spaces,
-  /// collapse whitespace. Diacritics are preserved (keyword lists include both
-  /// accented and ASCII spellings).
+  /// collapse whitespace, AND fold German diacritics/ß so OCR misreads like
+  /// "Strasse" still match "Straße" and "Geburtsort" matches "Geburtsört".
   static String _norm(String s) => s
       .toLowerCase()
+      .replaceAll('ä', 'ae')
+      .replaceAll('ö', 'oe')
+      .replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss')
       .replaceAll(RegExp(r'[:._,/]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+
+  /// Also normalize the keyword lists at match time for consistency.
+  static String _normKw(String kw) => kw
+      .replaceAll('ä', 'ae')
+      .replaceAll('ö', 'oe')
+      .replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss');
 
   /// Canonical field key for [label], or null if nothing matches.
   static String? match(String label) {
@@ -139,7 +150,7 @@ class FormOntology {
     if (s.isEmpty) return null;
     for (final e in _entries) {
       for (final k in e.kw) {
-        if (s.contains(k)) return e.key;
+        if (s.contains(_normKw(k))) return e.key;
       }
     }
     return null;

@@ -1,6 +1,7 @@
 {
   "@@locale": "es",
   "autoFill": "Autocompletar",
+  "aiFill": "IA Rellenar",
   "typeSignature": "Escribir firma",
   "typeYourSignature": "Escribe tu firma",
   "fillRemainingFields": "Rellenar campos restantes",

@@ -1,6 +1,7 @@
 {
   "@@locale": "en",
   "autoFill": "Auto-fill",
+  "aiFill": "AI Fill",
   "typeSignature": "Type signature",
   "typeYourSignature": "Type your signature",
   "fillRemainingFields": "Fill remaining fields",

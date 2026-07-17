@@ -1,6 +1,7 @@
 {
   "@@locale": "ar",
   "autoFill": "تعبئة تلقائية",
+  "aiFill": "تعبئة ذكية",
   "typeSignature": "كتابة التوقيع",
   "typeYourSignature": "اكتب توقيعك",
   "fillRemainingFields": "تعبئة الحقول المتبقية",

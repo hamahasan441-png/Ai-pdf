@@ -1,6 +1,7 @@
 {
   "@@locale": "de",
   "autoFill": "Auto-Ausfüllen",
+  "aiFill": "KI-Ausfüllen",
   "typeSignature": "Unterschrift tippen",
   "typeYourSignature": "Tippe deine Unterschrift",
   "fillRemainingFields": "Restliche Felder ausfüllen",
