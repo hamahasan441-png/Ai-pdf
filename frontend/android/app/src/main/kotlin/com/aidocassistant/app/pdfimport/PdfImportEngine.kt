@@ -164,12 +164,16 @@ class PdfImportEngine private constructor(
             return PdfImportEngine(
                 appContext = appContext,
                 client = client,
+                // NOTE: WebViewPdfPrintStrategy was removed. It relied on
+                // subclassing PrintDocumentAdapter.LayoutResultCallback /
+                // WriteResultCallback, whose constructors are package-private in
+                // android.print and cannot be accessed from Kotlin (2.x) or Java.
+                // The 4 remaining strategies cover the vast majority of cases.
                 strategies = listOf(
                     DirectDownloadStrategy(startDelayMs = 0L),
                     HtmlParseStrategy(startDelayMs = 400L),
                     WebViewInterceptionStrategy(startDelayMs = 800L),
                     WebViewBlobExtractionStrategy(startDelayMs = 1200L),
-                    WebViewPdfPrintStrategy(startDelayMs = 2500L),
                 ),
             )
         }
