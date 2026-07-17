@@ -13,6 +13,7 @@
   "smartFillFormStep": "El formulario a rellenar",
   "smartFillInfoStep": "Tu documento con datos",
   "smartFillNotChosen": "Aún no elegido",
+  "smartFillInfoOptional": "Opcional — rellenaremos desde tu perfil guardado",
   "smartFillReadingInfo": "Leyendo tus datos…",
   "smartFillMatching": "Emparejando campos…",
   "smartFillNoMatch": "No se pudo emparejar ningún campo con seguridad. Asegúrate de que el documento sea legible, o abre el formulario en el editor y usa Relleno inteligente / Autocompletar para colocar los valores manualmente.",

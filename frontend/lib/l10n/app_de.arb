@@ -13,6 +13,7 @@
   "smartFillFormStep": "Das auszufüllende Formular",
   "smartFillInfoStep": "Dein Datendokument",
   "smartFillNotChosen": "Noch nicht gewählt",
+  "smartFillInfoOptional": "Optional — wir füllen aus deinem gespeicherten Profil",
   "smartFillReadingInfo": "Deine Daten werden gelesen…",
   "smartFillMatching": "Felder werden zugeordnet…",
   "smartFillNoMatch": "Es konnten keine Felder sicher zugeordnet werden. Stelle sicher, dass das Datendokument klar und lesbar ist, oder öffne das Formular im Editor und nutze Intelligentes Ausfüllen / Auto-Ausfüllen, um Werte manuell zu setzen.",
