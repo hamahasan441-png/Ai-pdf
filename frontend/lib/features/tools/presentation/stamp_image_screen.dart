@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
 
@@ -40,6 +41,7 @@ class _StampImageScreenState extends State<StampImageScreen> {
 
   Future<void> _apply() async {
     if (_pdfPath == null || _imgPath == null) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
       final out = await OfflinePdfService.instance.stampImageOnPdf(
@@ -51,12 +53,12 @@ class _StampImageScreenState extends State<StampImageScreen> {
       );
       if (mounted) {
         await showResultSheet(context,
-            paths: [out], title: 'Image stamped', subtitle: 'Applied to PDF');
+            paths: [out], title: l10n.imageStamped, subtitle: l10n.appliedToPdf);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -66,23 +68,24 @@ class _StampImageScreenState extends State<StampImageScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Stamp Image')),
+      appBar: AppBar(title: Text(l10n.toolStampImage)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           Row(children: [
-            Expanded(child: _pickTile(cs, 'PDF', _pdfPath, Icons.picture_as_pdf, _pickPdf)),
+            Expanded(child: _pickTile(cs, l10n.choosePdf, _pdfPath, Icons.picture_as_pdf, _pickPdf)),
             const SizedBox(width: 12),
-            Expanded(child: _pickTile(cs, 'Image', _imgPath, Icons.image, _pickImage)),
+            Expanded(child: _pickTile(cs, l10n.chooseImage, _imgPath, Icons.image, _pickImage)),
           ]),
           const SizedBox(height: 24),
-          const Text('Position', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(l10n.position, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           _positionGrid(cs),
           const SizedBox(height: 20),
           Row(children: [
-            const Text('Size', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text(l10n.sizeLabel, style: const TextStyle(fontWeight: FontWeight.w600)),
             Expanded(
               child: Slider(
                 value: _size,
@@ -97,8 +100,8 @@ class _StampImageScreenState extends State<StampImageScreen> {
           ]),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('First page only'),
-            subtitle: const Text('Otherwise, stamp every page'),
+            title: Text(l10n.firstPageOnly),
+            subtitle: Text(l10n.firstPageOnlySubtitle),
             value: _firstPageOnly,
             onChanged: _busy ? null : (v) => setState(() => _firstPageOnly = v),
           ),
@@ -111,14 +114,14 @@ class _StampImageScreenState extends State<StampImageScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.approval),
-            label: Text(_busy ? 'Stamping...' : 'Stamp onto PDF'),
+            label: Text(_busy ? l10n.stamping : l10n.stampOntoPdf),
           ),
         ],
       ),
     );
   }
 
-  Widget _pickTile(ColorScheme cs, String label, String? path, IconData icon, VoidCallback onTap) {
+  Widget _pickTile(ColorScheme cs, String chooseText, String? path, IconData icon, VoidCallback onTap) {
     final picked = path != null;
     return InkWell(
       onTap: _busy ? null : onTap,
@@ -136,7 +139,7 @@ class _StampImageScreenState extends State<StampImageScreen> {
             Icon(picked ? icon : Icons.add, size: 32, color: cs.primary),
             const SizedBox(height: 8),
             Text(
-              picked ? path.split('/').last : 'Choose $label',
+              picked ? path.split('/').last : chooseText,
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
