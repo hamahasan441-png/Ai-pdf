@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
 
 class WebViewInterceptionStrategy(
@@ -65,5 +66,5 @@ class WebViewInterceptionStrategy(
     }
 
     private fun String.toHttpUrlSafe(): HttpUrl? =
-        try { HttpUrl.get(this) } catch (e: IllegalArgumentException) { null }
+        try { this.toHttpUrl() } catch (e: IllegalArgumentException) { null }
 }

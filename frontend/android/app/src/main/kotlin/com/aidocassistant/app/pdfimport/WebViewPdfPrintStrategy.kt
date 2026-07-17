@@ -6,7 +6,6 @@ import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.print.PageRange
 import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -66,13 +65,13 @@ class WebViewPdfPrintStrategy(
             .build()
 
         val layoutDone = CompletableDeferred<PrintDocumentInfo>()
-        adapter.onLayout(
-            null, attrs, CancellationSignal(),
-            object : PrintDocumentAdapter.LayoutResultCallback() {
-                override fun onLayoutFinished(info: PrintDocumentInfo, changed: Boolean) {
+        PrintCallbackFactory.invokeLayout(
+            adapter, null, attrs, CancellationSignal(),
+            object : PrintCallbackFactory.LayoutListener {
+                override fun onFinished(info: PrintDocumentInfo, changed: Boolean) {
                     layoutDone.complete(info)
                 }
-                override fun onLayoutFailed(error: CharSequence?) {
+                override fun onFailed(error: CharSequence?) {
                     layoutDone.completeExceptionally(
                         IllegalStateException("print layout failed: $error")
                     )
@@ -89,13 +88,13 @@ class WebViewPdfPrintStrategy(
                 ParcelFileDescriptor.MODE_TRUNCATE,
         )
         val writeDone = CompletableDeferred<Unit>()
-        adapter.onWrite(
-            arrayOf(PageRange.ALL_PAGES), pfd, CancellationSignal(),
-            object : PrintDocumentAdapter.WriteResultCallback() {
-                override fun onWriteFinished(pages: Array<out PageRange>?) {
+        PrintCallbackFactory.invokeWrite(
+            adapter, arrayOf(PageRange.ALL_PAGES), pfd, CancellationSignal(),
+            object : PrintCallbackFactory.WriteListener {
+                override fun onFinished(pages: Array<out PageRange>?) {
                     writeDone.complete(Unit)
                 }
-                override fun onWriteFailed(error: CharSequence?) {
+                override fun onFailed(error: CharSequence?) {
                     writeDone.completeExceptionally(
                         IllegalStateException("print write failed: $error")
                     )

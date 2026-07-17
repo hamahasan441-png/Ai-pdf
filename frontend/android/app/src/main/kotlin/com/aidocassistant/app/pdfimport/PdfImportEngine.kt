@@ -9,6 +9,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import java.io.File
@@ -138,7 +139,7 @@ class PdfImportEngine private constructor(
         } else {
             "https://$trimmed"
         }
-        return try { HttpUrl.get(withScheme) } catch (_: IllegalArgumentException) { null }
+        return try { withScheme.toHttpUrl() } catch (_: IllegalArgumentException) { null }
     }
 
     private object AllFailedSignal : Exception() {
