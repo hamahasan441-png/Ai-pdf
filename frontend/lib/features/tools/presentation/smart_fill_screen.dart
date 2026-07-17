@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -73,31 +74,29 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
     final formPath = _formPath;
     final infoPath = _infoPath;
     if (formPath == null || infoPath == null || _busy) return;
+    final l10n = AppLocalizations.of(context)!;
     setState(() {
       _busy = true;
       _error = null;
-      _status = 'Reading the form…';
+      _status = l10n.readingTheForm;
     });
     try {
       final formPages = await _ocrDocument(formPath);
       if (!mounted) return;
-      setState(() => _status = 'Reading your info…');
+      setState(() => _status = l10n.smartFillReadingInfo);
       final infoPages = await _ocrDocument(infoPath);
 
       await UserProfileService.instance.load();
       final profile = UserProfileService.instance.data;
 
       if (!mounted) return;
-      setState(() => _status = 'Matching fields…');
+      setState(() => _status = l10n.smartFillMatching);
       final info = SmartFormFiller.extractInfo(infoPages);
       final fields = SmartFormFiller.fillForm(formPages, info, profile);
 
       if (!mounted) return;
       if (fields.isEmpty) {
-        setState(() => _error =
-            'Couldn\'t confidently match any fields. Make sure the info document '
-            'is clear and readable, or open the form in the editor and use '
-            'Smart Fill / Auto-fill to place values manually.');
+        setState(() => _error = l10n.smartFillNoMatch);
         return;
       }
 
@@ -107,10 +106,10 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
             PickEditScreen(initialPath: formPath, initialFields: fields),
       ));
       if (mounted) {
-        setState(() => _status = 'Placed $placed value(s) — review and export.');
+        setState(() => _status = l10n.smartFillPlaced(placed));
       }
     } catch (e) {
-      if (mounted) setState(() => _error = 'Something went wrong: $e');
+      if (mounted) setState(() => _error = l10n.operationFailed(e.toString()));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -170,9 +169,10 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final ready = _formPath != null && _infoPath != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Smart Form Filler')),
+      appBar: AppBar(title: Text(l10n.smartFormFiller)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -187,10 +187,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Fully on-device — no internet, no AI account. '
-                  'Step 1: choose the blank form. Step 2: choose a document with '
-                  'your info (ID, certificate, a previous form). It fills the form '
-                  'for you to review.',
+                  l10n.smartFillIntro,
                   style: TextStyle(fontSize: 12.5, color: cs.onSurface),
                 ),
               ),
@@ -201,9 +198,9 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
             cs,
             step: '1',
             icon: Icons.description_outlined,
-            title: 'The form to fill',
+            title: l10n.smartFillFormStep,
             fileName: _formName,
-            actionLabel: _formName == null ? 'Choose form' : 'Change form',
+            actionLabel: _formName == null ? l10n.chooseFile : l10n.change,
             onTap: _busy ? null : _pickForm,
           ),
           const SizedBox(height: 12),
@@ -211,9 +208,9 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
             cs,
             step: '2',
             icon: Icons.badge_outlined,
-            title: 'Your info document',
+            title: l10n.smartFillInfoStep,
             fileName: _infoName,
-            actionLabel: _infoName == null ? 'Choose info' : 'Change info',
+            actionLabel: _infoName == null ? l10n.chooseFile : l10n.change,
             onTap: _busy ? null : _pickInfo,
           ),
           const SizedBox(height: 20),
@@ -244,7 +241,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.auto_fix_high),
-            label: Text(_busy ? (_status ?? 'Working…') : 'Fill the form'),
+            label: Text(_busy ? (_status ?? l10n.working) : l10n.smartFillRun),
           ),
           if (!_busy && _status != null) ...[
             const SizedBox(height: 10),
@@ -299,7 +296,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
                         fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  fileName ?? 'Not chosen yet',
+                  fileName ?? AppLocalizations.of(context)!.smartFillNotChosen,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

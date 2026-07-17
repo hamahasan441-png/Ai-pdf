@@ -42,8 +42,8 @@ class ToolsScreen extends ConsumerWidget {
             children: [
               _ToolCard(
                 icon: Icons.auto_fix_high,
-                label: 'Smart Form Filler',
-                desc: 'Form + your info → auto-filled, on-device',
+                label: l10n.smartFormFiller,
+                desc: l10n.smartFormFillerDesc,
                 color: const Color(0xFFDB2777),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/smart-fill'),
