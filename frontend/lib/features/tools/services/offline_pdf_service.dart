@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart' show compute;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColors;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import '../../../core/image/image_ops.dart';
 import '../../../core/services/ocr_service.dart';
 
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
@@ -82,17 +83,18 @@ class OfflinePdfService {
   Future<String> imagesToPdf(List<String> imagePaths) async {
     final doc = pw.Document();
     for (final path in imagePaths) {
-      var bytes = await File(path).readAsBytes();
+      final rawBytes = await File(path).readAsBytes();
 
-      // Downscale very large images to avoid large allocations.
-      final decoded = img.decodeImage(bytes);
-      if (decoded != null &&
-          (decoded.width > _imageMaxEdge || decoded.height > _imageMaxEdge)) {
-        final resized = decoded.width >= decoded.height
-            ? img.copyResize(decoded, width: _imageMaxEdge)
-            : img.copyResize(decoded, height: _imageMaxEdge);
-        bytes = Uint8List.fromList(img.encodeJpg(resized, quality: 85));
-      }
+      // Downscale very large images off the UI thread (bounded allocations).
+      final bytes = await compute(
+        applyImageOp,
+        ImageOp(
+          type: ImageOpType.jpegDownscaleLongEdge,
+          bytes: rawBytes,
+          quality: 85,
+          maxEdge: _imageMaxEdge,
+        ),
+      );
 
       final image = pw.MemoryImage(bytes);
       doc.addPage(
@@ -120,15 +122,16 @@ class OfflinePdfService {
     final originalBytes = await File(imagePath).readAsBytes();
     final originalSize = originalBytes.length;
 
-    var decoded = img.decodeImage(originalBytes);
-    if (decoded == null) {
-      throw Exception('Could not decode image');
-    }
-    if (maxWidth != null && decoded.width > maxWidth) {
-      decoded = img.copyResize(decoded, width: maxWidth);
-    }
-
-    final compressed = img.encodeJpg(decoded, quality: quality);
+    // Decode/resize/encode is CPU-heavy pure Dart -> run off the UI thread.
+    final compressed = await compute(
+      applyImageOp,
+      ImageOp(
+        type: ImageOpType.jpegCompress,
+        bytes: originalBytes,
+        quality: quality,
+        maxWidth: maxWidth,
+      ),
+    );
     final outPath = await _outputPath('compressed.jpg');
     await File(outPath).writeAsBytes(compressed);
 
@@ -220,11 +223,12 @@ class OfflinePdfService {
         final page = await doc.getPage(i);
         try {
           final raw = await _renderPageCapped(page, maxEdge: _compressMaxEdge);
-          // Re-encode at lower JPEG quality for extra size reduction.
-          final decoded = img.decodeImage(raw);
-          final jpg = decoded != null
-              ? Uint8List.fromList(img.encodeJpg(decoded, quality: 55))
-              : raw;
+          // Re-encode at lower JPEG quality for extra size reduction
+          // (off the UI thread; falls back to raw if it can't decode).
+          final jpg = await compute(
+            applyImageOp,
+            ImageOp(type: ImageOpType.jpegReencode, bytes: raw, quality: 55),
+          );
           final image = pw.MemoryImage(jpg);
           out.addPage(
             pw.Page(
@@ -368,15 +372,17 @@ class OfflinePdfService {
     double sizePct = 0.25,
     bool firstPageOnly = false,
   }) async {
-    // Load the stamp; downscale very large images (preserving alpha as PNG).
-    var stampBytes = await File(imagePath).readAsBytes();
-    final decoded = img.decodeImage(stampBytes);
-    if (decoded != null && (decoded.width > 1200 || decoded.height > 1200)) {
-      final resized = decoded.width >= decoded.height
-          ? img.copyResize(decoded, width: 1200)
-          : img.copyResize(decoded, height: 1200);
-      stampBytes = Uint8List.fromList(img.encodePng(resized));
-    }
+    // Load the stamp; downscale very large images off the UI thread
+    // (preserving alpha as PNG).
+    final rawStamp = await File(imagePath).readAsBytes();
+    final stampBytes = await compute(
+      applyImageOp,
+      ImageOp(
+        type: ImageOpType.pngDownscaleLongEdge,
+        bytes: rawStamp,
+        maxEdge: 1200,
+      ),
+    );
     final stamp = pw.MemoryImage(stampBytes);
     final align = _alignForGrid(position);
     final pct = sizePct.clamp(0.05, 0.9).toDouble();
@@ -657,14 +663,17 @@ class OfflinePdfService {
         final page = await doc.getPage(i);
         try {
           final bytes = await _renderPageCapped(page, maxEdge: _mergeMaxEdge);
-          final decoded = img.decodeImage(bytes);
-          if (decoded == null) continue;
-          final rotated = angle == 1
-              ? img.copyRotate(decoded, angle: 90)
-              : angle == 2
-                  ? img.copyRotate(decoded, angle: 180)
-                  : img.copyRotate(decoded, angle: 270);
-          final jpg = Uint8List.fromList(img.encodeJpg(rotated, quality: 88));
+          // Decode + rotate + encode off the UI thread.
+          final jpg = await compute(
+            applyImageOp,
+            ImageOp(
+              type: ImageOpType.jpegRotate,
+              bytes: bytes,
+              quality: 88,
+              degrees: degrees,
+            ),
+          );
+          if (jpg.isEmpty) continue; // undecodable page -> skip
           final image = pw.MemoryImage(jpg);
           // Flip page format for 90/270 so the page matches the rotated content.
           final fmt = (angle == 1 || angle == 3)

@@ -11,6 +11,28 @@ permissions:
   contents: write
 
 jobs:
+  # Fast unit-test gate. Runs independently of the APK build so it surfaces
+  # logic regressions (e.g. entitlement / image-op behavior) without blocking
+  # the release artifact if the test runner has an environment hiccup.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: flutter test --reporter expanded
+
   build:
     runs-on: ubuntu-latest
     steps:
