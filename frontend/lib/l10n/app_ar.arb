@@ -1,6 +1,11 @@
 {
   "@@locale": "ar",
   "autoFill": "تعبئة تلقائية",
+  "aiFill": "تعبئة ذكية",
+  "aiFillFromProfile": "تعبئة من الملف الشخصي المحفوظ",
+  "aiFillFromProfileDesc": "يستخدم بياناتك المحفوظة (الأسرع)",
+  "aiFillFromDoc": "تعبئة من مستند البيانات",
+  "aiFillFromDocDesc": "ارفع هوية أو شهادة أو نموذجاً سابقاً",
   "typeSignature": "كتابة التوقيع",
   "typeYourSignature": "اكتب توقيعك",
   "fillRemainingFields": "تعبئة الحقول المتبقية",

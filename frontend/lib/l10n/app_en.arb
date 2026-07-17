@@ -1,6 +1,11 @@
 {
   "@@locale": "en",
   "autoFill": "Auto-fill",
+  "aiFill": "AI Fill",
+  "aiFillFromProfile": "Fill from saved profile",
+  "aiFillFromProfileDesc": "Uses your saved personal data (fastest)",
+  "aiFillFromDoc": "Fill from info document",
+  "aiFillFromDocDesc": "Upload an ID, certificate or previous form",
   "typeSignature": "Type signature",
   "typeYourSignature": "Type your signature",
   "fillRemainingFields": "Fill remaining fields",

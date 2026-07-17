@@ -17,6 +17,7 @@ import '../../../core/services/user_profile_service.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../models/filled_field.dart';
 import '../services/profile_field_matcher.dart';
+import '../services/smart_form_filler.dart';
 import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
@@ -1069,6 +1070,149 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   /// Fill & Sign: place today's date (dd.MM.yyyy) as a movable text box.
   void _placeSignatureDate() {
+
+  // ---- Integrated Smart AI Fill (standalone, no API) ----------------------
+  //
+  // The full SmartFormFiller engine running directly inside the editor: OCR the
+  // current page, detect fields via FormOntology (fuzzy, umlaut-tolerant),
+  // resolve values from Profile using multi-signal scoring + checkbox options +
+  // date normalization, show review sheet, and place confirmed values. One tap,
+  // fully on-device, no second upload or separate screen needed.
+
+  Future<void> _smartFillPage() async {
+    final bytes = _pageCache[_current];
+    if (bytes == null) return;
+
+    // Offer a choice: fill from saved Profile or upload an info document.
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: Text(l10n.aiFillFromProfile),
+                subtitle: Text(l10n.aiFillFromProfileDesc),
+                onTap: () => Navigator.pop(ctx, 'profile'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_file),
+                title: Text(l10n.aiFillFromDoc),
+                subtitle: Text(l10n.aiFillFromDocDesc),
+                onTap: () => Navigator.pop(ctx, 'doc'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (source == null || !mounted) return;
+
+    setState(() => _detecting = true);
+    try {
+      // 1) OCR the current page
+      final dir = await getTemporaryDirectory();
+      final stamp = DateTime.now().microsecondsSinceEpoch;
+      final tmpPath = '${dir.path}/smartfill_$stamp.jpg';
+      await File(tmpPath).writeAsBytes(bytes);
+      final ocrResult = await _ocr.recognize(tmpPath);
+      try { await File(tmpPath).delete(); } catch (_) {}
+
+      // 2) Get info: either from an uploaded doc or empty (profile-only)
+      List<OcrResult> infoPages = const [];
+      if (source == 'doc') {
+        final picked = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        );
+        final path = picked?.files.first.path;
+        if (path != null && mounted) {
+          // OCR the info document
+          final infoOcr = OcrService();
+          try {
+            if (path.toLowerCase().endsWith('.pdf')) {
+              final infoDoc = await pdfx.PdfDocument.openFile(path);
+              try {
+                final count = infoDoc.pagesCount < 10 ? infoDoc.pagesCount : 10;
+                for (var i = 1; i <= count; i++) {
+                  final pg = await infoDoc.getPage(i);
+                  try {
+                    final le = pg.width > pg.height ? pg.width : pg.height;
+                    final sc = le > 1400 ? 1400 / le : 1.0;
+                    final img = await pg.render(
+                      width: pg.width * sc, height: pg.height * sc,
+                      format: pdfx.PdfPageImageFormat.jpeg, backgroundColor: '#FFFFFF',
+                    );
+                    if (img?.bytes != null) {
+                      final p = '${dir.path}/info_${stamp}_$i.jpg';
+                      await File(p).writeAsBytes(img!.bytes);
+                      infoPages = [...infoPages, await infoOcr.recognize(p)];
+                      try { await File(p).delete(); } catch (_) {}
+                    }
+                  } finally { await pg.close(); }
+                }
+              } finally { await infoDoc.close(); }
+            } else {
+              infoPages = [await infoOcr.recognize(path)];
+            }
+          } finally { await infoOcr.dispose(); }
+        }
+      }
+
+      // 3) Load profile and run the engine
+      await UserProfileService.instance.load();
+      final profile = UserProfileService.instance.data;
+      final info = SmartFormFiller.extractInfo(infoPages);
+      final fields = SmartFormFiller.fillForm([ocrResult], info, profile);
+
+      if (!mounted) return;
+      setState(() => _detecting = false);
+
+      if (fields.isEmpty) {
+        _showError(AppLocalizations.of(context)!.smartFillNoMatch);
+        return;
+      }
+
+      // 4) Show review sheet
+      final confirmed = await showModalBottomSheet<List<FilledField>>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => _EditorReviewSheet(fields: fields),
+      );
+      if (confirmed == null || confirmed.isEmpty || !mounted) return;
+
+      // 5) Place confirmed values as editable text boxes
+      setState(() {
+        for (final f in confirmed) {
+          if (f.isCheck) {
+            _pushItem(_TextBox(
+              Offset(f.x, f.y), f.text, Colors.black, 0.03, true));
+          } else if (f.isSignature) {
+            _pushItem(_TextBox(
+              Offset(f.x, f.y), f.text, Colors.black, 0.032, false, true, false, 'serif'));
+          } else {
+            _pushItem(_TextBox(
+              Offset(f.x, f.y), f.text, Colors.black, 0.024, false));
+          }
+        }
+        _tool = EditTool.pan;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)!.smartFillPlaced(confirmed.length)),
+      ));
+    } catch (e) {
+      _showError('Smart Fill failed: $e');
+    } finally {
+      if (mounted) setState(() => _detecting = false);
+    }
+  }
+
+  /// Fill & Sign: place today's date as a movable text box.
     final d = DateTime.now();
     final s = '${d.day.toString().padLeft(2, '0')}.'
         '${d.month.toString().padLeft(2, '0')}.${d.year}';
@@ -2344,6 +2488,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                     _detecting ? () {} : _detectFields, cs),
                 _actionBtn(Icons.auto_fix_high, l10n.autoFill,
                     _detecting ? () {} : _autoFill, cs),
+                _actionBtn(Icons.psychology, l10n.aiFill,
+                    _detecting ? () {} : _smartFillPage, cs),
                 _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
                     l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),
                 if (_pageFields.isNotEmpty)
@@ -2462,6 +2608,178 @@ class _PickEditScreenState extends State<PickEditScreen> {
             Icon(icon, size: 22, color: cs.onSurface),
             Text(label, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
           ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// A lightweight review sheet for the editor's integrated Smart Fill.
+/// Shows matched fields with checkboxes and edit, returns confirmed list.
+class _EditorReviewSheet extends StatefulWidget {
+  final List<FilledField> fields;
+  const _EditorReviewSheet({required this.fields});
+
+  @override
+  State<_EditorReviewSheet> createState() => _EditorReviewSheetState();
+}
+
+class _EditorReviewSheetState extends State<_EditorReviewSheet> {
+  late List<bool> _checked;
+  late List<FilledField> _fields;
+
+  @override
+  void initState() {
+    super.initState();
+    _fields = List.of(widget.fields);
+    _checked = List.filled(_fields.length, true);
+  }
+
+  void _editField(int i) async {
+    final ctrl = TextEditingController(text: _fields[i].text);
+    final l10n = AppLocalizations.of(context)!;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_fields[i].field.isNotEmpty ? _fields[i].field : l10n.editText),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            hintText: l10n.typeHere,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.cancel)),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: Text(l10n.ok)),
+        ],
+      ),
+    );
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() => _fields[i] = _fields[i].withText(result.trim()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+    final count = _checked.where((c) => c).length;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (ctx, scrollCtrl) => Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(children: [
+                Icon(Icons.psychology, color: cs.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(l10n.reviewBeforePlacing,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(l10n.editAnyValue,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.separated(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _fields.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final f = _fields[i];
+                  return ListTile(
+                    leading: Checkbox(
+                      value: _checked[i],
+                      onChanged: (v) =>
+                          setState(() => _checked[i] = v ?? false),
+                    ),
+                    title: Text(
+                      f.field.isNotEmpty ? f.field : f.anchor,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _checked[i] ? cs.onSurface : cs.outline,
+                      ),
+                    ),
+                    subtitle: Text(
+                      f.text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _checked[i] ? cs.primary : cs.outline,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (f.uncertain)
+                          Tooltip(
+                            message: l10n.smartFillUncertain,
+                            child: Icon(Icons.warning_amber_rounded,
+                                size: 18, color: cs.error),
+                          ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          tooltip: l10n.editText,
+                          onPressed: _checked[i] ? () => _editField(i) : null,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton.icon(
+                onPressed: count > 0
+                    ? () {
+                        final result = <FilledField>[];
+                        for (var i = 0; i < _fields.length; i++) {
+                          if (_checked[i]) result.add(_fields[i]);
+                        }
+                        Navigator.pop(context, result);
+                      }
+                    : null,
+                icon: const Icon(Icons.check),
+                label: Text(l10n.placeNValues(count)),
+              ),
+            ),
+          ],
         ),
       ),
     );

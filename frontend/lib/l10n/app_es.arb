@@ -1,6 +1,11 @@
 {
   "@@locale": "es",
   "autoFill": "Autocompletar",
+  "aiFill": "IA Rellenar",
+  "aiFillFromProfile": "Rellenar desde perfil guardado",
+  "aiFillFromProfileDesc": "Usa tus datos personales guardados (más rápido)",
+  "aiFillFromDoc": "Rellenar desde documento",
+  "aiFillFromDocDesc": "Sube un DNI, certificado o formulario anterior",
   "typeSignature": "Escribir firma",
   "typeYourSignature": "Escribe tu firma",
   "fillRemainingFields": "Rellenar campos restantes",
