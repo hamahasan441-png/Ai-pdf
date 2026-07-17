@@ -1,19 +1,24 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/ads/ads_service.dart';
+import '../../subscription/application/subscription_controller.dart';
 import '../services/conversion_service.dart';
 import '../widgets/result_sheet.dart';
 
 /// Convert a PDF to an Office format (Word / Excel / PowerPoint) via the
-/// managed backend. Cloud feature — needs a configured server.
-class ConvertScreen extends StatefulWidget {
+/// managed backend. A Pro feature: free users can start the trial, watch a
+/// rewarded ad to convert once, or upgrade.
+class ConvertScreen extends ConsumerStatefulWidget {
   const ConvertScreen({super.key});
   @override
-  State<ConvertScreen> createState() => _ConvertScreenState();
+  ConsumerState<ConvertScreen> createState() => _ConvertScreenState();
 }
 
-class _ConvertScreenState extends State<ConvertScreen> {
+class _ConvertScreenState extends ConsumerState<ConvertScreen> {
   String? _path;
   ConvertFormat _format = ConvertFormat.word;
   bool _busy = false;
@@ -27,9 +32,76 @@ class _ConvertScreenState extends State<ConvertScreen> {
     setState(() => _path = path);
   }
 
+  /// Pro gate: returns true if the conversion may proceed (Pro/trial, or the
+  /// user watched a rewarded ad to unlock a single conversion).
+  Future<bool> _ensureAccess() async {
+    if (ref.read(isProProvider)) return true;
+    final l10n = AppLocalizations.of(context)!;
+    final canTrial = ref.read(subscriptionControllerProvider).canStartTrial;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.workspace_premium, size: 40, color: Color(0xFF2B579A)),
+            const SizedBox(height: 10),
+            Text(l10n.proFeatureTitle,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(l10n.proFeatureBody,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            if (canTrial)
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'trial'),
+                icon: const Icon(Icons.lock_open),
+                label: Text(l10n.startFreeTrial),
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+              ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'ad'),
+              icon: const Icon(Icons.ondemand_video),
+              label: Text(l10n.watchAdToUse),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'pro'),
+              child: Text(l10n.goPro),
+            ),
+          ]),
+        ),
+      ),
+    );
+
+    switch (choice) {
+      case 'trial':
+        await ref.read(subscriptionControllerProvider.notifier).startFreeTrial();
+        return ref.read(isProProvider);
+      case 'ad':
+        final earned = await AdsService.instance.showRewarded();
+        if (!earned && mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(l10n.adNotReady)));
+        }
+        return earned;
+      case 'pro':
+        if (mounted) context.push('/paywall');
+        return false;
+      default:
+        return false;
+    }
+  }
+
   Future<void> _convert() async {
     if (_path == null) return;
     final l10n = AppLocalizations.of(context)!;
+    if (!await _ensureAccess()) return;
+    if (!mounted) return;
     if (!ConversionService.instance.serverConfigured) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(l10n.convertNeedsServer)));

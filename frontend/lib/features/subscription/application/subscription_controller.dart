@@ -20,6 +20,7 @@ class SubscriptionState {
   final List<ProductDetails> products;
   final Entitlement entitlement;
   final bool purchaseInProgress;
+  final bool trialUsed;
   final String? error;
 
   const SubscriptionState({
@@ -29,10 +30,14 @@ class SubscriptionState {
     this.products = const [],
     this.entitlement = const Entitlement.free(),
     this.purchaseInProgress = false,
+    this.trialUsed = false,
     this.error,
   });
 
   bool get isPro => entitlement.isPro;
+
+  /// True if the one-time free trial can still be started.
+  bool get canStartTrial => !entitlement.isPro && !trialUsed;
 
   ProductDetails? productById(String id) {
     for (final p in products) {
@@ -48,6 +53,7 @@ class SubscriptionState {
     List<ProductDetails>? products,
     Entitlement? entitlement,
     bool? purchaseInProgress,
+    bool? trialUsed,
     String? error,
     bool clearError = false,
   }) {
@@ -58,6 +64,7 @@ class SubscriptionState {
       products: products ?? this.products,
       entitlement: entitlement ?? this.entitlement,
       purchaseInProgress: purchaseInProgress ?? this.purchaseInProgress,
+      trialUsed: trialUsed ?? this.trialUsed,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -67,12 +74,14 @@ int _tierRank(ProTier t) {
   switch (t) {
     case ProTier.free:
       return 0;
-    case ProTier.monthly:
+    case ProTier.trial:
       return 1;
-    case ProTier.yearly:
+    case ProTier.monthly:
       return 2;
-    case ProTier.lifetime:
+    case ProTier.yearly:
       return 3;
+    case ProTier.lifetime:
+      return 4;
   }
 }
 
@@ -91,7 +100,8 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     if (state.initialized) return;
 
     final cached = await _store.load();
-    state = state.copyWith(entitlement: cached);
+    final trialUsed = await _store.isTrialUsed();
+    state = state.copyWith(entitlement: cached, trialUsed: trialUsed);
 
     bool available = false;
     try {
@@ -129,6 +139,20 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
         error: 'Could not load plans. Check your connection and Play account.',
       );
     }
+  }
+
+  /// Start the one-time 3-day free trial (unlocks all Pro features). No-op if
+  /// already Pro or the trial was used before.
+  Future<void> startFreeTrial() async {
+    if (!state.canStartTrial) return;
+    final entitlement = Entitlement(
+      tier: ProTier.trial,
+      expiry: DateTime.now().add(const Duration(days: 3)),
+    );
+    await _store.save(entitlement);
+    await _store.markTrialUsed();
+    Analytics.logEvent(AnalyticsEvents.trialStarted);
+    state = state.copyWith(entitlement: entitlement, trialUsed: true, clearError: true);
   }
 
   Future<void> buy(ProductDetails product) async {
