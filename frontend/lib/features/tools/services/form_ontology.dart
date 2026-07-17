@@ -114,6 +114,23 @@ class FormOntology {
         'tatigkeit', 'profession', 'profesión', 'profesion'], 'job_title',
         ValueKind.text),
 
+    // --- family / personal (expanded) ---
+    _Entry(['religion', 'konfession', 'glaubensbekenntnis', 'religionszugehörigkeit',
+        'religionszugehorigkeit'], 'religion', ValueKind.text),
+    _Entry(['kinder', 'children', 'anzahl kinder', 'number of children',
+        'kinderzahl'], 'children_count', ValueKind.number),
+    _Entry(['steuerklasse', 'tax class', 'lohnsteuerklasse'], 'tax_class',
+        ValueKind.number),
+    _Entry(['bundesland', 'federal state', 'state', 'province'], 'federal_state',
+        ValueKind.text),
+    _Entry(['einzugsdatum', 'einzug', 'move-in date', 'date of move',
+        'umzugsdatum'], 'move_in_date', ValueKind.date),
+    _Entry(['vermieter', 'landlord', 'hausverwaltung'], 'landlord', ValueKind.text),
+    _Entry(['miete', 'rent', 'kaltmiete', 'warmmiete', 'monatsmiete'],
+        'rent_amount', ValueKind.number),
+    _Entry(['wohnfläche', 'wohnflache', 'living space', 'wohnungsgröße',
+        'wohnungsgrosse', 'quadratmeter', 'qm'], 'living_space', ValueKind.number),
+
     // --- signature / generic date (most generic, checked last) ---
     _Entry(['signature', 'unterschrift', 'sign here', 'signed'], 'signature',
         ValueKind.signature),

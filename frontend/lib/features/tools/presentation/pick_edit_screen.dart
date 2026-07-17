@@ -1082,6 +1082,35 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _smartFillPage() async {
     final bytes = _pageCache[_current];
     if (bytes == null) return;
+
+    // Offer a choice: fill from saved Profile or upload an info document.
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: Text(l10n.aiFillFromProfile),
+                subtitle: Text(l10n.aiFillFromProfileDesc),
+                onTap: () => Navigator.pop(ctx, 'profile'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_file),
+                title: Text(l10n.aiFillFromDoc),
+                subtitle: Text(l10n.aiFillFromDocDesc),
+                onTap: () => Navigator.pop(ctx, 'doc'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (source == null || !mounted) return;
+
     setState(() => _detecting = true);
     try {
       // 1) OCR the current page
@@ -1092,10 +1121,51 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final ocrResult = await _ocr.recognize(tmpPath);
       try { await File(tmpPath).delete(); } catch (_) {}
 
-      // 2) Load profile and run the engine
+      // 2) Get info: either from an uploaded doc or empty (profile-only)
+      List<OcrResult> infoPages = const [];
+      if (source == 'doc') {
+        final picked = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        );
+        final path = picked?.files.first.path;
+        if (path != null && mounted) {
+          // OCR the info document
+          final infoOcr = OcrService();
+          try {
+            if (path.toLowerCase().endsWith('.pdf')) {
+              final infoDoc = await pdfx.PdfDocument.openFile(path);
+              try {
+                final count = infoDoc.pagesCount < 10 ? infoDoc.pagesCount : 10;
+                for (var i = 1; i <= count; i++) {
+                  final pg = await infoDoc.getPage(i);
+                  try {
+                    final le = pg.width > pg.height ? pg.width : pg.height;
+                    final sc = le > 1400 ? 1400 / le : 1.0;
+                    final img = await pg.render(
+                      width: pg.width * sc, height: pg.height * sc,
+                      format: pdfx.PdfPageImageFormat.jpeg, backgroundColor: '#FFFFFF',
+                    );
+                    if (img?.bytes != null) {
+                      final p = '${dir.path}/info_${stamp}_$i.jpg';
+                      await File(p).writeAsBytes(img!.bytes);
+                      infoPages = [...infoPages, await infoOcr.recognize(p)];
+                      try { await File(p).delete(); } catch (_) {}
+                    }
+                  } finally { await pg.close(); }
+                }
+              } finally { await infoDoc.close(); }
+            } else {
+              infoPages = [await infoOcr.recognize(path)];
+            }
+          } finally { await infoOcr.dispose(); }
+        }
+      }
+
+      // 3) Load profile and run the engine
       await UserProfileService.instance.load();
       final profile = UserProfileService.instance.data;
-      final info = SmartFormFiller.extractInfo(const []);
+      final info = SmartFormFiller.extractInfo(infoPages);
       final fields = SmartFormFiller.fillForm([ocrResult], info, profile);
 
       if (!mounted) return;
@@ -1106,7 +1176,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         return;
       }
 
-      // 3) Show review sheet
+      // 4) Show review sheet
       final confirmed = await showModalBottomSheet<List<FilledField>>(
         context: context,
         isScrollControlled: true,
@@ -1115,7 +1185,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
       if (confirmed == null || confirmed.isEmpty || !mounted) return;
 
-      // 4) Place confirmed values as editable text boxes
+      // 5) Place confirmed values as editable text boxes
       setState(() {
         for (final f in confirmed) {
           if (f.isCheck) {
