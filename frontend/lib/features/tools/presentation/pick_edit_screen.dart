@@ -359,10 +359,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
 
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(autoCount > 0
-          ? 'Auto-filled $autoCount field(s) from your profile'
-          : 'No saved profile matches — set up My Profile to auto-fill'),
+          ? l10n.autoFilledCount(autoCount)
+          : l10n.noProfileMatches),
     ));
 
     if (remaining.isNotEmpty) {
@@ -377,9 +378,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Fill remaining fields'),
-        content: Text(
-            '${fields.length} field(s) had no saved value. Fill them one by one now?'),
+        title: Text(AppLocalizations.of(ctx)!.fillRemainingFields),
+        content: Text(AppLocalizations.of(ctx)!.fillRemainingBody(fields.length)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -400,8 +400,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Fill & Sign: add a typed signature rendered in a script-like style. A fast
   /// alternative to drawing when the user just wants their name on the line.
   Future<void> _typeSignature() async {
-    final val =
-        await _promptValue('Type your signature', TextInputType.text, FieldType.name);
+    final val = await _promptValue(
+        AppLocalizations.of(context)!.typeYourSignature,
+        TextInputType.text,
+        FieldType.name);
     if (val != null && val.trim().isNotEmpty) {
       setState(() => _pushItem(_TextBox(
             const Offset(0.4, 0.68),
@@ -1430,7 +1432,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.keyboard),
-              title: const Text('Type signature'),
+              title: Text(AppLocalizations.of(ctx)!.typeSignature),
               onTap: () => Navigator.pop(ctx, 'type'),
             ),
             if (_savedSignatures.isNotEmpty) const Divider(height: 1),
@@ -2295,7 +2297,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
               child: Row(children: [
                 _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
                     _detecting ? () {} : _detectFields, cs),
-                _actionBtn(Icons.auto_fix_high, 'Auto-fill',
+                _actionBtn(Icons.auto_fix_high, l10n.autoFill,
                     _detecting ? () {} : _autoFill, cs),
                 _actionBtn(_showEditLines ? Icons.text_fields : Icons.text_format,
                     l10n.editTextTool, _detecting ? () {} : _scanForEdit, cs),

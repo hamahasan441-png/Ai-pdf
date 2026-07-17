@@ -1,5 +1,12 @@
 {
   "@@locale": "es",
+  "autoFill": "Autocompletar",
+  "typeSignature": "Escribir firma",
+  "typeYourSignature": "Escribe tu firma",
+  "fillRemainingFields": "Rellenar campos restantes",
+  "fillRemainingBody": "{count} campo(s) sin valor guardado. ¿Rellenarlos uno por uno ahora?",
+  "autoFilledCount": "Se rellenaron {count} campo(s) desde tu perfil",
+  "noProfileMatches": "No hay coincidencias en tu perfil — configura Mi Perfil para autocompletar",
   "smartDocuments": "Documentos inteligentes",
   "appTagline": "Abre, analiza y edita con IA",
   "openTools": "Abrir herramientas",

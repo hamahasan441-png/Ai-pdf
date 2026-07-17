@@ -1,5 +1,12 @@
 {
   "@@locale": "ar",
+  "autoFill": "تعبئة تلقائية",
+  "typeSignature": "كتابة التوقيع",
+  "typeYourSignature": "اكتب توقيعك",
+  "fillRemainingFields": "تعبئة الحقول المتبقية",
+  "fillRemainingBody": "{count} حقل بلا قيمة محفوظة. هل تريد تعبئتها واحدًا تلو الآخر الآن؟",
+  "autoFilledCount": "تمت تعبئة {count} حقل من ملفك الشخصي",
+  "noProfileMatches": "لا توجد تطابقات في ملفك الشخصي — أعدّ ملفي الشخصي للتعبئة التلقائية",
   "smartDocuments": "مستندات ذكية",
   "appTagline": "افتح وحلّل وحرّر باستخدام الذكاء الاصطناعي",
   "openTools": "فتح الأدوات",
