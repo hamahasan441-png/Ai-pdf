@@ -63,5 +63,19 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
 
+    # Managed AI metering (free tier). Pro users (verified purchase) are unlimited.
+    AI_FREE_DAILY_LIMIT: int = 15
+
+    # Google Play Billing verification (server-side, spoof-proof entitlement).
+    # Provide the service-account JSON (raw string or file contents) with the
+    # androidpublisher scope, and the app's package name. Leave blank to disable
+    # verification (endpoint returns 503).
+    GOOGLE_PLAY_PACKAGE_NAME: str = "com.aidocassistant.app"
+    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: str = ""
+    # Product IDs (must match the Flutter app / Play Console).
+    PRODUCT_MONTHLY: str = "pro_monthly"
+    PRODUCT_YEARLY: str = "pro_yearly"
+    PRODUCT_LIFETIME: str = "pro_lifetime"
+
 
 settings = Settings()

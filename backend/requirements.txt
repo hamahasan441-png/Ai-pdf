@@ -14,6 +14,12 @@ PyMuPDF==1.24.10
 pypdf==4.3.1
 python-docx==1.1.2
 Pillow==10.4.0
+# PDF -> Office conversion
+pdf2docx==0.5.8
+python-pptx==1.0.2
+openpyxl==3.1.5
+# Google Play purchase verification (service-account OAuth)
+google-auth==2.34.0
 python-dotenv==1.0.1
 redis==5.1.0
 aiofiles==24.1.0
