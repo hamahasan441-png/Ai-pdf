@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/ads/ad_banner.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/pressable_scale.dart';
 
 /// ToolsScreen - Hub for all document tools.
 ///
@@ -302,7 +303,7 @@ class _ToolCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final bColor = badgeColor ?? AppColors.success;
 
-    return InkWell(
+    return PressableScale(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
