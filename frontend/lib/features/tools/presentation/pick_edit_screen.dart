@@ -135,6 +135,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   // --- Selection state ---
   _Annotation? _selected; // currently selected annotation (for move/resize)
+  _Annotation? _clipboard; // copied object, pasteable onto any page
   Offset? _dragOffset; // offset during move
   bool _hasUnsavedChanges = false;
 
@@ -938,17 +939,47 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _snapSelected() {
     final sel = _selected;
     if (sel == null) return;
-    const th = 0.015; // snap threshold (normalized)
-    final b = _boundsOf(sel);
+    const th = 0.014; // snap threshold (normalized)
     double? gx, gy;
-    if ((b.center.dx - 0.5).abs() < th) {
-      _moveAnnotation(sel, Offset(0.5 - b.center.dx, 0));
-      gx = 0.5;
+    // Vertical guides: page quarters + center (via the object's center)...
+    final b = _boundsOf(sel);
+    for (final line in const [0.25, 0.5, 0.75]) {
+      if ((b.center.dx - line).abs() < th) {
+        _moveAnnotation(sel, Offset(line - b.center.dx, 0));
+        gx = line;
+        break;
+      }
     }
+    // ...else snap the object's left/right edge to the page margins.
+    if (gx == null) {
+      final b1 = _boundsOf(sel);
+      if (b1.left.abs() < th) {
+        _moveAnnotation(sel, Offset(-b1.left, 0));
+        gx = 0;
+      } else if ((b1.right - 1).abs() < th) {
+        _moveAnnotation(sel, Offset(1 - b1.right, 0));
+        gx = 1;
+      }
+    }
+    // Horizontal guides: page quarters + center...
     final b2 = _boundsOf(sel);
-    if ((b2.center.dy - 0.5).abs() < th) {
-      _moveAnnotation(sel, Offset(0, 0.5 - b2.center.dy));
-      gy = 0.5;
+    for (final line in const [0.25, 0.5, 0.75]) {
+      if ((b2.center.dy - line).abs() < th) {
+        _moveAnnotation(sel, Offset(0, line - b2.center.dy));
+        gy = line;
+        break;
+      }
+    }
+    // ...else snap top/bottom edge to the page margins.
+    if (gy == null) {
+      final b3 = _boundsOf(sel);
+      if (b3.top.abs() < th) {
+        _moveAnnotation(sel, Offset(0, -b3.top));
+        gy = 0;
+      } else if ((b3.bottom - 1).abs() < th) {
+        _moveAnnotation(sel, Offset(0, 1 - b3.bottom));
+        gy = 1;
+      }
     }
     _guideX = gx;
     _guideY = gy;
@@ -986,6 +1017,99 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _hasUnsavedChanges = true;
       });
     }
+  }
+
+  /// Clone an annotation, offset by [d] (normalized). Preserves text styling so
+  /// duplicates/pastes look identical to the original.
+  _Annotation? _cloneAnnotation(_Annotation sel, double d) {
+    if (sel is _Shape) {
+      return _Shape(sel.type, Offset(sel.start.dx + d, sel.start.dy + d),
+          Offset(sel.end.dx + d, sel.end.dy + d), sel.color, sel.width);
+    } else if (sel is _TextBox) {
+      return _TextBox(Offset(sel.pos.dx + d, sel.pos.dy + d), sel.text, sel.color,
+          sel.size, sel.bold, sel.italic, sel.underline, sel.fontFamily);
+    } else if (sel is _Stroke) {
+      return _Stroke(sel.points.map((p) => Offset(p.dx + d, p.dy + d)).toList(),
+          sel.color, sel.width, sel.highlight);
+    }
+    return null;
+  }
+
+  /// Copy the selected object to an in-editor clipboard (works across pages).
+  void _copySelected() {
+    final sel = _selected;
+    if (sel == null) return;
+    _clipboard = _cloneAnnotation(sel, 0);
+    setState(() {}); // refresh so the Paste action becomes enabled
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied'), duration: Duration(milliseconds: 900)),
+    );
+  }
+
+  /// Paste the clipboard object onto the CURRENT page, selected & ready to move.
+  void _pasteClipboard() {
+    final c = _clipboard;
+    if (c == null) return;
+    final copy = _cloneAnnotation(c, 0.03);
+    if (copy == null) return;
+    setState(() {
+      _layer.items.add(copy);
+      _selected = copy;
+      _tool = EditTool.pan;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  /// Quick colour picker for the selected text value.
+  void _pickSelectedTextColor() {
+    final sel = _selected;
+    if (sel is! _TextBox) return;
+    const swatches = <Color>[
+      Color(0xFF1B2130), Colors.black, Color(0xFF4C63D2), Color(0xFF2E9E7B),
+      Color(0xFFD9636B), Color(0xFFCF9A4E), Color(0xFF7E7BD4), Colors.white,
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Text colour', style: Theme.of(ctx).textTheme.titleMedium),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  for (final c in swatches)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          sel.color = c;
+                          _hasUnsavedChanges = true;
+                        });
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: c,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.black26),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _duplicateSelected() {
@@ -2213,6 +2337,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
               onPressed: _layer.redo.isEmpty ? null : _redoAction,
             ),
             IconButton(
+              icon: const Icon(Icons.content_paste),
+              tooltip: 'Paste',
+              onPressed: _clipboard == null ? null : _pasteClipboard,
+            ),
+            IconButton(
               icon: const Icon(Icons.ios_share),
               tooltip: l10n.export,
               onPressed: _loading ? null : _export,
@@ -2491,11 +2620,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       const SizedBox(width: 10),
                       _miniBtn(Icons.text_increase, 'A+', () => _resizeSelectedText(1.1)),
                       const SizedBox(width: 10),
+                      _miniBtn(Icons.palette_outlined, 'Colour', _pickSelectedTextColor),
+                      const SizedBox(width: 10),
                     ],
                     if (_selected is _Shape) ...[
                       _miniBtn(Icons.tune, AppLocalizations.of(context)!.style, () => _editShapeStyle(_selected as _Shape)),
                       const SizedBox(width: 10),
                     ],
+                    _miniBtn(Icons.content_copy, 'Copy', _copySelected),
+                    const SizedBox(width: 10),
                     _miniBtn(Icons.copy_all, AppLocalizations.of(context)!.duplicate, _duplicateSelected),
                     const SizedBox(width: 10),
                     _miniBtn(Icons.flip_to_front, AppLocalizations.of(context)!.bringToFront, _bringToFront),
