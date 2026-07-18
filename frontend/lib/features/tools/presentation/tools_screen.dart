@@ -178,8 +178,8 @@ class ToolsScreen extends ConsumerWidget {
               ),
               _ToolCard(
                 icon: Icons.cloud_download,
-                label: 'Import PDF',
-                desc: 'Download PDF from any URL or viewer',
+                label: 'Import File',
+                desc: 'Grab any file from a URL & save it',
                 color: const Color(0xFF2563EB),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/import-pdf'),
