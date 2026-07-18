@@ -198,7 +198,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   /// OCR the current page, find label-like fields, infer each type, and show
   /// them as tappable targets. Fully offline (ML Kit bundled model).
-  Future<void> _detectFields() async {
+  Future<void> _detectFields({bool silent = false}) async {
     final bytes = _pageCache[_current];
     if (bytes == null) return;
     setState(() => _detecting = true);
@@ -248,11 +248,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showFields = true;
         _tool = EditTool.pan; // so taps select/fill, not draw
       });
-      if (detected.isEmpty) {
+      if (detected.isEmpty && !silent) {
         _showError('No obvious fields found on this page. You can still tap Text to add anywhere.');
       }
     } catch (e) {
-      _showError('Field detection failed: $e');
+      if (!silent) _showError('Field detection failed: $e');
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -337,6 +337,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _openFieldInput(DetectedField field) async {
     // --- Checkbox: instant check mark, fitted inside the square ---
     if (field.type == FieldType.checkbox) {
+      // Let the user choose a check (correct) or a cross (wrong).
+      final mark = await _chooseCheckMark();
+      if (mark == null) return;
       final markSize = (field.rect.height * 0.80).clamp(0.012, 0.06).toDouble();
       final cx = (field.rect.left + (field.rect.width - markSize * 0.5) * 0.5)
           .clamp(0.0, 0.97)
@@ -344,8 +347,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final cy = (field.rect.top + (field.rect.height - markSize) * 0.3)
           .clamp(0.0, 0.97)
           .toDouble();
-      final tb = _TextBox(
-          Offset(cx, cy), '✓', const Color(0xFF16A34A), markSize, true);
+      final color =
+          mark == '✓' ? const Color(0xFF16A34A) : const Color(0xFFD9636B);
+      final tb = _TextBox(Offset(cx, cy), mark, color, markSize, true);
       setState(() {
         _pushItem(tb);
         _selected = tb; // auto-select so the whole mark can be dragged at once
@@ -409,7 +413,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
     };
     final val = await _promptValue(title.isEmpty ? 'Enter value' : title, kb, field.type);
     if (val != null && val.trim().isNotEmpty) {
-      _placeValue(pos, size, val.trim());
+      final v = val.trim();
+      // Auto-fit: shrink long values so they don't overflow the field's width.
+      final fitted = _fitTextSize(v, size, (0.98 - pos.dx).clamp(0.05, 1.0).toDouble());
+      _placeValue(pos, fitted, v);
     }
   }
 
@@ -422,6 +429,70 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _selected = tb;
       _tool = EditTool.pan;
     });
+  }
+
+  /// Quick chooser shown when a checkbox field is tapped: check (correct) or
+  /// cross (wrong). Returns the chosen glyph, or null if dismissed.
+  Future<String?> _chooseCheckMark() {
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _markChoice(ctx, '✓', 'Correct', const Color(0xFF16A34A)),
+              _markChoice(ctx, '✗', 'Wrong', const Color(0xFFD9636B)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _markChoice(BuildContext ctx, String mark, String label, Color color) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => Navigator.pop(ctx, mark),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(mark,
+                    style: TextStyle(
+                        fontSize: 36, color: color, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Rough auto-fit: reduce font [baseSize] so a value of [text] fits within
+  /// [availWidthNorm] (normalized page width). Heuristic (no pixel measuring)
+  /// but reliably keeps long values from spilling past the field.
+  double _fitTextSize(String text, double baseSize, double availWidthNorm) {
+    if (text.isEmpty) return baseSize;
+    const advance = 0.55; // avg glyph width as a fraction of the font size
+    const pageWH = 1.41; // A4 portrait height/width ratio
+    final neededH = text.length * advance * baseSize; // in height-normalized units
+    final availH = availWidthNorm * pageWH; // convert width budget to height units
+    if (neededH <= availH) return baseSize;
+    return (baseSize * (availH / neededH)).clamp(0.010, baseSize).toDouble();
   }
 
   // ---- Offline Smart Auto-Fill (form filler) --------------------------
@@ -620,6 +691,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
         }
         _hasUnsavedChanges = true;
         _tool = EditTool.pan; // start in move/select mode so user can adjust
+      }
+
+      // Smart tap: detect fields immediately so tapping any box gives the right
+      // action (keyboard / check / dot) without pressing Auto-fill first.
+      if (fields == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pageCache[_current] != null) _detectFields(silent: true);
+        });
       }
     } catch (e) {
       _showError('Could not open file: $e');
