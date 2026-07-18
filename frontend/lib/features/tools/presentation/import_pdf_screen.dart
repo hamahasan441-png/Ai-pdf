@@ -315,6 +315,8 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
             _InfoRow(
                 label: 'Recovered',
                 value: '${r.retries} retr${r.retries == 1 ? 'y' : 'ies'}'),
+          if (r.readableResumed != null)
+            _InfoRow(label: 'Resumed', value: '${r.readableResumed} from earlier'),
           const SizedBox(height: 14),
 
           Row(children: [

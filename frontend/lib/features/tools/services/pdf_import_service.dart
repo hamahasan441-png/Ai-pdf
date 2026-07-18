@@ -13,6 +13,7 @@ class ImportedFile {
   final int? elapsedMs;
   final int? avgBytesPerSec;
   final int? retries;
+  final int? resumedBytes;
   final String? reason;
 
   ImportedFile({
@@ -26,6 +27,7 @@ class ImportedFile {
     this.elapsedMs,
     this.avgBytesPerSec,
     this.retries,
+    this.resumedBytes,
     this.reason,
   });
 
@@ -41,8 +43,18 @@ class ImportedFile {
       elapsedMs: (map['elapsedMs'] as num?)?.toInt(),
       avgBytesPerSec: (map['avgBytesPerSec'] as num?)?.toInt(),
       retries: (map['retries'] as num?)?.toInt(),
+      resumedBytes: (map['resumedBytes'] as num?)?.toInt(),
       reason: map['reason'] as String?,
     );
+  }
+
+  /// Human-readable resumed amount (bytes recovered from a prior interrupted run).
+  String? get readableResumed {
+    final r = resumedBytes ?? 0;
+    if (r <= 0) return null;
+    if (r >= 1024 * 1024) return '${(r / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (r >= 1024) return '${(r / 1024).toStringAsFixed(0)} KB';
+    return '$r B';
   }
 
   /// Human-readable download speed, e.g. "4.2 MB/s".

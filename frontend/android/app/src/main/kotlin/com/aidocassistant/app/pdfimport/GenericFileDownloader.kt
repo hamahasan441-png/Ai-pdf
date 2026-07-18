@@ -22,7 +22,6 @@ import java.io.RandomAccessFile
 import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
-import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -64,6 +63,7 @@ class GenericFileDownloader(
         val elapsedMs: Long,
         val avgBytesPerSec: Long,
         val retries: Int,           // total retry attempts across all segments
+        val resumedBytes: Long,     // bytes already on disk from a prior run
     )
 
     private data class Caps(
@@ -92,17 +92,33 @@ class GenericFileDownloader(
         val url = parseUrl(rawUrl)
             ?: throw IllegalArgumentException("invalid URL: $rawUrl")
         workDir.mkdirs()
+        ResumeState.sweepStale(workDir)
         retryCounter.set(0)
         val started = System.currentTimeMillis()
 
         val caps = withRetry("probe") { probe(url) }
-        val out = File.createTempFile("dl_", ".part", workDir)
+
+        // Range-capable + known size + large enough -> resumable parallel download.
+        val resumable = caps.acceptsRanges && caps.contentLength != null &&
+            caps.contentLength > parallelThresholdBytes
+
+        val resume = if (resumable) ResumeState.forUrl(workDir, normalizedKey(url, caps)) else null
+        val out = resume?.partFile ?: File.createTempFile("dl_", ".part", workDir)
+        var resumedBytes = 0L
+
         try {
-            if (caps.acceptsRanges && caps.contentLength != null &&
-                caps.contentLength > parallelThresholdBytes
-            ) {
-                parallelDownload(caps, caps.contentLength, out, progress)
-                verifyIntegrity(out, caps.contentLength)
+            if (resume != null) {
+                resume.prepare(
+                    total = caps.contentLength!!,
+                    finalUrl = caps.finalUrl.toString(),
+                    etag = caps.etag,
+                    lastModified = caps.lastModified,
+                    computeSegCount = { adaptiveSegmentCount(it) },
+                )
+                resumedBytes = resume.bytesCompleted()
+                parallelDownload(caps, resume, progress)
+                verifyIntegrity(out, caps.contentLength!!)
+                resume.complete()
             } else {
                 val total = singleDownload(caps, out, progress)
                 if (total != null) verifyIntegrity(out, total)
@@ -114,7 +130,7 @@ class GenericFileDownloader(
             if (followHtml && type.mimeType == "text/html") {
                 val link = extractPrimaryFileLink(out, caps.finalUrl)
                 if (link != null) {
-                    out.delete()
+                    resume?.discardOnDisk() ?: out.delete()
                     return download(link.toString(), workDir, progress, followHtml = false)
                 }
             }
@@ -123,6 +139,7 @@ class GenericFileDownloader(
             val bytes = out.length()
             val fileName = resolveFileName(caps, type.extension)
             val pageCount = if (type.mimeType == "application/pdf") pdfPageCount(out) else null
+            val freshBytes = (bytes - resumedBytes).coerceAtLeast(1)
 
             return DownloadedFile(
                 file = out,
@@ -131,14 +148,29 @@ class GenericFileDownloader(
                 bytes = bytes,
                 pageCount = pageCount,
                 elapsedMs = elapsed,
-                avgBytesPerSec = bytes * 1000 / elapsed,
+                // Speed reflects bytes actually transferred this run, not resumed ones.
+                avgBytesPerSec = freshBytes * 1000 / elapsed,
                 retries = retryCounter.get().toInt(),
+                resumedBytes = resumedBytes,
             )
+        } catch (ce: CancellationException) {
+            // Paused/cancelled: KEEP part + meta so the next run resumes.
+            resume?.persist(force = true)
+            throw ce
         } catch (t: Throwable) {
-            out.delete()
+            if (resume != null) {
+                // Network error: keep files for a later resume; only clean non-resumable temp.
+                resume.persist(force = true)
+            } else {
+                out.delete()
+            }
             throw t
         }
     }
+
+    /** Stable resume key: final URL + validator + length, so a changed resource keys differently. */
+    private fun normalizedKey(url: HttpUrl, caps: Caps): String =
+        "${caps.finalUrl}|${caps.etag ?: caps.lastModified ?: ""}|${caps.contentLength ?: -1}"
 
     // --- Probe ---
 
@@ -169,20 +201,20 @@ class GenericFileDownloader(
     // --- Parallel range download with adaptive segmentation ---
 
     private suspend fun parallelDownload(
-        caps: Caps, total: Long, out: File, progress: ProgressSink,
+        caps: Caps, resume: ResumeState, progress: ProgressSink,
     ) = coroutineScope {
-        RandomAccessFile(out, "rw").use { raf -> raf.setLength(total) }
-        val segCount = adaptiveSegmentCount(total)
-        val segSize = ceil(total.toDouble() / segCount).toLong()
-        val written = LongArray(segCount)
+        val total = resume.contentLength
+        val out = resume.partFile
 
-        (0 until segCount).map { i ->
-            val start = i * segSize
-            val end = min(start + segSize - 1, total - 1)
+        (0 until resume.segCount).map { i ->
+            val segStart = resume.segStart(i)
+            val segEnd = resume.segEnd(i)
+            // Resume: skip the bytes this segment already completed on a prior run.
+            val already = resume.written[i]
             async(Dispatchers.IO) {
-                downloadSegmentResumable(caps, start, end, out) { local ->
-                    written[i] = local
-                    progress.update(written.sum(), total)
+                downloadSegmentResumable(caps, segStart + already, segEnd, out, already) { cumInSeg ->
+                    resume.onSegmentProgress(i, cumInSeg)
+                    progress.update(resume.bytesCompleted(), total)
                 }
             }
         }.awaitAll()
@@ -196,18 +228,26 @@ class GenericFileDownloader(
      * byte it last wrote, retrying with exponential backoff. Uses If-Range so a
      * changed resource is detected instead of silently corrupting the file.
      */
+    /**
+     * Downloads absolute file range [startByte..end] into [out].
+     * @param startByte first byte to fetch (already advanced past resumed bytes)
+     * @param base bytes already completed in this segment before this call, used so
+     *   [onWrite] always reports the cumulative-in-segment total (for persistence).
+     * On a transient failure it resumes from the byte it last wrote and retries with
+     * exponential backoff. `If-Range` detects a changed resource instead of corrupting.
+     */
     private suspend fun downloadSegmentResumable(
-        caps: Caps, start: Long, end: Long, out: File, onWrite: (Long) -> Unit,
+        caps: Caps, startByte: Long, end: Long, out: File, base: Long, onWrite: (Long) -> Unit,
     ) {
-        var writtenInSegment = 0L
+        var writtenThisRun = 0L
         var attempt = 0
         while (true) {
             try {
-                val from = start + writtenInSegment
+                val from = startByte + writtenThisRun
                 if (from > end) return
                 fetchRange(caps, from, end, out) { chunk ->
-                    writtenInSegment += chunk
-                    onWrite(writtenInSegment)
+                    writtenThisRun += chunk
+                    onWrite(base + writtenThisRun)
                 }
                 return
             } catch (ce: CancellationException) {

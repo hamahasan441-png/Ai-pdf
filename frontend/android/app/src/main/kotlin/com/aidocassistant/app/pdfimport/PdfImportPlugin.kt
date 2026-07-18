@@ -177,6 +177,7 @@ class PdfImportPlugin :
                     "elapsedMs" to dl.elapsedMs,
                     "avgBytesPerSec" to dl.avgBytesPerSec,
                     "retries" to dl.retries,
+                    "resumedBytes" to dl.resumedBytes,
                 ))
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
