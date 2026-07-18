@@ -1107,7 +1107,7 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                             ? Tooltip(
                                 message: 'AI was unsure — please double-check',
                                 child: Icon(Icons.warning_amber_rounded,
-                                    size: 20, color: Colors.orange.shade700),
+                                    size: 20, color: const Color(0xFFCF9A4E)),
                               )
                             : null,
                       ),

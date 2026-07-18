@@ -228,7 +228,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           // API key (only if provider needs one)
           if (needsKey) ...[
             _sectionTitle('API Key', Icons.key,
-                trailing: _keySet ? _badge('Set', Colors.green) : null),
+                trailing: _keySet ? _badge('Set', const Color(0xFF2E9E7B)) : null),
             const SizedBox(height: 8),
             TextField(
               controller: _keyCtrl,
@@ -361,12 +361,12 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (_testOk ? Colors.green : cs.error).withOpacity(0.12),
+                color: (_testOk ? const Color(0xFF2E9E7B) : cs.error).withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(children: [
                 Icon(_testOk ? Icons.check_circle : Icons.error_outline,
-                    color: _testOk ? Colors.green : cs.error, size: 20),
+                    color: _testOk ? const Color(0xFF2E9E7B) : cs.error, size: 20),
                 const SizedBox(width: 10),
                 Expanded(child: Text(_testResult!, style: const TextStyle(fontSize: 13))),
               ]),
