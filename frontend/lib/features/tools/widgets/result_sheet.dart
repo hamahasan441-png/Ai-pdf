@@ -11,7 +11,7 @@ import '../services/output_actions.dart';
 /// Offers Preview, Save to device, and Share for the output file(s).
 ///
 /// Every output is automatically recorded in Recent Files and mirrored to the
-/// browsable "AI PDF" folder on device storage.
+/// browsable "Pdoczy" folder on device storage.
 Future<void> showResultSheet(
   BuildContext context, {
   required List<String> paths,

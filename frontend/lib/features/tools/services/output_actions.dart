@@ -14,7 +14,7 @@ import '../../../core/services/permission_service.dart';
 ///   - Share it to any app
 ///   - Preview it in-app
 ///
-/// Every generated file is also mirrored to a browsable "AI PDF" folder on
+/// Every generated file is also mirrored to a browsable "Pdoczy" folder on
 /// device storage so nothing is ever lost.
 ///
 /// Every method is wrapped so a failure shows a message instead of crashing.
@@ -43,14 +43,14 @@ class OutputActions {
         bytes: bytes,
       );
 
-      // Also keep a copy in the browsable AI PDF folder.
+      // Also keep a copy in the browsable Pdoczy folder.
       final mirrored = await mirrorToPublicFolder(path);
 
       if (context.mounted) {
         if (saved != null) {
           _snack(context, 'Saved to device');
         } else if (mirrored != null) {
-          _snack(context, 'Saved to "AI PDF" folder');
+          _snack(context, 'Saved to "Pdoczy" folder');
         } else {
           _snack(context, 'Save cancelled');
         }
@@ -60,7 +60,7 @@ class OutputActions {
     }
   }
 
-  /// Best-effort copy of [path] into a browsable "AI PDF" folder on external
+  /// Best-effort copy of [path] into a browsable "Pdoczy" folder on external
   /// storage. Returns the destination path, or null if unavailable.
   ///
   /// Uses the app-specific external directory, which is readable by file
@@ -69,7 +69,7 @@ class OutputActions {
     try {
       final base = await getExternalStorageDirectory();
       if (base == null) return null;
-      final dir = Directory('${base.path}/AI PDF');
+      final dir = Directory('${base.path}/Pdoczy');
       if (!await dir.exists()) await dir.create(recursive: true);
       final src = File(path);
       if (!await src.exists()) return null;

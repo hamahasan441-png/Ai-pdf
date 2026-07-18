@@ -35,7 +35,7 @@ class PaywallScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AI PDF Pro')),
+      appBar: AppBar(title: const Text('Pdoczy Pro')),
       body: (state.isPro && !trialActive)
           ? _ProActive(entitlement: state.entitlement)
           : ListView(

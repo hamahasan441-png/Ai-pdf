@@ -39,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
-          const Text('AI PDF'),
+          const Text('Pdoczy'),
         ]),
         actions: [
           IconButton(

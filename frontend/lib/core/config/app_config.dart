@@ -33,7 +33,7 @@ class AiProviderDef {
 
 class AppConfig {
   AppConfig._();
-  static const String appName = 'AI PDF';
+  static const String appName = 'Pdoczy';
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000/api/v1',
@@ -109,7 +109,7 @@ class AppConfig {
   static const List<AiProviderDef> providers = [
     AiProviderDef(
       id: providerManaged,
-      label: 'AI PDF (managed — no key needed)',
+      label: 'Pdoczy (managed — no key needed)',
       endpoint: '', // computed at runtime: <server>/ai/chat
       managed: true,
       needsKey: false,
