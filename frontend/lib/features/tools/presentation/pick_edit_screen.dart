@@ -2667,8 +2667,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(children: [
-                _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
-                    _detecting ? () {} : _detectFields, cs),
                 _actionBtn(Icons.auto_fix_high, l10n.autoFill,
                     _detecting ? () {} : _autoFill, cs),
                 _actionBtn(Icons.psychology, l10n.aiFill,
@@ -2680,7 +2678,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       _showFields ? l10n.toolHide : l10n.toolFields,
                       () => setState(() => _showFields = !_showFields), cs),
                 _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
-                _toolBtn(Icons.select_all, l10n.toolSelect, EditTool.select, cs),
                 // --- Fill & Sign (form marks) ---
                 _actionBtn(Icons.gesture, l10n.toolSign, _addSignature, cs),
                 _actionBtn(Icons.event_available, l10n.signatureDate, _placeSignatureDate, cs),
