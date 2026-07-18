@@ -23,6 +23,15 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
   ConvertFormat _format = ConvertFormat.word;
   bool _busy = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // If we arrived here straight from the editor, preload the exported file
+    // (conversion still needs the user to choose a format + confirm).
+    final handoff = ToolHandoff.instance.take();
+    if (handoff != null) _path = handoff;
+  }
+
   Future<void> _pick() async {
     final result = await FilePicker.platform
         .pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);

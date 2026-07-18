@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
@@ -17,6 +18,18 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
   bool _busy = false;
   bool _png = false;
   List<String>? _outputs;
+
+  @override
+  void initState() {
+    super.initState();
+    final handoff = ToolHandoff.instance.take();
+    if (handoff != null) {
+      _filePath = handoff;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _convert();
+      });
+    }
+  }
 
   Future<void> _pick() async {
     final result = await FilePicker.platform.pickFiles(

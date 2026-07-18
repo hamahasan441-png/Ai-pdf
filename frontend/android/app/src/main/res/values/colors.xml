@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Pdoczy brand indigo — used for the launch/splash screen. -->
-    <color name="pdoczy_indigo">#FF4C63D2</color>
-    <color name="pdoczy_indigo_dark">#FF2B3A8F</color>
-</resources>
