@@ -11,6 +11,8 @@ class ImportedFile {
   final int? pageCount; // non-null only for PDFs
   final String? strategy;
   final int? elapsedMs;
+  final int? avgBytesPerSec;
+  final int? retries;
   final String? reason;
 
   ImportedFile({
@@ -22,6 +24,8 @@ class ImportedFile {
     this.pageCount,
     this.strategy,
     this.elapsedMs,
+    this.avgBytesPerSec,
+    this.retries,
     this.reason,
   });
 
@@ -35,8 +39,19 @@ class ImportedFile {
       pageCount: (map['pageCount'] as num?)?.toInt(),
       strategy: map['strategy'] as String?,
       elapsedMs: (map['elapsedMs'] as num?)?.toInt(),
+      avgBytesPerSec: (map['avgBytesPerSec'] as num?)?.toInt(),
+      retries: (map['retries'] as num?)?.toInt(),
       reason: map['reason'] as String?,
     );
+  }
+
+  /// Human-readable download speed, e.g. "4.2 MB/s".
+  String? get readableSpeed {
+    final s = avgBytesPerSec;
+    if (s == null || s <= 0) return null;
+    if (s >= 1024 * 1024) return '${(s / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+    if (s >= 1024) return '${(s / 1024).toStringAsFixed(0)} KB/s';
+    return '$s B/s';
   }
 
   bool get isSuccess => status == 'success';

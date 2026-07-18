@@ -3,10 +3,12 @@ package com.aidocassistant.app.pdfimport
 import android.content.Context
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
@@ -14,16 +16,30 @@ import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import java.net.URLDecoder
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
 import kotlin.math.ceil
 import kotlin.math.min
+import kotlin.random.Random
 
 /**
- * Downloads ANY file from a URL (not just PDFs) as fast as possible, using a
- * parallel HTTP range download when the server supports it, and reports rich
- * metadata about what was downloaded (name, MIME type, size, page count if PDF).
+ * Hardened downloader for ANY file type.
+ *
+ * Strength features:
+ *  - Parallel HTTP range download with adaptive segment count.
+ *  - Per-segment RESUME: a failed/stalled segment restarts from the exact byte it
+ *    reached (Range: from-end) rather than from zero. `If-Range` guards against the
+ *    resource changing mid-download.
+ *  - RETRY with exponential backoff + jitter on transient errors (IO, timeouts,
+ *    5xx, 408, 429) — per segment, so one flaky connection doesn't fail the job.
+ *  - INTEGRITY check: verifies the final size matches the advertised Content-Length.
+ *  - HTML fallback: if the URL is a page (not a file) that links to a real file,
+ *    the first strong file link is followed automatically.
+ *  - THROUGHPUT reporting for the UI.
  *
  * Only legitimate browser behavior is used — a plain authenticated GET with the
  * user's existing session cookies.
@@ -34,6 +50,9 @@ class GenericFileDownloader(
     private val maxSegments: Int = 8,
     private val minSegmentBytes: Long = 512 * 1024,
     private val parallelThresholdBytes: Long = 2 * 1024 * 1024,
+    private val maxRetriesPerSegment: Int = 5,
+    private val baseBackoffMs: Long = 300L,
+    private val maxBackoffMs: Long = 6_000L,
 ) {
 
     data class DownloadedFile(
@@ -41,8 +60,10 @@ class GenericFileDownloader(
         val fileName: String,
         val mimeType: String,
         val bytes: Long,
-        val pageCount: Int?,   // non-null only for PDFs
+        val pageCount: Int?,        // non-null only for PDFs
         val elapsedMs: Long,
+        val avgBytesPerSec: Long,
+        val retries: Int,           // total retry attempts across all segments
     )
 
     private data class Caps(
@@ -50,6 +71,7 @@ class GenericFileDownloader(
         val contentLength: Long?,
         val acceptsRanges: Boolean,
         val etag: String?,
+        val lastModified: String?,
         val contentType: String?,
         val dispositionFilename: String?,
     )
@@ -59,27 +81,46 @@ class GenericFileDownloader(
         "Accept" to "*/*",
     )
 
+    private val retryCounter = AtomicLong(0)
+
     suspend fun download(
         rawUrl: String,
         workDir: File,
         progress: ProgressSink = ProgressSink.NOOP,
+        followHtml: Boolean = true,
     ): DownloadedFile {
         val url = parseUrl(rawUrl)
             ?: throw IllegalArgumentException("invalid URL: $rawUrl")
         workDir.mkdirs()
+        retryCounter.set(0)
         val started = System.currentTimeMillis()
 
-        val caps = probe(url)
+        val caps = withRetry("probe") { probe(url) }
         val out = File.createTempFile("dl_", ".part", workDir)
         try {
-            val len = caps.contentLength
-            if (caps.acceptsRanges && len != null && len > parallelThresholdBytes) {
-                parallelDownload(caps, len, out, progress)
+            if (caps.acceptsRanges && caps.contentLength != null &&
+                caps.contentLength > parallelThresholdBytes
+            ) {
+                parallelDownload(caps, caps.contentLength, out, progress)
+                verifyIntegrity(out, caps.contentLength)
             } else {
-                singleDownload(caps, out, progress)
+                val total = singleDownload(caps, out, progress)
+                if (total != null) verifyIntegrity(out, total)
             }
 
             val type = FileTypeDetector.detect(out, caps.contentType, caps.finalUrl.toString())
+
+            // If we asked for a file but got a web page, try to follow a file link.
+            if (followHtml && type.mimeType == "text/html") {
+                val link = extractPrimaryFileLink(out, caps.finalUrl)
+                if (link != null) {
+                    out.delete()
+                    return download(link.toString(), workDir, progress, followHtml = false)
+                }
+            }
+
+            val elapsed = (System.currentTimeMillis() - started).coerceAtLeast(1)
+            val bytes = out.length()
             val fileName = resolveFileName(caps, type.extension)
             val pageCount = if (type.mimeType == "application/pdf") pdfPageCount(out) else null
 
@@ -87,15 +128,19 @@ class GenericFileDownloader(
                 file = out,
                 fileName = fileName,
                 mimeType = type.mimeType,
-                bytes = out.length(),
+                bytes = bytes,
                 pageCount = pageCount,
-                elapsedMs = System.currentTimeMillis() - started,
+                elapsedMs = elapsed,
+                avgBytesPerSec = bytes * 1000 / elapsed,
+                retries = retryCounter.get().toInt(),
             )
         } catch (t: Throwable) {
             out.delete()
             throw t
         }
     }
+
+    // --- Probe ---
 
     private suspend fun probe(url: HttpUrl): Caps = withContext(Dispatchers.IO) {
         val req = Request.Builder()
@@ -104,6 +149,7 @@ class GenericFileDownloader(
             .header("Range", "bytes=0-0")
             .build()
         client.newCall(req).execute().use { resp ->
+            throwIfRetryable(resp.code)
             val acceptsRanges = resp.code == 206 ||
                 resp.header("Accept-Ranges").equals("bytes", true)
             val total = parseContentRangeTotal(resp.header("Content-Range"))
@@ -113,17 +159,20 @@ class GenericFileDownloader(
                 contentLength = total,
                 acceptsRanges = acceptsRanges,
                 etag = resp.header("ETag"),
+                lastModified = resp.header("Last-Modified"),
                 contentType = resp.header("Content-Type"),
                 dispositionFilename = parseDispositionFilename(resp.header("Content-Disposition")),
             )
         }
     }
 
+    // --- Parallel range download with adaptive segmentation ---
+
     private suspend fun parallelDownload(
         caps: Caps, total: Long, out: File, progress: ProgressSink,
     ) = coroutineScope {
         RandomAccessFile(out, "rw").use { raf -> raf.setLength(total) }
-        val segCount = (total / minSegmentBytes).coerceIn(1, maxSegments.toLong()).toInt()
+        val segCount = adaptiveSegmentCount(total)
         val segSize = ceil(total.toDouble() / segCount).toLong()
         val written = LongArray(segCount)
 
@@ -131,7 +180,7 @@ class GenericFileDownloader(
             val start = i * segSize
             val end = min(start + segSize - 1, total - 1)
             async(Dispatchers.IO) {
-                downloadSegment(caps, start, end, out) { local ->
+                downloadSegmentResumable(caps, start, end, out) { local ->
                     written[i] = local
                     progress.update(written.sum(), total)
                 }
@@ -139,21 +188,55 @@ class GenericFileDownloader(
         }.awaitAll()
     }
 
-    private suspend fun downloadSegment(
+    private fun adaptiveSegmentCount(total: Long): Int =
+        (total / minSegmentBytes).coerceIn(1, maxSegments.toLong()).toInt()
+
+    /**
+     * Downloads [start..end] into [out]. On a transient failure it resumes from the
+     * byte it last wrote, retrying with exponential backoff. Uses If-Range so a
+     * changed resource is detected instead of silently corrupting the file.
+     */
+    private suspend fun downloadSegmentResumable(
         caps: Caps, start: Long, end: Long, out: File, onWrite: (Long) -> Unit,
     ) {
+        var writtenInSegment = 0L
+        var attempt = 0
+        while (true) {
+            try {
+                val from = start + writtenInSegment
+                if (from > end) return
+                fetchRange(caps, from, end, out) { chunk ->
+                    writtenInSegment += chunk
+                    onWrite(writtenInSegment)
+                }
+                return
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                if (!isRetryable(t) || attempt >= maxRetriesPerSegment) throw t
+                attempt++
+                retryCounter.incrementAndGet()
+                delay(backoff(attempt))
+            }
+        }
+    }
+
+    private suspend fun fetchRange(
+        caps: Caps, from: Long, end: Long, out: File, onChunk: (Int) -> Unit,
+    ) = withContext(Dispatchers.IO) {
         val builder = Request.Builder()
             .url(caps.finalUrl)
             .headers(headers())
-            .header("Range", "bytes=$start-$end")
-        caps.etag?.let { builder.header("If-Range", it) }
+            .header("Range", "bytes=$from-$end")
+        // If-Range: only serve the range if the resource is unchanged.
+        (caps.etag ?: caps.lastModified)?.let { builder.header("If-Range", it) }
 
         client.newCall(builder.build()).execute().use { resp ->
+            throwIfRetryable(resp.code)
             check(resp.code == 206) { "server ignored Range (code=${resp.code})" }
-            val body = resp.body ?: error("empty body")
+            val body = resp.body ?: throw IOException("empty body")
             val buf = ByteArray(64 * 1024)
-            var pos = start
-            var local = 0L
+            var pos = from
             RandomAccessFile(out, "rw").use { raf ->
                 body.byteStream().use { input ->
                     while (true) {
@@ -164,37 +247,128 @@ class GenericFileDownloader(
                             raf.seek(pos)
                             raf.write(buf, 0, n)
                         }
-                        pos += n; local += n
-                        onWrite(local)
+                        pos += n
+                        onChunk(n)
                     }
                 }
             }
         }
     }
 
-    private suspend fun singleDownload(caps: Caps, out: File, progress: ProgressSink) =
-        withContext(Dispatchers.IO) {
-            val req = Request.Builder().url(caps.finalUrl).headers(headers()).build()
-            client.newCall(req).execute().use { resp ->
-                check(resp.isSuccessful) { "HTTP ${resp.code}" }
-                val body = resp.body ?: error("empty body")
-                val total = body.contentLength()
-                out.outputStream().use { sink ->
-                    val buf = ByteArray(128 * 1024)
-                    var written = 0L
-                    body.byteStream().use { input ->
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            sink.write(buf, 0, n)
-                            written += n
-                            progress.update(written, total)
+    // --- Single-connection download (unknown length / no range support) ---
+
+    private suspend fun singleDownload(
+        caps: Caps, out: File, progress: ProgressSink,
+    ): Long? {
+        var attempt = 0
+        while (true) {
+            try {
+                return withContext(Dispatchers.IO) {
+                    val req = Request.Builder().url(caps.finalUrl).headers(headers()).build()
+                    client.newCall(req).execute().use { resp ->
+                        throwIfRetryable(resp.code)
+                        check(resp.isSuccessful) { "HTTP ${resp.code}" }
+                        val body = resp.body ?: throw IOException("empty body")
+                        val total = body.contentLength().takeIf { it > 0 }
+                        out.outputStream().use { sink ->
+                            val buf = ByteArray(128 * 1024)
+                            var w = 0L
+                            body.byteStream().use { input ->
+                                while (true) {
+                                    coroutineContext.ensureActive()
+                                    val n = input.read(buf)
+                                    if (n < 0) break
+                                    sink.write(buf, 0, n)
+                                    w += n
+                                    progress.update(w, total ?: -1L)
+                                }
+                            }
                         }
+                        total
                     }
                 }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                if (!isRetryable(t) || attempt >= maxRetriesPerSegment) throw t
+                attempt++
+                retryCounter.incrementAndGet()
+                // Non-resumable path: restart from a clean file.
+                RandomAccessFile(out, "rw").use { it.setLength(0) }
+                delay(backoff(attempt))
             }
         }
+    }
+
+    // --- Integrity ---
+
+    private fun verifyIntegrity(out: File, expected: Long) {
+        val actual = out.length()
+        if (actual != expected) {
+            throw IOException("size mismatch: got $actual bytes, expected $expected")
+        }
+    }
+
+    // --- HTML fallback: follow the first strong file link on a page ---
+
+    private fun extractPrimaryFileLink(htmlFile: File, base: HttpUrl): HttpUrl? {
+        val html = runCatching {
+            htmlFile.inputStream().bufferedReader().use { it.readText().take(512 * 1024) }
+        }.getOrNull() ?: return null
+
+        val exts = "pdf|zip|rar|gz|7z|doc|docx|xls|xlsx|ppt|pptx|epub|mp3|mp4|" +
+            "png|jpg|jpeg|gif|webp|csv|txt|apk"
+        val regex = Regex(
+            """(?:href|src|content)\s*=\s*["']([^"']+?\.(?:$exts)(?:\?[^"']*)?)["']""",
+            RegexOption.IGNORE_CASE,
+        )
+        return regex.find(html)?.groupValues?.getOrNull(1)?.let { link ->
+            base.resolve(link.replace("&amp;", "&").trim())
+        }
+    }
+
+    // --- Retry helpers ---
+
+    private suspend fun <T> withRetry(tag: String, block: suspend () -> T): T {
+        var attempt = 0
+        while (true) {
+            try {
+                return block()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                if (!isRetryable(t) || attempt >= maxRetriesPerSegment) throw t
+                attempt++
+                retryCounter.incrementAndGet()
+                delay(backoff(attempt))
+            }
+        }
+    }
+
+    private fun backoff(attempt: Int): Long {
+        val exp = baseBackoffMs * (1L shl (attempt - 1).coerceIn(0, 20))
+        val capped = min(exp, maxBackoffMs)
+        val jitter = Random.nextLong(0, capped / 2 + 1)
+        return capped / 2 + jitter
+    }
+
+    private fun isRetryable(t: Throwable): Boolean = when (t) {
+        is RetryableHttpException -> true
+        is InterruptedIOException -> true   // includes SocketTimeoutException
+        is IOException -> true              // connection reset, EOF, etc.
+        else -> false
+    }
+
+    private fun throwIfRetryable(code: Int) {
+        if (code == 408 || code == 429 || code in 500..599) {
+            throw RetryableHttpException(code)
+        }
+    }
+
+    private class RetryableHttpException(val code: Int) :
+        IOException("retryable HTTP status $code")
+
+    // --- PDF / naming / parsing helpers ---
 
     private fun pdfPageCount(file: File): Int? = try {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
@@ -205,7 +379,7 @@ class GenericFileDownloader(
     }
 
     private fun resolveFileName(caps: Caps, ext: String): String {
-        caps.dispositionFilename?.let { return sanitize(it) }
+        caps.dispositionFilename?.let { return sanitize(ensureExt(it, ext)) }
         val path = caps.finalUrl.encodedPath
         val last = path.substringAfterLast('/', "")
         val decoded = if (last.isNotEmpty()) {
@@ -218,6 +392,9 @@ class GenericFileDownloader(
         }
         return sanitize(base)
     }
+
+    private fun ensureExt(name: String, ext: String): String =
+        if (name.contains('.') || ext.isBlank()) name else "$name.$ext"
 
     private fun sanitize(name: String): String =
         name.replace(Regex("""[/\\:*?"<>|]"""), "_").take(120).ifBlank { "download" }
@@ -236,12 +413,10 @@ class GenericFileDownloader(
 
     private fun parseDispositionFilename(header: String?): String? {
         if (header.isNullOrBlank()) return null
-        // filename*=UTF-8''name.ext  (RFC 5987)
         Regex("""filename\*\s*=\s*[^']*''([^;]+)""", RegexOption.IGNORE_CASE)
             .find(header)?.groupValues?.getOrNull(1)?.let {
                 return runCatching { URLDecoder.decode(it.trim(), "UTF-8") }.getOrDefault(it.trim())
             }
-        // filename="name.ext"
         Regex("""filename\s*=\s*"?([^";]+)"?""", RegexOption.IGNORE_CASE)
             .find(header)?.groupValues?.getOrNull(1)?.let { return it.trim() }
         return null

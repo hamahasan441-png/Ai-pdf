@@ -309,6 +309,12 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
             _InfoRow(label: 'Pages', value: '${r.pageCount}'),
           if (r.elapsedMs != null)
             _InfoRow(label: 'Time', value: '${r.elapsedMs} ms'),
+          if (r.readableSpeed != null)
+            _InfoRow(label: 'Speed', value: r.readableSpeed!),
+          if ((r.retries ?? 0) > 0)
+            _InfoRow(
+                label: 'Recovered',
+                value: '${r.retries} retr${r.retries == 1 ? 'y' : 'ies'}'),
           const SizedBox(height: 14),
 
           Row(children: [
