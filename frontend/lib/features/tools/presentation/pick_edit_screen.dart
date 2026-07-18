@@ -6,19 +6,21 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/services/ocr_service.dart';
 import '../../../core/services/signature_store.dart';
+import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../models/filled_field.dart';
 import '../services/profile_field_matcher.dart';
 import '../services/smart_form_filler.dart';
-import '../widgets/result_sheet.dart';
 
 /// Tools available in the pro editor.
 enum EditTool { pan, select, draw, highlight, text, line, arrow, rect, oval, whiteout, signature, eraser, check, cross, dot, dash, checkbox }
@@ -341,10 +343,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final cy = (field.rect.top + (field.rect.height - markSize) * 0.3)
           .clamp(0.0, 0.97)
           .toDouble();
+      final tb = _TextBox(
+          Offset(cx, cy), '✓', const Color(0xFF16A34A), markSize, true);
       setState(() {
-        _pushItem(_TextBox(
-            Offset(cx, cy), '✓', const Color(0xFF16A34A), markSize, true));
-        _selected = null;
+        _pushItem(tb);
+        _selected = tb; // auto-select so the whole mark can be dragged at once
+        _tool = EditTool.pan;
       });
       return;
     }
@@ -358,9 +362,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final cy = (field.rect.top + (field.rect.height - dotSize) * 0.35)
           .clamp(0.0, 0.97)
           .toDouble();
+      final tb = _TextBox(Offset(cx, cy), '●', Colors.black, dotSize, false);
       setState(() {
-        _pushItem(_TextBox(Offset(cx, cy), '●', Colors.black, dotSize, false));
-        _selected = null;
+        _pushItem(tb);
+        _selected = tb; // auto-select so the whole dot can be dragged at once
+        _tool = EditTool.pan;
       });
       return;
     }
@@ -407,9 +413,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _placeValue(Offset pos, double size, String text) {
+    final tb = _TextBox(pos, text, Colors.black, size, false);
     setState(() {
-      _pushItem(_TextBox(pos, text, Colors.black, size, false));
-      _selected = null;
+      _pushItem(tb);
+      // Auto-select + switch to move mode so the user can immediately drag the
+      // whole value into place with one finger — simple, no extra taps.
+      _selected = tb;
+      _tool = EditTool.pan;
     });
   }
 
@@ -1892,7 +1902,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     );
   }
 
-  Future<void> _export() async {
+  Future<String?> _renderToPdfFile() async {
     setState(() => _loading = true);
     try {
       final doc = pw.Document();
@@ -1976,24 +1986,86 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
       if (rendered == 0) {
         _showError('Nothing to export');
-        return;
+        return null;
       }
 
       final dir = await getApplicationDocumentsDirectory();
       final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
       await File(outPath).writeAsBytes(await doc.save());
-      if (mounted) {
-        setState(() => _loading = false);
-        await showResultSheet(context,
-            paths: [outPath],
-            title: 'Export Complete',
-            subtitle: '$rendered page(s) saved');
-      }
+      return outPath;
     } catch (e) {
       _showError('Export failed: $e');
+      return null;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Save the edited PDF, then — right there at save time — offer to share it
+  /// or continue straight into another tool (compress, convert, …). The saved
+  /// file is handed off so the next tool opens it automatically (no re-picking).
+  Future<void> _export() async {
+    final outPath = await _renderToPdfFile();
+    if (outPath == null || !mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
+                child: Row(children: [
+                  Icon(Icons.check_circle, color: cs.secondary, size: 22),
+                  const SizedBox(width: 8),
+                  Text('Saved', style: Theme.of(ctx).textTheme.titleMedium),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text('Do more with your file',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              ),
+              ListTile(
+                leading: Icon(Icons.ios_share, color: cs.primary),
+                title: const Text('Share'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Share.shareXFiles([XFile(outPath)]);
+                },
+              ),
+              _toolTile(ctx, Icons.compress, l10n.toolCompress, outPath, '/tools/compress'),
+              _toolTile(ctx, Icons.sync_alt, l10n.convert, outPath, '/tools/convert'),
+              _toolTile(ctx, Icons.collections, l10n.toolPdfToImages, outPath, '/tools/pdf-to-images'),
+              _toolTile(ctx, Icons.text_snippet, l10n.toolPdfToText, outPath, '/tools/pdf-to-text'),
+              const Divider(height: 1),
+              _toolTile(ctx, Icons.grid_view, l10n.tools, null, '/tools'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _toolTile(BuildContext ctx, IconData icon, String label,
+      String? handoffPath, String route) {
+    final cs = Theme.of(ctx).colorScheme;
+    return ListTile(
+      leading: Icon(icon, color: cs.primary),
+      title: Text(label),
+      trailing: const Icon(Icons.chevron_right, size: 20),
+      onTap: () {
+        if (handoffPath != null) ToolHandoff.instance.set(handoffPath);
+        Navigator.pop(ctx);
+        context.push(route);
+      },
+    );
   }
 
   /// Render page [index] at high resolution and paint the strokes, shapes and
@@ -2595,8 +2667,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(children: [
-                _actionBtn(Icons.auto_awesome, _detecting ? l10n.scanning : l10n.smartFill,
-                    _detecting ? () {} : _detectFields, cs),
                 _actionBtn(Icons.auto_fix_high, l10n.autoFill,
                     _detecting ? () {} : _autoFill, cs),
                 _actionBtn(Icons.psychology, l10n.aiFill,
@@ -2608,7 +2678,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       _showFields ? l10n.toolHide : l10n.toolFields,
                       () => setState(() => _showFields = !_showFields), cs),
                 _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
-                _toolBtn(Icons.select_all, l10n.toolSelect, EditTool.select, cs),
                 // --- Fill & Sign (form marks) ---
                 _actionBtn(Icons.gesture, l10n.toolSign, _addSignature, cs),
                 _actionBtn(Icons.event_available, l10n.signatureDate, _placeSignatureDate, cs),

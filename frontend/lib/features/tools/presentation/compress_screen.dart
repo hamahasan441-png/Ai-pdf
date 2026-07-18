@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
@@ -17,6 +18,19 @@ class _CompressScreenState extends State<CompressScreen> {
   bool _busy = false;
   double _quality = 70;
   CompressResult? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    final handoff = ToolHandoff.instance.take();
+    if (handoff != null) {
+      _filePath = handoff;
+      _isPdf = handoff.toLowerCase().endsWith('.pdf');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _compress();
+      });
+    }
+  }
 
   Future<void> _pick() async {
     final result = await FilePicker.platform.pickFiles(

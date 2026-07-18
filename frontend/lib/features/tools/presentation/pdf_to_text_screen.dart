@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -19,6 +20,18 @@ class _PdfToTextScreenState extends State<PdfToTextScreen> {
   bool _busy = false;
   String? _outputPath;
   String? _preview;
+
+  @override
+  void initState() {
+    super.initState();
+    final handoff = ToolHandoff.instance.take();
+    if (handoff != null) {
+      _path = handoff;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _extract();
+      });
+    }
+  }
 
   Future<void> _pick() async {
     final result = await FilePicker.platform
