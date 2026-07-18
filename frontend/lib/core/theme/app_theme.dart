@@ -169,6 +169,7 @@ class AppTheme {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(_rSheet))),
     ),
+    pageTransitionsTheme: _calmTransitions,
     splashFactory: InkSparkle.splashFactory,
   );
 
@@ -271,7 +272,21 @@ class AppTheme {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(_rSheet))),
     ),
+    pageTransitionsTheme: _calmTransitions,
     splashFactory: InkSparkle.splashFactory,
+  );
+
+  /// Subtle, professional cross-page motion: a quiet fade, no slide or bounce.
+  /// Applied on every platform so navigation feels smooth but never distracting.
+  static const PageTransitionsTheme _calmTransitions = PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: _CalmPageTransitionsBuilder(),
+      TargetPlatform.iOS: _CalmPageTransitionsBuilder(),
+      TargetPlatform.windows: _CalmPageTransitionsBuilder(),
+      TargetPlatform.macOS: _CalmPageTransitionsBuilder(),
+      TargetPlatform.linux: _CalmPageTransitionsBuilder(),
+      TargetPlatform.fuchsia: _CalmPageTransitionsBuilder(),
+    },
   );
 
   /// Calm typography: comfortable line-height and gentle letter-spacing so text
@@ -287,6 +302,35 @@ class AppTheme {
       bodyMedium: TextStyle(color: secondary, height: 1.45),
       bodySmall: TextStyle(color: secondary, height: 1.4),
       labelLarge: TextStyle(color: primary, fontWeight: FontWeight.w600, letterSpacing: 0.1),
+    );
+  }
+}
+
+
+/// A restrained page transition: a smooth opacity fade with a whisper of scale
+/// for depth. No sliding, no overshoot — deliberately quiet and business-like.
+class _CalmPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _CalmPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.992, end: 1.0).animate(curved),
+        child: child,
+      ),
     );
   }
 }
