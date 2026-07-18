@@ -627,7 +627,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         build: (_) => [
-          pw.Header(level: 0, text: 'AI PDF — Notes'),
+          pw.Header(level: 0, text: 'Pdoczy — Notes'),
           pw.SizedBox(height: 8),
           pw.Paragraph(text: text),
         ],

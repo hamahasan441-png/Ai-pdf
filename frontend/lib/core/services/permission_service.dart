@@ -30,7 +30,7 @@ class PermissionService {
       builder: (ctx) => AlertDialog(
         title: const Text('Allow access'),
         content: const Text(
-          'AI PDF needs a few permissions to work smoothly:\n\n'
+          'Pdoczy needs a few permissions to work smoothly:\n\n'
           '•  Photos / Gallery — to open and save images\n'
           '•  Storage — to save your PDFs to your device\n'
           '•  Camera — to scan documents (optional)\n\n'

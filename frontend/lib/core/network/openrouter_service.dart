@@ -156,7 +156,7 @@ class OpenRouterService {
     final headers = <String, dynamic>{
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://github.com/ai-pdf',
-      'X-Title': 'AI PDF',
+      'X-Title': 'Pdoczy',
     };
     if (key != null && key.isNotEmpty) headers['Authorization'] = 'Bearer $key';
 
@@ -292,7 +292,7 @@ class OpenRouterService {
         final headers = <String, dynamic>{
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://github.com/ai-pdf',
-          'X-Title': 'AI PDF',
+          'X-Title': 'Pdoczy',
         };
         if (key != null && key.isNotEmpty) headers['Authorization'] = 'Bearer $key';
         resp = await _dio.post(

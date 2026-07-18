@@ -59,7 +59,7 @@ class AiPdfApp extends ConsumerWidget {
       builder: (context, themeMode, _) => ValueListenableBuilder<Locale?>(
         valueListenable: LocaleController.instance.locale,
         builder: (context, locale, __) => MaterialApp.router(
-          title: 'AI PDF',
+          title: 'Pdoczy',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,

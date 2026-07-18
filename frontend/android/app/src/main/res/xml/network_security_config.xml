@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Network security policy for AI PDF.
+  Network security policy for Pdoczy.
 
   SECURE BY DEFAULT: cleartext (plain HTTP) is DISABLED for all traffic. Every
   cloud AI provider the app ships with (OpenRouter, OpenAI, Anthropic,
