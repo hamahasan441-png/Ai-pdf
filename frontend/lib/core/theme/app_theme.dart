@@ -278,14 +278,17 @@ class AppTheme {
 
   /// Subtle, professional cross-page motion: a quiet fade, no slide or bounce.
   /// Applied on every platform so navigation feels smooth but never distracting.
+  /// Subtle, professional cross-page motion using Flutter's built-in
+  /// fade-upwards transition (quiet, no bounce). No custom PageTransitionsBuilder
+  /// subclass, so it stays compatible across Flutter versions (CI: 3.29).
   static const PageTransitionsTheme _calmTransitions = PageTransitionsTheme(
     builders: {
-      TargetPlatform.android: _CalmPageTransitionsBuilder(),
-      TargetPlatform.iOS: _CalmPageTransitionsBuilder(),
-      TargetPlatform.windows: _CalmPageTransitionsBuilder(),
-      TargetPlatform.macOS: _CalmPageTransitionsBuilder(),
-      TargetPlatform.linux: _CalmPageTransitionsBuilder(),
-      TargetPlatform.fuchsia: _CalmPageTransitionsBuilder(),
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
     },
   );
 
@@ -302,35 +305,6 @@ class AppTheme {
       bodyMedium: TextStyle(color: secondary, height: 1.45),
       bodySmall: TextStyle(color: secondary, height: 1.4),
       labelLarge: TextStyle(color: primary, fontWeight: FontWeight.w600, letterSpacing: 0.1),
-    );
-  }
-}
-
-
-/// A restrained page transition: a smooth opacity fade with a whisper of scale
-/// for depth. No sliding, no overshoot — deliberately quiet and business-like.
-class _CalmPageTransitionsBuilder extends PageTransitionsBuilder {
-  const _CalmPageTransitionsBuilder();
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    return FadeTransition(
-      opacity: curved,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.992, end: 1.0).animate(curved),
-        child: child,
-      ),
     );
   }
 }
