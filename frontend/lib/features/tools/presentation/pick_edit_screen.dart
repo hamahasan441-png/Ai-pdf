@@ -417,6 +417,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       // Auto-fit: shrink long values so they don't overflow the field's width.
       final fitted = _fitTextSize(v, size, (0.98 - pos.dx).clamp(0.05, 1.0).toDouble());
       _placeValue(pos, fitted, v);
+      _offerReplicate(field, v);
     }
   }
 
@@ -493,6 +494,50 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final availH = availWidthNorm * pageWH; // convert width budget to height units
     if (neededH <= availH) return baseSize;
     return (baseSize * (availH / neededH)).clamp(0.010, baseSize).toDouble();
+  }
+
+  String _normLabel(String s) =>
+      s.toLowerCase().replaceAll(':', '').replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  /// After filling a labelled field, offer to fill any other fields on the page
+  /// that share the same label (e.g. a name/date that repeats) with one tap.
+  void _offerReplicate(DetectedField source, String value) {
+    final key = _normLabel(source.label);
+    if (key.isEmpty) return;
+    const textLike = {
+      FieldType.text, FieldType.name, FieldType.email,
+      FieldType.phone, FieldType.number, FieldType.date,
+    };
+    final similar = _pageFields
+        .where((f) =>
+            !identical(f, source) &&
+            textLike.contains(f.type) &&
+            _normLabel(f.label) == key)
+        .toList();
+    if (similar.isEmpty) return;
+
+    final label = source.label.replaceAll(':', '').trim();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Fill ${similar.length} more "$label" field(s) with the same value?'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Fill all',
+          onPressed: () {
+            for (final f in similar) {
+              final size = (f.rect.height * 0.75).clamp(0.014, 0.05).toDouble();
+              final pos = Offset(
+                (f.rect.left + f.rect.width + 0.008).clamp(0.0, 0.90).toDouble(),
+                (f.rect.top + f.rect.height * 0.1).clamp(0.0, 0.97).toDouble(),
+              );
+              final fitted = _fitTextSize(
+                  value, size, (0.98 - pos.dx).clamp(0.05, 1.0).toDouble());
+              _placeValue(pos, fitted, value);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   // ---- Offline Smart Auto-Fill (form filler) --------------------------
