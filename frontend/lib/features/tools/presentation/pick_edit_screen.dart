@@ -965,6 +965,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
+  /// Quick, precise font sizing for the selected value so it fits its field.
+  /// [factor] > 1 enlarges, < 1 shrinks. Size is normalized to canvas height.
+  void _resizeSelectedText(double factor) {
+    final sel = _selected;
+    if (sel is _TextBox) {
+      setState(() {
+        sel.size = (sel.size * factor).clamp(0.008, 0.2);
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
   void _deleteSelected() {
     if (_selected != null) {
       setState(() {
@@ -2474,6 +2486,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (_selected is _TextBox) ...[
                       _miniBtn(Icons.edit, AppLocalizations.of(context)!.editText, () => _editTextBox(_selected as _TextBox)),
+                      const SizedBox(width: 10),
+                      _miniBtn(Icons.text_decrease, 'A−', () => _resizeSelectedText(0.9)),
+                      const SizedBox(width: 10),
+                      _miniBtn(Icons.text_increase, 'A+', () => _resizeSelectedText(1.1)),
                       const SizedBox(width: 10),
                     ],
                     if (_selected is _Shape) ...[
