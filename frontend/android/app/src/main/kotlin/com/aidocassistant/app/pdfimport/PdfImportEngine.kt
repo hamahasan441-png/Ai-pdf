@@ -9,6 +9,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import java.io.File
@@ -100,7 +101,7 @@ class PdfImportEngine private constructor(
                 jobs.forEach { it.cancel() }
                 watchdog.cancel()
                 success
-            } catch (_: AllFailedSignal) {
+            } catch (e: AllFailedSignal) {
                 classifyAllFailed(failures)
             } finally {
                 jobs.forEach { runCatching { it.cancelAndJoin() } }
@@ -138,7 +139,7 @@ class PdfImportEngine private constructor(
         } else {
             "https://$trimmed"
         }
-        return try { HttpUrl.get(withScheme) } catch (_: IllegalArgumentException) { null }
+        return withScheme.toHttpUrlOrNull()
     }
 
     private object AllFailedSignal : Exception() {

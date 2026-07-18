@@ -13,6 +13,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -412,9 +413,14 @@ class GenericFileDownloader(
 
     private fun pdfPageCount(file: File): Int? = try {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-            PdfRenderer(pfd).use { it.pageCount }
+            val renderer = PdfRenderer(pfd)
+            try {
+                renderer.pageCount
+            } finally {
+                renderer.close()
+            }
         }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
         null
     }
 
@@ -469,6 +475,6 @@ class GenericFileDownloader(
         } else {
             "https://$trimmed"
         }
-        return try { HttpUrl.get(withScheme) } catch (_: IllegalArgumentException) { null }
+        return withScheme.toHttpUrlOrNull()
     }
 }

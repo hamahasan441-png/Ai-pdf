@@ -28,8 +28,11 @@ object PdfValidator {
 
         try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                PdfRenderer(pfd).use { renderer ->
+                val renderer = PdfRenderer(pfd)
+                try {
                     Verdict.Valid(renderer.pageCount)
+                } finally {
+                    renderer.close()
                 }
             }
         } catch (e: SecurityException) {

@@ -69,7 +69,7 @@ class WebViewBlobExtractionStrategy(
             webView.loadUrl(url.toString(), ctx.defaultHeaders)
 
             val total = withTimeoutOrNull(pageTimeoutMs) {
-                try { done.await() } catch (_: Throwable) { null }
+                try { done.await() } catch (e: Throwable) { null }
             }
             runCatching { raf.close() }
             webView.destroy()
