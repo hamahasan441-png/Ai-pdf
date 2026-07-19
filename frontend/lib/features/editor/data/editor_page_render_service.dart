@@ -22,9 +22,13 @@ class EditorPageRenderService {
       final longEdge = page.width > page.height ? page.width : page.height;
       final scale = longEdge > renderMaxEdge ? renderMaxEdge / longEdge : 1.0;
       final rendered = await page.render(
-        width: page.width * scale,
-        height: page.height * scale,
-        format: pdfx.PdfPageImageFormat.jpeg,
+        // pdfx can return an unusable JPEG buffer on some Android PDFium
+        // versions (the editor then shows a completely empty canvas even
+        // though the document and page count loaded successfully). PNG is a
+        // little larger, but is lossless and consistently decodes on Android.
+        width: (page.width * scale).roundToDouble(),
+        height: (page.height * scale).roundToDouble(),
+        format: pdfx.PdfPageImageFormat.png,
         backgroundColor: '#FFFFFF',
       );
       if (rendered != null) {
