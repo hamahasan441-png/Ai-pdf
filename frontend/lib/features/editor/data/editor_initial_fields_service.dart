@@ -38,9 +38,9 @@ class EditorInitialFieldsService {
         Colors.black,
         boxSize,
         f.isCheck,
-        f.isSignature,
-        false,
-        f.isSignature ? 'serif' : null,
+        italic: f.isSignature,
+        underline: false,
+        fontFamily: f.isSignature ? 'serif' : null,
       ));
     }
   }

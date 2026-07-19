@@ -16,7 +16,16 @@ class EditorAnnotationFactoryService {
     bool underline = false,
     String? fontFamily,
   }) {
-    return TextAnnotation(pos, text, color, size, bold, italic, underline, fontFamily);
+    return TextAnnotation(
+      pos,
+      text,
+      color,
+      size,
+      bold,
+      italic: italic,
+      underline: underline,
+      fontFamily: fontFamily,
+    );
   }
 
   TextAnnotation markAt(Offset pos, String glyph, Color color) {
@@ -34,9 +43,9 @@ class EditorAnnotationFactoryService {
       Colors.black,
       0.045,
       false,
-      true,
-      false,
-      'serif',
+      italic: true,
+      underline: false,
+      fontFamily: 'serif',
     );
   }
 }
