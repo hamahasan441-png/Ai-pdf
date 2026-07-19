@@ -1,0 +1,20 @@
+/// Tools available in the pro editor.
+enum EditTool {
+  pan,
+  select,
+  draw,
+  highlight,
+  text,
+  line,
+  arrow,
+  rect,
+  oval,
+  whiteout,
+  signature,
+  eraser,
+  check,
+  cross,
+  dot,
+  dash,
+  checkbox,
+}
