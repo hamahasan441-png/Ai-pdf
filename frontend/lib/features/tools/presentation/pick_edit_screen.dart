@@ -39,9 +39,8 @@ import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service
 import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/signature_pad_sheet.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_empty_state.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_screen_body.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_document_viewport.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_loading_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_profile_field_picker_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_color_picker_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_export_actions_sheet.dart';
@@ -693,15 +692,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     });
   }
 
-  /// Magnetically snap the selected object's center to common guide lines and
-  /// record the active guide(s) for painting.
-  void _snapSelected() {
-    final sel = _selected;
-    if (sel == null) return;
-    final guides = _selection.snapSelected(sel, _bounds);
-    _guideX = guides.guideX;
-    _guideY = guides.guideY;
-  }
 
   /// Resize a selected shape by adjusting its end point.
   void _resizeSelected(Offset newEndNorm) {
@@ -1181,108 +1171,99 @@ class _PickEditScreenState extends State<PickEditScreen> {
         onPaste: _pasteClipboard,
         onExport: _export,
       ),
-      body: bytes == null
-          ? EditorEmptyState(loading: _loading, onPick: _pick)
-          : Stack(
-              children: [
-                EditorDocumentViewport(
-                  panEnabled: _tool == EditTool.pan,
-                  scaleEnabled: _tool == EditTool.pan,
-                  child: EditorCanvas(
-                    bytes: bytes,
-                    tool: _tool,
-                    layer: _layer,
-                    drawing: _drawing,
-                    shapeStart: _shapeStart,
-                    shapeEnd: _shapeEnd,
-                    previewShapeType: _shapePreviewType(),
-                    color: _color,
-                    stroke: _stroke,
-                    highlightPreview: _tool == EditTool.highlight,
-                    showFields: _showFields,
-                    pageFields: _pageFields,
-                    showEditLines: _showEditLines,
-                    editLines: _editLines[_current] ?? const <OcrLine>[],
-                    guideX: _guideX,
-                    guideY: _guideY,
-                    multi: _multi,
-                    selMode: _selMode,
-                    marqueeStart: _marqueeStart,
-                    marqueeEnd: _marqueeEnd,
-                    selected: _selected,
-                    boundsOf: _boundsOf,
-                    onTapUp: _onTapUp,
-                    onPanStart: _onPanStart,
-                    onPanUpdate: _onPanUpdate,
-                    onPanEnd: _onPanEnd,
-                    onFieldTap: _openFieldInput,
-                    onEditLineTap: _editExistingLine,
-                    onEditText: _editTextBox,
-                    onSelectText: (t) => setState(() => _selected = t),
-                    onMoveText: (t, d, size) => setState(() {
-                      t.pos = Offset(
-                        (t.pos.dx + d.delta.dx / size.width).clamp(0.0, 0.98),
-                        (t.pos.dy + d.delta.dy / size.height).clamp(0.0, 0.98),
-                      );
-                      _hasUnsavedChanges = true;
-                    }),
-                    onResizeBounds: _scaleSelectedTo,
-                    onTextDecrease: () => _resizeSelectedText(0.9),
-                    onTextIncrease: () => _resizeSelectedText(1.1),
-                    onPickTextColor: _pickSelectedTextColor,
-                    onEditShapeStyle: () => _editShapeStyle(_selected as ShapeAnnotation),
-                    onCopySelected: _copySelected,
-                    onDuplicateSelected: _duplicateSelected,
-                    onBringToFront: _bringToFront,
-                    onSendToBack: _sendToBack,
-                    onDeleteSelected: _deleteSelected,
-                    onDeselectSelected: () => setState(() => _selected = null),
-                    onAlignMulti: _alignMulti,
-                    onDistributeMulti: _distributeMulti,
-                    onDuplicateMulti: _duplicateMulti,
-                    onDeleteMulti: _deleteMulti,
-                    onDeselectMulti: () => setState(() => _multi.clear()),
-                    resolveTypeIcon: _typeIcon,
-                  ),
-                ),
-                EditorLoadingOverlay(
-                  loading: _loading,
-                  detecting: _detecting,
-                  detectingLabel: _detecting ? l10n.readingTheForm : null,
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: EditorToolbar(
-                    tool: _tool,
-                    detecting: _detecting,
-                    showFields: _showFields,
-                    showEditLines: _showEditLines,
-                    hasPageFields: _pageFields.isNotEmpty,
-                    isShape: _isShape,
-                    color: _color,
-                    stroke: _stroke,
-                    textSize: _textSize,
-                    bold: _bold,
-                    onToolChanged: (tool) => setState(() => _tool = tool),
-                    onAutoFill: _autoFill,
-                    onAiFill: _smartFillPage,
-                    onEditTextTool: _scanForEdit,
-                    onToggleFields: () => setState(() => _showFields = !_showFields),
-                    onAddSignature: _addSignature,
-                    onPlaceSignatureDate: _placeSignatureDate,
-                    onInsertProfileField: _insertProfileField,
-                    onRotatePage: _rotatePage,
-                    onOpen: _pick,
-                    onColorChanged: (c) => setState(() => _color = c),
-                    onStrokeChanged: (v) => setState(() => _stroke = v),
-                    onTextSizeChanged: (v) => setState(() => _textSize = v),
-                    onToggleBold: () => setState(() => _bold = !_bold),
-                  ),
-                ),
-              ],
-            ),
+      body: EditorScreenBody(
+        bytes: bytes,
+        loading: _loading,
+        detecting: _detecting,
+        detectingLabel: l10n.readingTheForm,
+        onPick: _pick,
+        documentViewport: EditorDocumentViewport(
+          panEnabled: _tool == EditTool.pan,
+          scaleEnabled: _tool == EditTool.pan,
+          child: EditorCanvas(
+            bytes: bytes ?? Uint8List(0),
+            tool: _tool,
+            layer: _layer,
+            drawing: _drawing,
+            shapeStart: _shapeStart,
+            shapeEnd: _shapeEnd,
+            previewShapeType: _shapePreviewType(),
+            color: _color,
+            stroke: _stroke,
+            highlightPreview: _tool == EditTool.highlight,
+            showFields: _showFields,
+            pageFields: _pageFields,
+            showEditLines: _showEditLines,
+            editLines: _editLines[_current] ?? const <OcrLine>[],
+            guideX: _guideX,
+            guideY: _guideY,
+            multi: _multi,
+            selMode: _selMode,
+            marqueeStart: _marqueeStart,
+            marqueeEnd: _marqueeEnd,
+            selected: _selected,
+            boundsOf: _boundsOf,
+            onTapUp: _onTapUp,
+            onPanStart: _onPanStart,
+            onPanUpdate: _onPanUpdate,
+            onPanEnd: _onPanEnd,
+            onFieldTap: _openFieldInput,
+            onEditLineTap: _editExistingLine,
+            onEditText: _editTextBox,
+            onSelectText: (t) => setState(() => _selected = t),
+            onMoveText: (t, d, size) => setState(() {
+              t.pos = Offset(
+                (t.pos.dx + d.delta.dx / size.width).clamp(0.0, 0.98),
+                (t.pos.dy + d.delta.dy / size.height).clamp(0.0, 0.98),
+              );
+              _hasUnsavedChanges = true;
+            }),
+            onResizeBounds: _scaleSelectedTo,
+            onTextDecrease: () => _resizeSelectedText(0.9),
+            onTextIncrease: () => _resizeSelectedText(1.1),
+            onPickTextColor: _pickSelectedTextColor,
+            onEditShapeStyle: () => _editShapeStyle(_selected as ShapeAnnotation),
+            onCopySelected: _copySelected,
+            onDuplicateSelected: _duplicateSelected,
+            onBringToFront: _bringToFront,
+            onSendToBack: _sendToBack,
+            onDeleteSelected: _deleteSelected,
+            onDeselectSelected: () => setState(() => _selected = null),
+            onAlignMulti: _alignMulti,
+            onDistributeMulti: _distributeMulti,
+            onDuplicateMulti: _duplicateMulti,
+            onDeleteMulti: _deleteMulti,
+            onDeselectMulti: () => setState(() => _multi.clear()),
+            resolveTypeIcon: _typeIcon,
+          ),
+        ),
+        toolbar: EditorToolbar(
+          tool: _tool,
+          detecting: _detecting,
+          showFields: _showFields,
+          showEditLines: _showEditLines,
+          hasPageFields: _pageFields.isNotEmpty,
+          isShape: _isShape,
+          color: _color,
+          stroke: _stroke,
+          textSize: _textSize,
+          bold: _bold,
+          onToolChanged: (tool) => setState(() => _tool = tool),
+          onAutoFill: _autoFill,
+          onAiFill: _smartFillPage,
+          onEditTextTool: _scanForEdit,
+          onToggleFields: () => setState(() => _showFields = !_showFields),
+          onAddSignature: _addSignature,
+          onPlaceSignatureDate: _placeSignatureDate,
+          onInsertProfileField: _insertProfileField,
+          onRotatePage: _rotatePage,
+          onOpen: _pick,
+          onColorChanged: (c) => setState(() => _color = c),
+          onStrokeChanged: (v) => setState(() => _stroke = v),
+          onTextSizeChanged: (v) => setState(() => _textSize = v),
+          onToggleBold: () => setState(() => _bold = !_bold),
+        ),
+      ),
       floatingActionButton: bytes == null
           ? null
           : EditorPageNavigation(
