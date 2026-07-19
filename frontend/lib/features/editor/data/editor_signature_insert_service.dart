@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Color;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 

@@ -155,6 +155,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorFilePickerService _filePicker = const EditorFilePickerService();
   final EditorPageTransformService _pageTransform = const EditorPageTransformService();
   final EditorTextScanService _textScan = const EditorTextScanService();
+  final EditorSmartFillService _smartFill = const EditorSmartFillService();
+  final EditorExistingTextService _existingText = const EditorExistingTextService();
+  final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
   bool _showFields = false;
 
@@ -1133,6 +1136,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       context.push(action.route!);
     }
   }
+
+  ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
 
   @override
   Widget build(BuildContext context) {

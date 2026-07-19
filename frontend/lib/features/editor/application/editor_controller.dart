@@ -1,3 +1,6 @@
+import 'dart:ui' show Offset, Rect;
+
+import 'package:flutter/widgets.dart' show Axis;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
