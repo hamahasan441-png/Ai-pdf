@@ -151,9 +151,16 @@ class SelectionService {
         sel.color,
         sel.size,
         sel.bold,
-        sel.italic,
-        sel.underline,
-        sel.fontFamily,
+        italic: sel.italic,
+        underline: sel.underline,
+        fontFamily: sel.fontFamily,
+        textAlign: sel.textAlign,
+        textDirection: sel.textDirection,
+        lineHeight: sel.lineHeight,
+        charSpacing: sel.charSpacing,
+        width: sel.width,
+        height: sel.height,
+        rotation: sel.rotation,
       );
     }
     if (sel is StrokeAnnotation) {

@@ -19,9 +19,9 @@ class EditorAnnotationApplyService {
           Colors.black,
           0.032,
           false,
-          true,
-          false,
-          'serif',
+          italic: true,
+          underline: false,
+          fontFamily: 'serif',
         ));
       } else {
         layer.items.add(TextAnnotation(Offset(f.x, f.y), f.text, Colors.black, 0.024, false));
