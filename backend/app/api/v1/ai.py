@@ -5,42 +5,29 @@ if logged in, else client IP). This is the growth engine: mainstream users get
 working AI out of the box, and the free daily cap creates a natural upgrade
 path to Pro (unlimited).
 
-NOTE: the in-memory limiter below is per-process and resets on restart — fine
-for a single instance / early stage. For multi-instance production, back it
-with Redis (already a dependency) keyed the same way, and bypass the cap for
-verified-Pro users once entitlements are persisted.
+Metering is centralised in ``app.services.ai.usage_limiter`` so this endpoint
+and the Document AI endpoints share one cap and one Pro-bypass rule.
 """
 
-from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.auth import get_optional_user
 from app.core.config import settings
 from app.db.database import get_db
-from app.models.entitlement import Entitlement
 from app.models.user import User
 from app.services.ai.provider import ai_provider
+from app.services.ai.usage_limiter import (
+    UNLIMITED,
+    check_and_increment,
+    identity_for,
+    is_pro,
+)
 
 router = APIRouter()
-
-# identity -> (yyyy-mm-dd, count). Swap for Redis in production.
-_usage: dict[str, tuple[str, int]] = {}
-
-
-def _check_and_increment(key: str) -> tuple[bool, int]:
-    today = date.today().isoformat()
-    day, count = _usage.get(key, (today, 0))
-    if day != today:
-        day, count = today, 0
-    if count >= settings.AI_FREE_DAILY_LIMIT:
-        return False, count
-    _usage[key] = (today, count + 1)
-    return True, count + 1
 
 
 class ChatMessage(BaseModel):
@@ -60,21 +47,6 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def _is_pro(db: AsyncSession, token: Optional[str]) -> bool:
-    """True if the X-Entitlement-Token maps to an active verified purchase."""
-    if not token:
-        return False
-    try:
-        ent = (
-            await db.execute(
-                select(Entitlement).where(Entitlement.purchase_token == token)
-            )
-        ).scalar_one_or_none()
-        return bool(ent and ent.is_active())
-    except Exception:  # noqa: BLE001 - DB issues must not break AI
-        return False
-
-
 async def managed_chat(
     req: ChatRequest,
     request: Request,
@@ -91,11 +63,11 @@ async def managed_chat(
         raise HTTPException(status_code=422, detail="messages must not be empty")
 
     # Verified Pro (via purchase token) bypasses the free daily limit.
-    pro = await _is_pro(db, request.headers.get("X-Entitlement-Token"))
-    remaining = -1  # -1 => unlimited
+    pro = await is_pro(db, request.headers.get("X-Entitlement-Token"))
+    remaining = UNLIMITED
     if not pro:
-        identity = str(user.id) if user else (request.client.host if request.client else "anon")
-        allowed, count = _check_and_increment(identity)
+        identity = identity_for(user, request)
+        allowed, count = check_and_increment(identity)
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
