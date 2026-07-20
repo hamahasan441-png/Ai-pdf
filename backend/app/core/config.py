@@ -4,6 +4,16 @@ from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Security-critical settings whose shipped defaults are placeholders. They are
+# fine for local development but MUST be overridden in production. The startup
+# guard (validate_production_secrets) refuses to boot if any remain default
+# while APP_ENV is production.
+_INSECURE_DEFAULTS: dict[str, str] = {
+    "SECRET_KEY": "change-me-to-a-random-secret-key",
+    "JWT_SECRET_KEY": "change-me-jwt-secret",
+    "ENCRYPTION_KEY": "change-me-32-byte-encryption-key",
+}
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -76,6 +86,34 @@ class Settings(BaseSettings):
     PRODUCT_MONTHLY: str = "pro_monthly"
     PRODUCT_YEARLY: str = "pro_yearly"
     PRODUCT_LIFETIME: str = "pro_lifetime"
+
+    # -- Runtime helpers ---------------------------------------------------
+
+    def is_production(self) -> bool:
+        """True when running under a production-like environment."""
+        return self.APP_ENV.strip().lower() in {"production", "prod"}
+
+    def insecure_defaults(self) -> list[str]:
+        """Names of security-critical settings still left at their default."""
+        return [
+            name
+            for name, default in _INSECURE_DEFAULTS.items()
+            if getattr(self, name) == default
+        ]
+
+    def validate_production_secrets(self) -> None:
+        """Refuse to run in production with placeholder secrets.
+
+        No-op in development so local setup stays friction-free.
+        """
+        if self.is_production():
+            insecure = self.insecure_defaults()
+            if insecure:
+                raise RuntimeError(
+                    "Refusing to start in production with default secrets: "
+                    + ", ".join(insecure)
+                    + ". Set secure values via environment variables."
+                )
 
 
 settings = Settings()
