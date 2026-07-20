@@ -7,7 +7,6 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
 from app.core.security import decrypt_data, encrypt_data
 from app.models.user import UserProfile
 from app.schemas.profile import ProfileResponse, ProfileUpdateRequest

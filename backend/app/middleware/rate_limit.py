@@ -20,7 +20,6 @@ Why not Redis now:
 import logging
 import time
 from collections import defaultdict
-from typing import Optional
 
 from fastapi import Request, HTTPException, status
 
