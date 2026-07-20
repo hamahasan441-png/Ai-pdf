@@ -16,7 +16,6 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.models.user import User
 from app.services.ai.provider import ai_provider
-from app.services.ai.understanding import understanding_service
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +235,7 @@ async def extract_data(
     """Extract structured data from a document as JSON."""
     _check_ai_configured()
 
-    hint = f"\nExtraction focus: {req.schema_hint}" if req.schema_hint else ""
+    hint = f" {req.schema_hint}" if req.schema_hint else ""
 
     messages = [
         {
@@ -245,7 +244,7 @@ async def extract_data(
                 "You are a data extraction expert. Extract ALL structured data from "
                 "this document as a clean JSON object with meaningful keys. "
                 "Include: names, dates, amounts, addresses, reference numbers, "
-                "and any other structured information.{hint}"
+                f"and any other structured information.{hint}"
                 "\n\nRespond with valid JSON only."
             ),
         },

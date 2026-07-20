@@ -4,6 +4,14 @@
 > **Scope:** Full codebase audit (frontend ~11k LOC Dart, backend ~4k LOC Python)
 > **Branch:** `deep-engineering-upgrade`
 
+> **⚠️ Status note:** This document is a **review + design roadmap**. The
+> frontend editor items below are **proposals** for future PRs, not code that
+> ships in this branch. What actually ships here is: (1) the backend Document
+> AI endpoints (chat / summarize / translate / rewrite / extract) and (2) this
+> review. Frontend items marked "Proposed" describe the recommended design;
+> they were intentionally **not** merged into the editor core to avoid breaking
+> the existing, working editor API. See "Phase 9 — What Actually Shipped".
+
 ---
 
 ## Executive Summary
@@ -97,20 +105,20 @@ lib/
 - No keyboard shortcut support
 - RTL text renders on screen but rasterised in export (not searchable)
 
-### New Design (AFTER — implemented in this branch)
+### Proposed Design (roadmap — NOT in this branch)
 
 | Feature | Status |
 |---|---|
-| Font size in absolute pt | ✅ Implemented |
-| RTL auto-detection (Arabic/Kurdish/Persian/Hebrew) | ✅ Implemented |
-| Line height, char spacing, text alignment | ✅ Implemented |
-| Text rotation | ✅ Implemented |
-| Background fill + border | ✅ Implemented |
-| Bounding box (width/height) | ✅ Implemented |
-| Full serialisation (JSON round-trip) | ✅ Implemented |
-| Inline editing with cursor/caret | 🔄 Next phase |
-| Text selection within annotation | 🔄 Next phase |
-| Font embedding in PDF export | 🔄 Next phase |
+| Font size in absolute pt | ✅ Already on `main` (model field) |
+| RTL fields on model (Arabic/Kurdish/Persian/Hebrew) | ✅ Already on `main` (model field) |
+| Line height, char spacing, text alignment | ✅ Already on `main` (model field) |
+| Text rotation | ✅ Already on `main` (model field) |
+| RTL auto-detection in renderer/export | 🔜 Proposed |
+| Background fill + border | 🔜 Proposed |
+| Full serialisation (JSON round-trip) | 🔜 Proposed |
+| Inline editing with cursor/caret | 🔜 Proposed |
+| Text selection within annotation | 🔜 Proposed |
+| Font embedding in PDF export | 🔜 Proposed |
 
 ### Typography Targets
 
@@ -132,7 +140,7 @@ lib/
 - Mutable lists with redo = removed items
 - No serialisation
 
-### AFTER (new model — implemented)
+### PROPOSED (new model — roadmap, not in this branch)
 
 | Object Type | Properties |
 |---|---|
@@ -156,7 +164,7 @@ lib/
 
 ## Phase 5 — Advanced Editor Features
 
-### History System (implemented)
+### History System (proposed design)
 
 ```
 ┌─────────────────────────────────────┐
@@ -205,7 +213,7 @@ lib/
 - **Document understanding** (type detection, entity extraction)
 - **Vision** (scanned PDF → image → AI)
 
-### New Capabilities (implemented/designed)
+### New Capabilities (backend shipped / frontend designed)
 
 | Feature | Where | Status |
 |---|---|---|
@@ -227,16 +235,16 @@ lib/
 | Inline text editing | ✅ | ✅ | ✅ | ❌ Dialog only | ✅ P1 |
 | AcroForm fill | ✅ | ✅ | ✅ | ❌ | ✅ P1 |
 | Font embedding | ✅ | ✅ | ✅ | ❌ | ✅ P2 |
-| Undo/redo (unlimited) | ✅ | ✅ | ✅ | ❌ Basic | ✅ Done |
-| RTL text | ✅ | ⚡ Partial | ✅ | ⚡ Render only | ✅ Done |
-| Image annotations | ✅ | ✅ | ✅ | ❌ | ✅ Done |
-| Stamps | ✅ | ✅ | ✅ | ❌ | ✅ Done |
-| AI Chat with PDF | ⚡ Acrobat AI | ✅ | ❌ | ✅ | ✅ Enhanced |
+| Undo/redo (unlimited) | ✅ | ✅ | ✅ | ⚡ Basic | 🔜 Target |
+| RTL text | ✅ | ⚡ Partial | ✅ | ⚡ Render only | 🔜 Target |
+| Image annotations | ✅ | ✅ | ✅ | ❌ | 🔜 Target |
+| Stamps | ✅ | ✅ | ✅ | ❌ | 🔜 Target |
+| AI Chat with PDF | ⚡ Acrobat AI | ✅ | ❌ | ✅ | ✅ Enhanced (backend shipped) |
 | On-device AI/OCR | ❌ | ❌ | ❌ | ✅ | ✅ |
 | BM25 RAG (offline) | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Profile auto-fill | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Offline-first | ❌ | ⚡ | ⚡ | ✅ | ✅ |
-| Annotation persistence | ✅ | ✅ | ✅ | ❌ | ✅ Done |
+| Annotation persistence | ✅ | ✅ | ✅ | ❌ | 🔜 Target |
 
 ### Ai-PDF's Unique Advantages
 1. **On-device AI RAG** — works offline, no data leaves phone
@@ -249,16 +257,19 @@ lib/
 
 ## Phase 8 — Implementation Priority Matrix
 
-### P0 — Critical (Ship-blockers)
+### P0 — Critical (proposed for follow-up PRs)
 
-| Change | File | Impact |
+> Each row is a **proposed** change. None are in this branch; they must land as
+> small, backward-compatible PRs with tests (see "Recommended sequencing").
+
+| Change | File | Status |
 |---|---|---|
-| Command-pattern undo/redo | `domain/history/` | ✅ Done |
-| Annotation serialisation | `data/annotation_persistence_service.dart` | ✅ Done |
-| Enhanced annotation model | `domain/entities/annotation.dart` | ✅ Done |
-| Isolate image ops | `core/image/image_ops.dart` | ✅ Done |
-| Page layer rewrite | `domain/entities/page_layer.dart` | ✅ Done |
-| EditorState + Controller rewrite | `application/` | ✅ Done |
+| Command-pattern undo/redo | `domain/history/` | 🔜 Proposed |
+| Annotation serialisation | `domain/entities/annotation.dart` | 🔜 Proposed |
+| Additive annotation metadata (zIndex/locked/…) | `domain/entities/annotation.dart` | 🔜 Proposed |
+| Isolate image ops | `core/image/image_ops.dart` | ✅ Already on `main` |
+| New annotation types (image/stamp/form) | `domain/entities/annotation.dart` | 🔜 Proposed |
+| History-aware controller methods | `application/` | 🔜 Proposed |
 
 ### P1 — Major Improvements (Weeks 2-4)
 
@@ -297,24 +308,46 @@ lib/
 
 ---
 
-## Phase 9 — Code Changes Delivered (this branch)
+## Phase 9 — What Actually Shipped (this branch)
 
-### New files created:
-1. `frontend/lib/features/editor/domain/entities/annotation.dart` — Complete annotation model (6 types, full serialisation)
-2. `frontend/lib/features/editor/domain/entities/page_layer.dart` — Layer management with z-ordering
-3. `frontend/lib/features/editor/domain/history/editor_command.dart` — Command pattern (6 command types)
-4. `frontend/lib/features/editor/domain/history/history_stack.dart` — Unlimited undo/redo stack
-5. `frontend/lib/features/editor/application/editor_state.dart` — Professional editor state (40+ fields)
-6. `frontend/lib/features/editor/application/editor_controller.dart` — History-integrated controller
-7. `frontend/lib/features/editor/data/annotation_draw.dart` — Full render engine (RTL, rotation, stamps, images, form fields)
-8. `frontend/lib/features/editor/data/annotation_persistence_service.dart` — Crash-safe auto-save
-9. `frontend/lib/core/image/image_ops.dart` — Isolate-based image compression/resize
-10. `frontend/lib/features/ai/domain/ai_chat_service.dart` — Chat session model with BM25 RAG
-11. `backend/app/api/v1/document_ai.py` — 5 new AI endpoints (chat, summarize, translate, rewrite, extract)
-12. `docs/ENGINEERING_REVIEW.md` — This document
+To keep the build green and the existing editor fully functional, this branch
+ships **only backend + documentation** changes. The frontend editor core is
+left byte-identical to `main`; the editor upgrades above are captured as a
+design roadmap for follow-up PRs (each isolated and independently testable).
 
-### Modified files:
-13. `backend/app/api/v1/router.py` — Registered document_ai router
+### New files
+1. `backend/app/api/v1/document_ai.py` — 5 new AI endpoints:
+   - `POST /document-ai/chat` — grounded Q&A over document text
+   - `POST /document-ai/summarize` — structured / brief / bullet summaries
+   - `POST /document-ai/translate` — translate to any language
+   - `POST /document-ai/rewrite` — professional / casual / formal / simplified
+   - `POST /document-ai/extract` — structured JSON extraction
+2. `docs/ENGINEERING_REVIEW.md` — this review + roadmap
+
+### Modified files
+3. `backend/app/api/v1/router.py` — registered the `document_ai` router
+
+### Deliberately NOT changed (kept identical to `main`)
+- `annotation.dart`, `page_layer.dart`, `editor_controller.dart`,
+  `editor_state.dart`, `annotation_draw.dart`, `image_ops.dart`
+
+> **Why:** an earlier revision of this branch rewrote those editor-core files
+> and broke every existing consumer (`pick_edit_screen.dart`, the 25+ editor
+> data services, `offline_pdf_service.dart`, and `image_ops_test.dart`). Those
+> rewrites were reverted. Each roadmap item should land as its own small,
+> backward-compatible PR with tests, rather than a single large rewrite.
+
+### Recommended sequencing for the frontend roadmap
+1. **Additive annotation metadata** — add optional `zIndex`, `locked`,
+   `visible`, `opacity`, `pageIndex` to the base `EditorAnnotation` **without**
+   introducing a base `type` field (it collides with `ShapeAnnotation.type`).
+   Use `is`-checks or a `kind` getter instead. Keep all existing constructors.
+2. **Serialisation** — add `toJson`/`fromJson` behind the existing classes.
+3. **Command-pattern history** — introduce `HistoryStack` + commands, wired
+   through new controller methods that sit *alongside* the current ones.
+4. **New annotation types** (Image / Stamp / FormField) — additive subclasses.
+5. **Rendering** — extend `AnnotationDraw`/painter for the new types.
+6. **Persistence + crash recovery**, then **inline text editing**.
 
 ---
 

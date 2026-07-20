@@ -1,225 +1,135 @@
-import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show compute;
 import 'package:image/image.dart' as img;
 
-/// Isolate-safe image operations.
+/// Pure-Dart, CPU-bound image operations designed to run OFF the UI thread via
+/// `compute()`.
 ///
-/// ### Design principle
-/// Every function here is a top-level function (or static) so it can be
-/// passed to [compute] / [Isolate.run]. They accept and return only simple
-/// types (Uint8List, int, double) — no Flutter framework objects.
+/// Everything here is deliberately isolate-safe: inputs and outputs are only
+/// [Uint8List] + primitives + a plain enum, so an [ImageOp] can be copied to a
+/// background isolate and the resulting bytes copied back. No Flutter, no
+/// plugins, no platform channels — so it must NOT do PDF rendering (that stays
+/// on the main isolate because pdfx uses native PdfRenderer).
 ///
-/// This keeps the UI thread free for animations and touch events while
-/// expensive image work happens in a background isolate.
+/// The logic mirrors exactly what OfflinePdfService used to do inline; only the
+/// execution thread changes.
 
-// ---------------------------------------------------------------------------
-// Synchronous single-op API (used by isolate entry points & tests)
-// ---------------------------------------------------------------------------
+/// A special sentinel returned when an image could not be decoded and the
+/// caller asked to skip (rather than throw). Callers check `result.isEmpty`.
+final Uint8List _kUndecodable = Uint8List(0);
 
-/// The type of image operation to perform.
 enum ImageOpType {
-  jpegReencode,
-  jpegRotate,
-  jpegDownscaleLongEdge,
-  pngDownscaleLongEdge,
+  /// Decode, optionally resize to [maxWidth], encode JPEG at [quality].
+  /// Throws if the image cannot be decoded.
   jpegCompress,
+
+  /// Decode and re-encode JPEG at [quality]. Falls back to the ORIGINAL bytes
+  /// if the image cannot be decoded.
+  jpegReencode,
+
+  /// Decode; if either edge exceeds [maxEdge], downscale by the long edge and
+  /// re-encode JPEG at [quality]. Otherwise return the original bytes unchanged.
+  jpegDownscaleLongEdge,
+
+  /// Decode; if either edge exceeds [maxEdge], downscale by the long edge and
+  /// re-encode PNG (preserving alpha). Otherwise return the original bytes.
+  pngDownscaleLongEdge,
+
+  /// Decode, rotate by [degrees] (90/180/270), encode JPEG at [quality].
+  /// Returns an EMPTY list if the image cannot be decoded (caller skips).
+  jpegRotate,
 }
 
-/// A value object describing a single image transformation.
+/// Immutable, isolate-sendable description of one image operation.
 class ImageOp {
   final ImageOpType type;
   final Uint8List bytes;
-  final int? quality;
-  final int? degrees;
+  final int quality;
+  final int? maxWidth;
   final int? maxEdge;
+  final int degrees;
 
   const ImageOp({
     required this.type,
     required this.bytes,
-    this.quality,
-    this.degrees,
+    this.quality = 85,
+    this.maxWidth,
     this.maxEdge,
+    this.degrees = 90,
   });
 }
 
-/// Sentinel: an empty [Uint8List] signals that decoding failed and the caller
-/// should skip this operation rather than using corrupt output.
-final Uint8List _undecodableSentinel = Uint8List(0);
-
-/// Returns `true` if [bytes] is the undecodable sentinel (empty list returned
-/// by operations that cannot decode their input and want the caller to skip).
-bool isUndecodable(Uint8List bytes) => bytes.isEmpty;
-
-/// Apply a single synchronous image operation.
-///
-/// This is the workhorse called inside isolates. It handles undecodable input
-/// gracefully per operation type:
-/// - [ImageOpType.jpegReencode]: returns original bytes (no-op fallback)
-/// - [ImageOpType.jpegRotate]: returns empty sentinel (caller skips)
-/// - [ImageOpType.jpegDownscaleLongEdge]: returns original if maxEdge is null
-/// - [ImageOpType.pngDownscaleLongEdge]: returns original if cannot decode
-/// - [ImageOpType.jpegCompress]: throws (surfaced to the user as an error)
+/// Top-level entry point suitable for `compute(applyImageOp, op)`.
 Uint8List applyImageOp(ImageOp op) {
   switch (op.type) {
-    case ImageOpType.jpegReencode:
-      final decoded = img.decodeImage(op.bytes);
-      if (decoded == null) return op.bytes; // fallback: return original
-      return Uint8List.fromList(
-          img.encodeJpg(decoded, quality: op.quality ?? 85));
-
-    case ImageOpType.jpegRotate:
-      final decoded = img.decodeImage(op.bytes);
-      if (decoded == null) return _undecodableSentinel; // sentinel
-      final degrees = op.degrees ?? 0;
-      final rotated = img.copyRotate(decoded, angle: degrees.toDouble());
-      return Uint8List.fromList(
-          img.encodeJpg(rotated, quality: op.quality ?? 90));
-
-    case ImageOpType.jpegDownscaleLongEdge:
-      if (op.maxEdge == null) return op.bytes;
-      final decoded = img.decodeImage(op.bytes);
-      if (decoded == null) return op.bytes;
-      final longEdge =
-          decoded.width > decoded.height ? decoded.width : decoded.height;
-      if (longEdge <= op.maxEdge!) return op.bytes;
-      final scaled = img.copyResize(
-        decoded,
-        width: decoded.width > decoded.height ? op.maxEdge : null,
-        height: decoded.height >= decoded.width ? op.maxEdge : null,
-        interpolation: img.Interpolation.linear,
-      );
-      return Uint8List.fromList(
-          img.encodeJpg(scaled, quality: op.quality ?? 85));
-
-    case ImageOpType.pngDownscaleLongEdge:
-      if (op.maxEdge == null) return op.bytes;
-      final decoded = img.decodeImage(op.bytes);
-      if (decoded == null) return op.bytes;
-      final longEdge =
-          decoded.width > decoded.height ? decoded.width : decoded.height;
-      if (longEdge <= op.maxEdge!) return op.bytes;
-      final scaled = img.copyResize(
-        decoded,
-        width: decoded.width > decoded.height ? op.maxEdge : null,
-        height: decoded.height >= decoded.width ? op.maxEdge : null,
-        interpolation: img.Interpolation.linear,
-      );
-      return Uint8List.fromList(img.encodePng(scaled));
-
     case ImageOpType.jpegCompress:
-      final decoded = img.decodeImage(op.bytes);
-      if (decoded == null) {
-        throw Exception('Cannot decode image for JPEG compression');
-      }
-      return Uint8List.fromList(
-          img.encodeJpg(decoded, quality: op.quality ?? 70));
+      return _jpegCompress(op);
+    case ImageOpType.jpegReencode:
+      return _jpegReencode(op);
+    case ImageOpType.jpegDownscaleLongEdge:
+      return _jpegDownscaleLongEdge(op);
+    case ImageOpType.pngDownscaleLongEdge:
+      return _pngDownscaleLongEdge(op);
+    case ImageOpType.jpegRotate:
+      return _jpegRotate(op);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Public API (runs in an isolate)
-// ---------------------------------------------------------------------------
+/// True when [applyImageOp] returned the "could not decode" sentinel.
+bool isUndecodable(Uint8List result) => result.isEmpty;
 
-/// Compress a JPEG/PNG image to the target quality (0–100) and max dimension.
-Future<Uint8List> compressImageIsolate({
-  required Uint8List bytes,
-  required int maxDimension,
-  required int quality,
-}) async {
-  return compute(_compressImage, _CompressArgs(bytes, maxDimension, quality));
-}
-
-/// Downscale an image to fit within [maxWidth] × [maxHeight].
-Future<Uint8List> resizeImageIsolate({
-  required Uint8List bytes,
-  required int maxWidth,
-  required int maxHeight,
-}) async {
-  return compute(_resizeImage, _ResizeArgs(bytes, maxWidth, maxHeight));
-}
-
-/// Convert a raw image (any format) to JPEG at the given quality.
-Future<Uint8List> toJpegIsolate({
-  required Uint8List bytes,
-  int quality = 85,
-}) async {
-  return compute(_toJpeg, _JpegArgs(bytes, quality));
-}
-
-/// Convert a raw image (any format) to PNG.
-Future<Uint8List> toPngIsolate({required Uint8List bytes}) async {
-  return compute(_toPng, bytes);
-}
-
-// ---------------------------------------------------------------------------
-// Internal (isolate entry points — must be top-level or static)
-// ---------------------------------------------------------------------------
-
-class _CompressArgs {
-  final Uint8List bytes;
-  final int maxDim;
-  final int quality;
-  const _CompressArgs(this.bytes, this.maxDim, this.quality);
-}
-
-Uint8List _compressImage(_CompressArgs args) {
-  final decoded = img.decodeImage(args.bytes);
-  if (decoded == null) return args.bytes;
-
-  img.Image result = decoded;
-  final longEdge = result.width > result.height ? result.width : result.height;
-  if (longEdge > args.maxDim) {
-    result = img.copyResize(
-      result,
-      width: result.width > result.height ? args.maxDim : null,
-      height: result.height >= result.width ? args.maxDim : null,
-      interpolation: img.Interpolation.linear,
-    );
+Uint8List _jpegCompress(ImageOp op) {
+  var decoded = img.decodeImage(op.bytes);
+  if (decoded == null) {
+    throw Exception('Could not decode image');
   }
-  return Uint8List.fromList(img.encodeJpg(result, quality: args.quality));
-}
-
-class _ResizeArgs {
-  final Uint8List bytes;
-  final int maxW, maxH;
-  const _ResizeArgs(this.bytes, this.maxW, this.maxH);
-}
-
-Uint8List _resizeImage(_ResizeArgs args) {
-  final decoded = img.decodeImage(args.bytes);
-  if (decoded == null) return args.bytes;
-
-  img.Image result = decoded;
-  if (result.width > args.maxW || result.height > args.maxH) {
-    final scaleW = args.maxW / result.width;
-    final scaleH = args.maxH / result.height;
-    final scale = scaleW < scaleH ? scaleW : scaleH;
-    result = img.copyResize(
-      result,
-      width: (result.width * scale).round(),
-      height: (result.height * scale).round(),
-      interpolation: img.Interpolation.linear,
-    );
+  final maxWidth = op.maxWidth;
+  if (maxWidth != null && decoded.width > maxWidth) {
+    decoded = img.copyResize(decoded, width: maxWidth);
   }
-  return Uint8List.fromList(img.encodePng(result));
+  return Uint8List.fromList(img.encodeJpg(decoded, quality: op.quality));
 }
 
-class _JpegArgs {
-  final Uint8List bytes;
-  final int quality;
-  const _JpegArgs(this.bytes, this.quality);
+Uint8List _jpegReencode(ImageOp op) {
+  final decoded = img.decodeImage(op.bytes);
+  if (decoded == null) return op.bytes;
+  return Uint8List.fromList(img.encodeJpg(decoded, quality: op.quality));
 }
 
-Uint8List _toJpeg(_JpegArgs args) {
-  final decoded = img.decodeImage(args.bytes);
-  if (decoded == null) return args.bytes;
-  return Uint8List.fromList(img.encodeJpg(decoded, quality: args.quality));
+Uint8List _jpegDownscaleLongEdge(ImageOp op) {
+  final maxEdge = op.maxEdge;
+  final decoded = img.decodeImage(op.bytes);
+  if (decoded == null || maxEdge == null) return op.bytes;
+  if (decoded.width > maxEdge || decoded.height > maxEdge) {
+    final resized = decoded.width >= decoded.height
+        ? img.copyResize(decoded, width: maxEdge)
+        : img.copyResize(decoded, height: maxEdge);
+    return Uint8List.fromList(img.encodeJpg(resized, quality: op.quality));
+  }
+  return op.bytes;
 }
 
-Uint8List _toPng(Uint8List bytes) {
-  final decoded = img.decodeImage(bytes);
-  if (decoded == null) return bytes;
-  return Uint8List.fromList(img.encodePng(decoded));
+Uint8List _pngDownscaleLongEdge(ImageOp op) {
+  final maxEdge = op.maxEdge;
+  final decoded = img.decodeImage(op.bytes);
+  if (decoded == null || maxEdge == null) return op.bytes;
+  if (decoded.width > maxEdge || decoded.height > maxEdge) {
+    final resized = decoded.width >= decoded.height
+        ? img.copyResize(decoded, width: maxEdge)
+        : img.copyResize(decoded, height: maxEdge);
+    return Uint8List.fromList(img.encodePng(resized));
+  }
+  return op.bytes;
+}
+
+Uint8List _jpegRotate(ImageOp op) {
+  final decoded = img.decodeImage(op.bytes);
+  if (decoded == null) return _kUndecodable;
+  final angle = (op.degrees ~/ 90).clamp(1, 3); // 1=90, 2=180, 3=270
+  final rotated = angle == 1
+      ? img.copyRotate(decoded, angle: 90)
+      : angle == 2
+          ? img.copyRotate(decoded, angle: 180)
+          : img.copyRotate(decoded, angle: 270);
+  return Uint8List.fromList(img.encodeJpg(rotated, quality: op.quality));
 }
