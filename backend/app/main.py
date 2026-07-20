@@ -14,6 +14,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
     # Startup
     print(f"Starting {settings.APP_NAME} in {settings.APP_ENV} mode")
+    # Security guard: never boot production with placeholder secrets.
+    # (No-op in development.) Raises to prevent an insecure deployment.
+    settings.validate_production_secrets()
     # Ensure tables exist (idempotent; skips tables already created by Alembic).
     # Import models so they register on Base.metadata before create_all.
     try:
