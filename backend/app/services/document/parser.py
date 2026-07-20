@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument

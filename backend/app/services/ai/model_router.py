@@ -15,9 +15,7 @@ Engineering Decision:
 
 import logging
 from enum import Enum
-from typing import Optional
 
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

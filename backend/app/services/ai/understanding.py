@@ -16,7 +16,6 @@ from typing import Any
 
 import fitz  # PyMuPDF for PDF→Image conversion
 
-from app.core.config import settings
 from app.services.ai.provider import ai_provider
 from app.services.ai.vision import vision_service
 
@@ -175,8 +174,6 @@ class DocumentUnderstandingService:
 
     async def _analyze_text(self, text: str) -> dict[str, Any]:
         """Analyze document text using AI (non-vision, text-only model)."""
-        import json
-        import re
 
         messages = [
             {"role": "system", "content": DOCUMENT_ANALYSIS_PROMPT},

@@ -4,24 +4,17 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps.auth import get_current_user
-from app.core.exceptions import AuthenticationError, ValidationError
+from app.core.exceptions import ValidationError
 from app.core.security import (
     create_access_token,
     create_refresh_token,
-    decode_token,
     hash_password,
-    verify_password,
 )
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
-    LoginRequest,
-    PasswordChangeRequest,
-    RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
-    UserResponse,
 )
 
 router = APIRouter()

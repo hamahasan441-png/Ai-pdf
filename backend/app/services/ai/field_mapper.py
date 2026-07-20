@@ -143,7 +143,9 @@ INSTANT_MAPPINGS = {
     "prénom": "first_name", "nom": "last_name", "nom de famille": "last_name",
     "date de naissance": "date_of_birth", "sexe": "gender",
     "nationalité": "nationality", "état civil": "marital_status",
-    "téléphone": "phone", "adresse": "address", "rue": "address",
+    # "adresse" is already mapped in the German block above (same value);
+    # French keeps "rue" -> address to avoid a duplicate dict key.
+    "téléphone": "phone", "rue": "address",
     "ville": "city", "code postal": "zip_code", "pays": "country",
     "profession": "job_title", "employeur": "employer_name",
     "numéro de passeport": "passport_number",
