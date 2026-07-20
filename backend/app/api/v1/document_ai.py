@@ -1,7 +1,9 @@
-"""Document AI endpoints — Chat with PDF, Summarize, Translate, Extract.
+"""Document AI endpoints — Chat with PDF, Summarize, Translate, Rewrite, Extract.
 
-These endpoints power the app's AI document intelligence features.
-Each endpoint checks Pro status (unlimited) or free-tier limits.
+These endpoints power the app's AI document intelligence features. Every
+endpoint is metered exactly like the managed chat endpoint: verified-Pro users
+(active purchase token) are unlimited, everyone else shares the same free daily
+cap via ``app.services.ai.usage_limiter``.
 """
 
 import logging
@@ -16,6 +18,12 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.models.user import User
 from app.services.ai.provider import ai_provider
+from app.services.ai.usage_limiter import (
+    UNLIMITED,
+    check_and_increment,
+    identity_for,
+    is_pro,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +110,7 @@ async def chat_with_document(
 ):
     """Chat with a document — ask any question, get an answer grounded in the text."""
     _check_ai_configured()
+    remaining = await _meter(request, user, db)
 
     # Build grounded prompt
     context = "\n---\n".join(req.context_pages) if req.context_pages else req.document_text[:8000]
@@ -129,7 +138,7 @@ async def chat_with_document(
         temperature=0.2,
         max_tokens=2048,
     )
-    return DocumentChatResponse(answer=reply, cited_pages=[], remaining=-1)
+    return DocumentChatResponse(answer=reply, cited_pages=[], remaining=remaining)
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -137,9 +146,11 @@ async def summarize_document(
     req: SummarizeRequest,
     request: Request,
     user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Generate a structured summary of a document."""
     _check_ai_configured()
+    remaining = await _meter(request, user, db)
 
     style_instruction = {
         "structured": "Provide a structured summary: 1) Document type, 2) Key points (bullets), 3) Important entities, 4) Action items.",
@@ -159,7 +170,7 @@ async def summarize_document(
         temperature=0.2,
         max_tokens=2048,
     )
-    return SummarizeResponse(summary=reply, remaining=-1)
+    return SummarizeResponse(summary=reply, remaining=remaining)
 
 
 @router.post("/translate", response_model=TranslateResponse)
@@ -167,9 +178,11 @@ async def translate_text(
     req: TranslateRequest,
     request: Request,
     user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Translate document text to any language."""
     _check_ai_configured()
+    remaining = await _meter(request, user, db)
 
     source_hint = f" from {req.source_language}" if req.source_language != "auto" else ""
 
@@ -190,7 +203,7 @@ async def translate_text(
         temperature=0.1,
         max_tokens=4096,
     )
-    return TranslateResponse(translated_text=reply, remaining=-1)
+    return TranslateResponse(translated_text=reply, remaining=remaining)
 
 
 @router.post("/rewrite", response_model=RewriteResponse)
@@ -198,9 +211,11 @@ async def rewrite_text(
     req: RewriteRequest,
     request: Request,
     user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Rewrite text with improved clarity, grammar, or style."""
     _check_ai_configured()
+    remaining = await _meter(request, user, db)
 
     style_prompt = {
         "professional": "Make it professional and clear.",
@@ -223,7 +238,7 @@ async def rewrite_text(
         temperature=0.3,
         max_tokens=4096,
     )
-    return RewriteResponse(rewritten_text=reply, remaining=-1)
+    return RewriteResponse(rewritten_text=reply, remaining=remaining)
 
 
 @router.post("/extract", response_model=ExtractDataResponse)
@@ -231,9 +246,11 @@ async def extract_data(
     req: ExtractDataRequest,
     request: Request,
     user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Extract structured data from a document as JSON."""
     _check_ai_configured()
+    remaining = await _meter(request, user, db)
 
     hint = f" {req.schema_hint}" if req.schema_hint else ""
 
@@ -256,7 +273,7 @@ async def extract_data(
         use_advanced=True,
         max_tokens=4096,
     )
-    return ExtractDataResponse(data=result, remaining=-1)
+    return ExtractDataResponse(data=result, remaining=remaining)
 
 
 # ---------------------------------------------------------------------------
@@ -269,3 +286,27 @@ def _check_ai_configured():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service not configured. Set AI_API_KEY.",
         )
+
+
+async def _meter(
+    request: Request,
+    user: Optional[User],
+    db: AsyncSession,
+) -> int:
+    """Enforce the shared free-tier cap and return the remaining quota.
+
+    Verified-Pro users bypass the cap (returns ``UNLIMITED``). Everyone else is
+    counted against the daily limit; raises HTTP 429 once exhausted. Call this
+    BEFORE spending an AI request so over-limit callers don't incur cost.
+    """
+    pro = await is_pro(db, request.headers.get("X-Entitlement-Token"))
+    if pro:
+        return UNLIMITED
+    identity = identity_for(user, request)
+    allowed, count = check_and_increment(identity)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily free AI limit reached. Upgrade to Pro for unlimited AI.",
+        )
+    return max(0, settings.AI_FREE_DAILY_LIMIT - count)
