@@ -8,6 +8,7 @@ TRANSLATE = "/api/v1/document-ai/translate"
 EXTRACT = "/api/v1/document-ai/extract"
 CHAT = "/api/v1/document-ai/chat"
 ANALYZE = "/api/v1/document-ai/analyze"
+UNDERSTAND_FORM = "/api/v1/document-ai/understand-form"
 
 
 async def test_summarize_503_when_not_configured(client, monkeypatch):
@@ -57,6 +58,54 @@ async def test_analyze_returns_structured_json(client, mock_ai):
 async def test_analyze_503_when_not_configured(client, monkeypatch):
     monkeypatch.setattr(settings, "AI_API_KEY", "")
     resp = await client.post(ANALYZE, json={"document_text": "hello"})
+    assert resp.status_code == 503
+
+
+async def test_understand_form_success(client, mock_ai):
+    resp = await client.post(
+        UNDERSTAND_FORM,
+        json={
+            "fields": [{"label": "Vorname"}, {"label": "E-Mail", "context": "you@x.com"}],
+            "profile_keys": ["first_name", "email"],
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # The default mock returns no "fields" key -> endpoint yields [] gracefully.
+    assert isinstance(body["fields"], list)
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
+
+
+async def test_understand_form_parses_model_fields(client, mock_ai, monkeypatch):
+    from app.services.ai import provider as provider_mod
+
+    async def fake_json(*args, **kwargs):
+        return {
+            "fields": [
+                {
+                    "label": "Vorname",
+                    "field_type": "name",
+                    "profile_key": "first_name",
+                    "validation": "none",
+                    "confidence": 0.95,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(provider_mod.ai_provider, "chat_completion_json", fake_json)
+    resp = await client.post(
+        UNDERSTAND_FORM,
+        json={"fields": [{"label": "Vorname"}], "profile_keys": ["first_name"]},
+    )
+    assert resp.status_code == 200
+    fields = resp.json()["fields"]
+    assert len(fields) == 1
+    assert fields[0]["profile_key"] == "first_name"
+
+
+async def test_understand_form_503_when_not_configured(client, monkeypatch):
+    monkeypatch.setattr(settings, "AI_API_KEY", "")
+    resp = await client.post(UNDERSTAND_FORM, json={"fields": [{"label": "x"}]})
     assert resp.status_code == 503
 
 

@@ -112,6 +112,32 @@ class AnalyzeResponse(BaseModel):
     remaining: int = -1
 
 
+class FormFieldHint(BaseModel):
+    """A form field the on-device detector was unsure about."""
+    label: str = Field(..., max_length=300)
+    context: str = Field("", max_length=600,
+                         description="Nearby text / visible options, if any")
+
+
+class UnderstandFormRequest(BaseModel):
+    """Semantic classification of uncertain form fields.
+
+    The client runs fast on-device heuristics first; only the low-confidence
+    field labels are sent here (never the document), so this stays cheap and
+    private. profile_keys lets the model suggest which saved profile value maps
+    to each field.
+    """
+    fields: list[FormFieldHint] = Field(..., max_length=200)
+    profile_keys: list[str] = Field(default_factory=list)
+    language: str = "auto"
+
+
+class UnderstandFormResponse(BaseModel):
+    # Each item: {label, field_type, profile_key, validation, confidence}
+    fields: list[dict]
+    remaining: int = -1
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -333,6 +359,60 @@ async def analyze_document(
         max_tokens=4096,
     )
     return AnalyzeResponse(analysis=result, remaining=remaining)
+
+
+@router.post("/understand-form", response_model=UnderstandFormResponse)
+async def understand_form(
+    req: UnderstandFormRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Semantic fallback for smart-form field detection.
+
+    Given labels the on-device heuristics couldn't confidently classify (plus the
+    available profile keys), return each field's canonical type, the best-matching
+    profile key (or empty), a validation kind, and a confidence score.
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    field_lines = "\n".join(
+        f"{i}. label={f.label!r} context={f.context!r}"
+        for i, f in enumerate(req.fields)
+    )
+    keys_hint = (
+        f"Available profile keys to map to (use exactly one or \"\"): {req.profile_keys}"
+        if req.profile_keys
+        else 'No profile keys provided; return "" for profile_key.'
+    )
+    lang_hint = f" Field language: {req.language}." if req.language != "auto" else ""
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You classify form fields. For EACH input field return an object with:\n"
+                '  "label": the original label,\n'
+                '  "field_type": one of [text, name, email, phone, number, date, '
+                'address, checkbox, radio, signature],\n'
+                '  "profile_key": the best matching provided profile key, or "",\n'
+                '  "validation": one of [none, email, phone, date, number, iban, zip],\n'
+                '  "confidence": a number 0..1.\n'
+                f"{keys_hint}{lang_hint}\n"
+                'Respond with valid JSON only, as {"fields": [ ... ]} in the same order.'
+            ),
+        },
+        {"role": "user", "content": f"Fields:\n{field_lines}"},
+    ]
+
+    result = await ai_provider.chat_completion_json(
+        messages=messages,
+        use_advanced=False,
+        max_tokens=4096,
+    )
+    fields = result.get("fields", []) if isinstance(result, dict) else []
+    return UnderstandFormResponse(fields=fields, remaining=remaining)
 
 
 # ---------------------------------------------------------------------------
