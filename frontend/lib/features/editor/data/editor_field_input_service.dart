@@ -71,10 +71,20 @@ class EditorFieldInputService {
 
   double fitTextSize(String text, double baseSize, double availWidthNorm) {
     if (text.isEmpty) return baseSize;
+    // Average glyph advance as a fraction of the (height-normalized) font size.
     const advance = 0.55;
-    const pageWH = 1.41;
+    // Page width-to-height ratio (A4 portrait ≈ 0.707). `baseSize` is
+    // normalized to page HEIGHT while `availWidthNorm` is a fraction of page
+    // WIDTH, so the available width must be scaled into the same
+    // height-normalized units before comparing.
+    //
+    // This previously used 1.41 — the inverted HEIGHT/width ratio — which made
+    // the field look ~2x wider than it is, so long values never shrank and
+    // overflowed past the field. Using the correct width/height ratio makes the
+    // auto-fit actually fit.
+    const pageWidthToHeight = 0.707;
     final neededH = text.length * advance * baseSize;
-    final availH = availWidthNorm * pageWH;
+    final availH = availWidthNorm * pageWidthToHeight;
     if (neededH <= availH) return baseSize;
     return (baseSize * (availH / neededH)).clamp(0.010, baseSize).toDouble();
   }
