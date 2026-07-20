@@ -97,6 +97,17 @@ class ExtractDataResponse(BaseModel):
     remaining: int = -1
 
 
+class FixOcrRequest(BaseModel):
+    text: str = Field(..., max_length=20000,
+                      description="Raw OCR output that may contain recognition errors")
+    language: str = "auto"
+
+
+class FixOcrResponse(BaseModel):
+    corrected_text: str
+    remaining: int = -1
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -274,6 +285,47 @@ async def extract_data(
         max_tokens=4096,
     )
     return ExtractDataResponse(data=result, remaining=remaining)
+
+
+@router.post("/fix-ocr", response_model=FixOcrResponse)
+async def fix_ocr(
+    req: FixOcrRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Correct common OCR recognition errors in extracted text.
+
+    Complements the on-device OCR: the client sends raw OCR output and gets back
+    a cleaned version (fixed character confusions, merged broken words, restored
+    spacing) without altering the actual content.
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    lang_hint = f" The text is in {req.language}." if req.language != "auto" else ""
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an OCR post-correction expert. Fix common OCR mistakes in the "
+                "user's text: character confusions (rn->m, l->1, O->0, cl->d), missing or "
+                "extra spaces, words broken across line breaks, and garbled punctuation."
+                f"{lang_hint} Preserve the original wording, numbers, and meaning exactly — "
+                "only fix recognition errors. Do not summarize, translate, or add anything. "
+                "Return ONLY the corrected text."
+            ),
+        },
+        {"role": "user", "content": req.text},
+    ]
+
+    reply = await ai_provider.chat_completion(
+        messages=messages,
+        temperature=0.0,
+        max_tokens=4096,
+    )
+    return FixOcrResponse(corrected_text=reply, remaining=remaining)
 
 
 # ---------------------------------------------------------------------------

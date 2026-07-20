@@ -7,6 +7,7 @@ SUMMARIZE = "/api/v1/document-ai/summarize"
 TRANSLATE = "/api/v1/document-ai/translate"
 EXTRACT = "/api/v1/document-ai/extract"
 CHAT = "/api/v1/document-ai/chat"
+FIX_OCR = "/api/v1/document-ai/fix-ocr"
 
 
 async def test_summarize_503_when_not_configured(client, monkeypatch):
@@ -43,6 +44,20 @@ async def test_document_chat_success(client, mock_ai):
     )
     assert resp.status_code == 200
     assert resp.json()["answer"] == "MOCK_REPLY"
+
+
+async def test_fix_ocr_success(client, mock_ai):
+    resp = await client.post(FIX_OCR, json={"text": "He1lo w0rld rn"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["corrected_text"] == "MOCK_REPLY"
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
+
+
+async def test_fix_ocr_503_when_not_configured(client, monkeypatch):
+    monkeypatch.setattr(settings, "AI_API_KEY", "")
+    resp = await client.post(FIX_OCR, json={"text": "He1lo"})
+    assert resp.status_code == 503
 
 
 async def test_metering_429_across_calls(client, mock_ai, monkeypatch):
