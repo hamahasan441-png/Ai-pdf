@@ -63,6 +63,22 @@ def test_wrong_secret_rejected():
         decode_token(token)
 
 
+def test_long_password_over_72_bytes_is_handled():
+    # bcrypt only uses the first 72 bytes and newer versions raise on longer
+    # input; hashing/verifying a longer password must not raise. (Regression for
+    # the "password cannot be longer than 72 bytes" CI failure.)
+    long_pw = "p@ssw0rd-" + ("x" * 100)
+    hashed = hash_password(long_pw)
+    assert verify_password(long_pw, hashed) is True
+    assert verify_password("totally-different", hashed) is False
+
+
+def test_verify_password_handles_malformed_hash():
+    # A malformed/empty stored hash must return False, not raise.
+    assert verify_password("whatever", "") is False
+    assert verify_password("whatever", "not-a-bcrypt-hash") is False
+
+
 def test_encrypt_decrypt_roundtrip():
     ciphertext = encrypt_data("sensitive value")
     assert ciphertext != "sensitive value"
