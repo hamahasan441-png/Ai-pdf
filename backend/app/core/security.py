@@ -3,24 +3,38 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import bcrypt
 import jwt
 from cryptography.fernet import Fernet
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt only ever uses the first 72 BYTES of a password. Newer bcrypt releases
+# raise ValueError on longer input instead of silently truncating, so we
+# truncate explicitly at the application layer for deterministic behavior.
+# Using bcrypt directly (instead of passlib) avoids the passlib 1.7.4 + modern
+# bcrypt incompatibility that raised "password cannot be longer than 72 bytes"
+# during hashing. bcrypt hashes are the standard "$2b$" format, so any hashes
+# previously created via passlib remain verifiable.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _pw_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password."""
-    return pwd_context.hash(password)
+    """Hash a plaintext password with bcrypt (72-byte safe)."""
+    return bcrypt.hashpw(_pw_bytes(password), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plaintext password against a hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a plaintext password against a bcrypt hash."""
+    try:
+        return bcrypt.checkpw(_pw_bytes(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        # Malformed/empty stored hash → treat as a failed match, never crash.
+        return False
 
 
 def create_access_token(
