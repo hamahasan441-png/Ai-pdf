@@ -15,6 +15,110 @@ import 'package:image/image.dart' as img;
 /// expensive image work happens in a background isolate.
 
 // ---------------------------------------------------------------------------
+// Synchronous single-op API (used by isolate entry points & tests)
+// ---------------------------------------------------------------------------
+
+/// The type of image operation to perform.
+enum ImageOpType {
+  jpegReencode,
+  jpegRotate,
+  jpegDownscaleLongEdge,
+  pngDownscaleLongEdge,
+  jpegCompress,
+}
+
+/// A value object describing a single image transformation.
+class ImageOp {
+  final ImageOpType type;
+  final Uint8List bytes;
+  final int? quality;
+  final int? degrees;
+  final int? maxEdge;
+
+  const ImageOp({
+    required this.type,
+    required this.bytes,
+    this.quality,
+    this.degrees,
+    this.maxEdge,
+  });
+}
+
+/// Sentinel: an empty [Uint8List] signals that decoding failed and the caller
+/// should skip this operation rather than using corrupt output.
+final Uint8List _undecodableSentinel = Uint8List(0);
+
+/// Returns `true` if [bytes] is the undecodable sentinel (empty list returned
+/// by operations that cannot decode their input and want the caller to skip).
+bool isUndecodable(Uint8List bytes) => bytes.isEmpty;
+
+/// Apply a single synchronous image operation.
+///
+/// This is the workhorse called inside isolates. It handles undecodable input
+/// gracefully per operation type:
+/// - [ImageOpType.jpegReencode]: returns original bytes (no-op fallback)
+/// - [ImageOpType.jpegRotate]: returns empty sentinel (caller skips)
+/// - [ImageOpType.jpegDownscaleLongEdge]: returns original if maxEdge is null
+/// - [ImageOpType.pngDownscaleLongEdge]: returns original if cannot decode
+/// - [ImageOpType.jpegCompress]: throws (surfaced to the user as an error)
+Uint8List applyImageOp(ImageOp op) {
+  switch (op.type) {
+    case ImageOpType.jpegReencode:
+      final decoded = img.decodeImage(op.bytes);
+      if (decoded == null) return op.bytes; // fallback: return original
+      return Uint8List.fromList(
+          img.encodeJpg(decoded, quality: op.quality ?? 85));
+
+    case ImageOpType.jpegRotate:
+      final decoded = img.decodeImage(op.bytes);
+      if (decoded == null) return _undecodableSentinel; // sentinel
+      final degrees = op.degrees ?? 0;
+      final rotated = img.copyRotate(decoded, angle: degrees.toDouble());
+      return Uint8List.fromList(
+          img.encodeJpg(rotated, quality: op.quality ?? 90));
+
+    case ImageOpType.jpegDownscaleLongEdge:
+      if (op.maxEdge == null) return op.bytes;
+      final decoded = img.decodeImage(op.bytes);
+      if (decoded == null) return op.bytes;
+      final longEdge =
+          decoded.width > decoded.height ? decoded.width : decoded.height;
+      if (longEdge <= op.maxEdge!) return op.bytes;
+      final scaled = img.copyResize(
+        decoded,
+        width: decoded.width > decoded.height ? op.maxEdge : null,
+        height: decoded.height >= decoded.width ? op.maxEdge : null,
+        interpolation: img.Interpolation.linear,
+      );
+      return Uint8List.fromList(
+          img.encodeJpg(scaled, quality: op.quality ?? 85));
+
+    case ImageOpType.pngDownscaleLongEdge:
+      if (op.maxEdge == null) return op.bytes;
+      final decoded = img.decodeImage(op.bytes);
+      if (decoded == null) return op.bytes;
+      final longEdge =
+          decoded.width > decoded.height ? decoded.width : decoded.height;
+      if (longEdge <= op.maxEdge!) return op.bytes;
+      final scaled = img.copyResize(
+        decoded,
+        width: decoded.width > decoded.height ? op.maxEdge : null,
+        height: decoded.height >= decoded.width ? op.maxEdge : null,
+        interpolation: img.Interpolation.linear,
+      );
+      return Uint8List.fromList(img.encodePng(scaled));
+
+    case ImageOpType.jpegCompress:
+      final decoded = img.decodeImage(op.bytes);
+      if (decoded == null) {
+        throw Exception('Cannot decode image for JPEG compression');
+      }
+      return Uint8List.fromList(
+          img.encodeJpg(decoded, quality: op.quality ?? 70));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API (runs in an isolate)
 // ---------------------------------------------------------------------------
 
