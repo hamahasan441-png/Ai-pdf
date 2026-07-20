@@ -5,6 +5,8 @@ Tokens are JWTs minted by ``app.core.security``. Access tokens are short-lived
 (``JWT_REFRESH_TOKEN_EXPIRE_DAYS``) and are rotated on every refresh.
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -101,11 +103,15 @@ async def refresh_token(
     if payload.get("type") != "refresh":
         raise AuthenticationError("Invalid token type")
 
-    user_id = payload.get("sub")
-    if not user_id:
+    subject = payload.get("sub")
+    if not subject:
         raise AuthenticationError("Invalid token")
+    try:
+        user_uuid = uuid.UUID(str(subject))
+    except (ValueError, TypeError):
+        raise AuthenticationError("Invalid token subject")
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise AuthenticationError("User not found or deactivated")

@@ -8,8 +8,7 @@ token via the ``X-Entitlement-Token`` header to grant unlimited (Pro) access.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -21,7 +20,7 @@ class Entitlement(Base):
     __tablename__ = "entitlements"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     # The Play purchase token — the lookup key from the client.
     purchase_token: Mapped[str] = mapped_column(

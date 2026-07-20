@@ -1,5 +1,6 @@
 """Authentication dependencies for FastAPI routes."""
 
+import uuid
 from typing import Optional
 
 from fastapi import Depends, Header
@@ -10,6 +11,21 @@ from app.core.exceptions import AuthenticationError
 from app.core.security import decode_token
 from app.db.database import get_db
 from app.models.user import User
+
+
+def _parse_subject(user_id: object) -> Optional[uuid.UUID]:
+    """Convert a JWT ``sub`` (stored as a string) into a UUID.
+
+    Tokens carry the user id as a string; the ``Uuid`` column type expects a
+    real ``uuid.UUID`` on every dialect (Postgres native + SQLite char), so we
+    coerce here. Returns None when the value is missing or malformed.
+    """
+    if not user_id:
+        return None
+    try:
+        return uuid.UUID(str(user_id))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 async def get_current_user(
@@ -24,17 +40,18 @@ async def get_current_user(
 
     try:
         payload = decode_token(token)
-        user_id = payload.get("sub")
-        token_type = payload.get("type")
-
-        if not user_id or token_type != "access":
-            raise AuthenticationError("Invalid token")
-
     except Exception:
         raise AuthenticationError("Token expired or invalid")
 
+    if payload.get("type") != "access":
+        raise AuthenticationError("Invalid token")
+
+    user_uuid = _parse_subject(payload.get("sub"))
+    if user_uuid is None:
+        raise AuthenticationError("Invalid token")
+
     # Fetch user from database
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -61,10 +78,12 @@ async def get_optional_user(
     token = authorization[7:]
     try:
         payload = decode_token(token)
-        user_id = payload.get("sub")
-        if not user_id or payload.get("type") != "access":
+        if payload.get("type") != "access":
             return None
-        result = await db.execute(select(User).where(User.id == user_id))
+        user_uuid = _parse_subject(payload.get("sub"))
+        if user_uuid is None:
+            return None
+        result = await db.execute(select(User).where(User.id == user_uuid))
         user = result.scalar_one_or_none()
         return user if user and user.is_active else None
     except Exception:

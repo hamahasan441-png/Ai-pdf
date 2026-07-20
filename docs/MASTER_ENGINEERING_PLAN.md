@@ -287,14 +287,19 @@ on-device when offline.
 declaratively (name, icon, handler, entitlement) without touching core screens.
 
 ## 5.5 Testing
-- **Now:** a few Dart unit tests + backend `ruff`/`compileall` gate.
-- **Proposed:** backend pytest (auth, metering, endpoints) with a runner that
-  installs deps; Flutter widget/golden tests for the editor and export parity.
+- **Now:** a few Dart unit tests, plus a backend **pytest** suite
+  (`backend/tests/`) covering security (JWT + password + encryption), the AI
+  usage limiter, the full auth flow (register/login/refresh/me/change-password),
+  and AI endpoint metering (503 / 429 / Pro-bypass). Runs against in-memory
+  SQLite with the AI provider mocked — no network, no Postgres, no secrets.
+- **Proposed:** Flutter widget/golden tests for the editor and export parity;
+  broaden backend coverage to documents/billing/convert.
 
 ## 5.6 CI/CD
 - `.github/workflows/build-apk.yml` (Flutter test + APK).
-- `.github/workflows/backend-ci.yml` (ruff pyflakes + compileall — added).
-- **Proposed:** add `flutter analyze` + backend pytest jobs; release signing.
+- `.github/workflows/backend-ci.yml`: `static-checks` (ruff pyflakes +
+  compileall) **and** `tests` (pip install + pytest) — both added.
+- **Proposed:** add `flutter analyze`; release signing.
 
 ## 5.7 Play Store Readiness
 - **Proposed:** target latest `targetSdk`, release signing config, privacy

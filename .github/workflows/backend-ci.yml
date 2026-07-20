@@ -47,3 +47,26 @@ jobs:
       # Compile-smoke every module: guarantees there are no syntax errors.
       - name: py_compile all modules
         run: python -m compileall -q app
+
+  # Runtime test suite: installs deps and runs pytest against an in-memory
+  # SQLite DB with the AI provider mocked (no network, no Postgres, no secrets).
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: pytest -q
