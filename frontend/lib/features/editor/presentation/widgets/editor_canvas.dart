@@ -127,7 +127,34 @@ class EditorCanvas extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.memory(bytes, fit: BoxFit.fill),
+              Container(
+                color: Colors.white,
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  errorBuilder: (ctx, err, st) => Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text('IMG ERR: $err',
+                          style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    ),
+                  ),
+                ),
+              ),
+              // DIAGNOSTIC (temporary): byte count of the rendered page.
+              Positioned(
+                right: 2,
+                top: 2,
+                child: IgnorePointer(
+                  child: Container(
+                    color: const Color(0xAA000000),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    child: Text('bytes ${bytes.length}',
+                        style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 10)),
+                  ),
+                ),
+              ),
               CustomPaint(
                 painter: EditorCanvasPainter(
                   layer.strokes,
