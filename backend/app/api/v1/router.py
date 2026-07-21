@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1.ai import router as ai_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
+from app.api.v1.health_dashboard import router as health_dashboard_router
 from app.api.v1.convert import router as convert_router
 from app.api.v1.document_ai import router as document_ai_router
 from app.api.v1.document_compare import router as document_compare_router
@@ -37,3 +38,4 @@ api_router.include_router(extract_actions_router, tags=["Document AI"])
 api_router.include_router(text_layer_router, tags=["Document AI"])
 api_router.include_router(billing_router, prefix="/billing", tags=["Billing"])
 api_router.include_router(convert_router, prefix="/convert", tags=["Convert"])
+api_router.include_router(health_dashboard_router, tags=["System"])
