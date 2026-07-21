@@ -54,6 +54,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_value_prompt_
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
@@ -988,34 +989,44 @@ class _PickEditScreenState extends State<PickEditScreen> {
         ));
   }
 
+  // --- Inline text editing (P1) ---
+  TextAnnotation? _inlineEditing; // annotation currently being edited inline
+
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
-    final result = await showEditorTextDialog(
-      context,
-      isNew: isNew,
-      text: box.text,
-      size: box.size,
-      bold: box.bold,
-      italic: box.italic,
-      underline: box.underline,
-      fontFamily: box.fontFamily,
-      color: box.color,
-    );
-    setState(() {
-      final changed = _annotationEdit.applyTextEditResult(
-        _layer,
-        box,
-        result,
-        isNew: isNew,
-        syncDefaults: (updated) {
-          _textSize = updated.size;
-          _bold = updated.bold;
-          _color = updated.color;
-        },
-      );
-      if (changed) {
-        _hasUnsavedChanges = true;
+    // For NEW text boxes, use inline editing directly on the canvas.
+    // For existing text, also use inline (replaces the modal dialog).
+    if (isNew) {
+      // Add the annotation first so it's in the layer.
+      if (!_layer.items.contains(box)) {
+        _pushItem(box);
       }
+    }
+    setState(() {
+      _inlineEditing = box;
+      _selected = box;
+      _tool = EditTool.pan;
     });
+  }
+
+  void _commitInlineEdit() {
+    final editing = _inlineEditing;
+    if (editing == null) return;
+    setState(() {
+      _inlineEditing = null;
+      if (editing.text.isEmpty) {
+        // Empty text → remove the annotation (user cleared it).
+        _layer.items.remove(editing);
+      }
+      _hasUnsavedChanges = true;
+      _schedulePersist();
+    });
+  }
+
+  void _onInlineTextChanged(String newText) {
+    final editing = _inlineEditing;
+    if (editing == null) return;
+    editing.text = newText;
+    _hasUnsavedChanges = true;
   }
 
   /// Properties editor for a selected shape (E3): stroke width, color,
@@ -1213,6 +1224,53 @@ class _PickEditScreenState extends State<PickEditScreen> {
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
+        inlineOverlay: _inlineEditing != null
+            ? Positioned.fill(
+                bottom: 96,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final editing = _inlineEditing!;
+                    final canvasW = constraints.maxWidth;
+                    final canvasH = constraints.maxHeight;
+                    const aspect = 1 / 1.414;
+                    double pageW, pageH;
+                    if (canvasW / canvasH > aspect) {
+                      pageH = canvasH;
+                      pageW = canvasH * aspect;
+                    } else {
+                      pageW = canvasW;
+                      pageH = canvasW / aspect;
+                    }
+                    final offsetX = (canvasW - pageW) / 2;
+                    final offsetY = (canvasH - pageH) / 2;
+                    final left = offsetX + editing.pos.dx * pageW;
+                    final top = offsetY + editing.pos.dy * pageH;
+                    return Stack(
+                      children: [
+                        // Tap outside to dismiss inline editor.
+                        Positioned.fill(
+                          child: GestureDetector(
+                            onTap: _commitInlineEdit,
+                            behavior: HitTestBehavior.translucent,
+                          ),
+                        ),
+                        Positioned(
+                          left: left,
+                          top: top,
+                          width: (pageW * (1 - editing.pos.dx)).clamp(50.0, pageW),
+                          child: InlineTextEditor(
+                            annotation: editing,
+                            canvasSize: Size(pageW, pageH),
+                            onDone: _commitInlineEdit,
+                            onTextChanged: _onInlineTextChanged,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              )
+            : null,
         documentViewport: EditorDocumentViewport(
           panEnabled: _tool == EditTool.pan,
           scaleEnabled: _tool == EditTool.pan,
