@@ -20,6 +20,7 @@ from app.api.v1.form_validate import router as form_validate_router
 from app.api.v1.forms import router as forms_router
 from app.api.v1.multi_doc_chat import router as multi_doc_router
 from app.api.v1.profile import router as profile_router
+from app.api.v1.suggest_edits import router as suggest_edits_router
 from app.api.v1.suggest_questions import router as suggest_questions_router
 from app.api.v1.text_layer import router as text_layer_router
 
@@ -35,6 +36,7 @@ api_router.include_router(forms_router, tags=["Forms"])
 api_router.include_router(form_validate_router, tags=["Forms"])
 api_router.include_router(document_outline_router, tags=["Document AI"])
 api_router.include_router(suggest_questions_router, tags=["Document AI"])
+api_router.include_router(suggest_edits_router, tags=["Document AI"])
 api_router.include_router(multi_doc_router, tags=["Document AI"])
 api_router.include_router(extract_dates_router, tags=["Document AI"])
 api_router.include_router(extract_actions_router, tags=["Document AI"])
