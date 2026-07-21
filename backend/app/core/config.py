@@ -75,6 +75,8 @@ class Settings(BaseSettings):
 
     # Managed AI metering (free tier). Pro users (verified purchase) are unlimited.
     AI_FREE_DAILY_LIMIT: int = 15
+    # Basic tier (intermediate plan between free and Pro). Pro remains unlimited.
+    AI_BASIC_DAILY_LIMIT: int = 100
     # Metering backend for the free-tier counter:
     #   "auto"   -> Redis when REDIS_URL is reachable, else in-memory (default)
     #   "memory" -> always in-memory (single instance / dev / tests)

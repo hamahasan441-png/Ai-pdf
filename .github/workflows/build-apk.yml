@@ -29,6 +29,10 @@ jobs:
         working-directory: frontend
         run: flutter pub get
 
+      - name: Run flutter analyze (zero-warning gate)
+        working-directory: frontend
+        run: flutter analyze --no-fatal-infos
+
       - name: Run unit tests
         working-directory: frontend
         run: flutter test --reporter expanded
@@ -50,6 +54,24 @@ jobs:
           flutter-version: '3.29.0'
           channel: stable
           cache: true
+
+      - name: Decode release keystore (if secrets available)
+        working-directory: frontend/android
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
+          cat > key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "Release keystore decoded — build will be signed."
 
       - name: Generate missing platform files
         working-directory: frontend
