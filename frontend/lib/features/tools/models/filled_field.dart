@@ -37,6 +37,13 @@ class FilledField {
   bool get isCheck => type == 'check';
   bool get isSignature => type == 'signature';
 
+  /// Backwards-compatible aliases: some call sites (e.g. the smart-fill save
+  /// step in pick_edit_screen) refer to a field's [label] and [value]. These
+  /// map onto the canonical [field] (the label) and [text] (the value) so both
+  /// naming conventions compile against the same model.
+  String get label => field;
+  String get value => text;
+
   /// Copy with an overridden value (used after the user edits it in review).
   FilledField withText(String newText) => FilledField(
       page: page,
