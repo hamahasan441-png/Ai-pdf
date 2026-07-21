@@ -82,7 +82,7 @@ class PickEditScreen extends StatefulWidget {
 }
 
 class _PickEditScreenState extends State<PickEditScreen> {
-  static const int _renderMaxEdge = 1400;
+  static const int _renderMaxEdge = 2400;
   static const int _maxCachedPages = 3;
 
   pdfx.PdfDocument? _doc;
