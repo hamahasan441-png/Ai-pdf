@@ -67,40 +67,18 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
             pageH = maxW / aspect;
           }
 
-          return Stack(
-            children: [
-              InteractiveViewer(
-                transformationController: _controller,
-                maxScale: 5,
-                panEnabled: widget.panEnabled,
-                scaleEnabled: widget.scaleEnabled,
-                child: Center(
-                  child: SizedBox(
-                    width: pageW,
-                    height: pageH,
-                    child: RepaintBoundary(child: widget.child),
-                  ),
-                ),
+          return InteractiveViewer(
+            transformationController: _controller,
+            maxScale: 5,
+            panEnabled: widget.panEnabled,
+            scaleEnabled: widget.scaleEnabled,
+            child: Center(
+              child: SizedBox(
+                width: pageW,
+                height: pageH,
+                child: RepaintBoundary(child: widget.child),
               ),
-              // DIAGNOSTIC (temporary): shows the viewport constraints and the
-              // computed page box size, so a single screenshot reveals whether
-              // the canvas has zero layout size.
-              Positioned(
-                top: 4,
-                left: 4,
-                child: IgnorePointer(
-                  child: Container(
-                    color: const Color(0xAA000000),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    child: Text(
-                      'c ${maxW.toStringAsFixed(0)}x${maxH.toStringAsFixed(0)} | '
-                      'box ${pageW.toStringAsFixed(0)}x${pageH.toStringAsFixed(0)}',
-                      style: const TextStyle(color: Color(0xFFFFEB3B), fontSize: 11),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           );
         },
       ),
