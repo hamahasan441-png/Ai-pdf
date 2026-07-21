@@ -8,7 +8,9 @@ from app.api.v1.billing import router as billing_router
 from app.api.v1.convert import router as convert_router
 from app.api.v1.document_ai import router as document_ai_router
 from app.api.v1.document_compare import router as document_compare_router
+from app.api.v1.document_outline import router as document_outline_router
 from app.api.v1.documents import router as documents_router
+from app.api.v1.form_validate import router as form_validate_router
 from app.api.v1.forms import router as forms_router
 from app.api.v1.multi_doc_chat import router as multi_doc_router
 from app.api.v1.profile import router as profile_router
@@ -23,6 +25,8 @@ api_router.include_router(ai_router, prefix="/ai", tags=["Managed AI"])
 api_router.include_router(document_ai_router, tags=["Document AI"])
 api_router.include_router(document_compare_router, tags=["Document AI"])
 api_router.include_router(forms_router, tags=["Forms"])
+api_router.include_router(form_validate_router, tags=["Forms"])
+api_router.include_router(document_outline_router, tags=["Document AI"])
 api_router.include_router(suggest_questions_router, tags=["Document AI"])
 api_router.include_router(multi_doc_router, tags=["Document AI"])
 api_router.include_router(billing_router, prefix="/billing", tags=["Billing"])
