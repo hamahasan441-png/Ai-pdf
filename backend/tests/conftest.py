@@ -29,6 +29,7 @@ from app.main import app
 # Import models so they register on Base.metadata before create_all().
 from app.models import document as _document  # noqa: F401
 from app.models import entitlement as _entitlement  # noqa: F401
+from app.models import team as _team  # noqa: F401
 from app.models import user as _user  # noqa: F401
 from app.models import api_key as _api_key  # noqa: F401
 from app.models import webhook as _webhook  # noqa: F401
@@ -79,12 +80,16 @@ async def client(session_maker):
 
 @pytest.fixture(autouse=True)
 def reset_limiter():
-    """Reset the in-memory free-tier counter around each test."""
+    """Reset the free-tier counter around each test and pin the in-memory
+    metering backend so the suite never depends on a live Redis server."""
     from app.services.ai import usage_limiter
 
+    original = settings.AI_METER_BACKEND
+    settings.AI_METER_BACKEND = "memory"
     usage_limiter.reset()
     yield
     usage_limiter.reset()
+    settings.AI_METER_BACKEND = original
 
 
 @pytest.fixture

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.admin import router as admin_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.auth import router as auth_router
@@ -9,6 +10,8 @@ from app.api.v1.billing import router as billing_router
 from app.api.v1.chat_history import router as chat_history_router
 from app.api.v1.health_dashboard import router as health_dashboard_router
 from app.api.v1.convert import router as convert_router
+from app.api.v1.plugins import router as plugins_router
+from app.api.v1.teams import router as teams_router
 from app.api.v1.document_ai import router as document_ai_router
 from app.api.v1.document_compare import router as document_compare_router
 from app.api.v1.document_outline import router as document_outline_router
@@ -19,6 +22,7 @@ from app.api.v1.form_validate import router as form_validate_router
 from app.api.v1.forms import router as forms_router
 from app.api.v1.multi_doc_chat import router as multi_doc_router
 from app.api.v1.profile import router as profile_router
+from app.api.v1.suggest_edits import router as suggest_edits_router
 from app.api.v1.suggest_questions import router as suggest_questions_router
 from app.api.v1.text_layer import router as text_layer_router
 from app.api.v1.webhooks import router as webhooks_router
@@ -35,6 +39,7 @@ api_router.include_router(forms_router, tags=["Forms"])
 api_router.include_router(form_validate_router, tags=["Forms"])
 api_router.include_router(document_outline_router, tags=["Document AI"])
 api_router.include_router(suggest_questions_router, tags=["Document AI"])
+api_router.include_router(suggest_edits_router, tags=["Document AI"])
 api_router.include_router(multi_doc_router, tags=["Document AI"])
 api_router.include_router(extract_dates_router, tags=["Document AI"])
 api_router.include_router(extract_actions_router, tags=["Document AI"])
@@ -42,6 +47,9 @@ api_router.include_router(text_layer_router, tags=["Document AI"])
 api_router.include_router(billing_router, prefix="/billing", tags=["Billing"])
 api_router.include_router(convert_router, prefix="/convert", tags=["Convert"])
 api_router.include_router(health_dashboard_router, tags=["System"])
+api_router.include_router(plugins_router, tags=["Plugins"])
+api_router.include_router(teams_router, prefix="/teams", tags=["Teams"])
+api_router.include_router(admin_router, tags=["Admin"])
 api_router.include_router(api_keys_router, tags=["API Keys"])
 api_router.include_router(webhooks_router, tags=["Webhooks"])
 api_router.include_router(chat_history_router, tags=["Chat History"])

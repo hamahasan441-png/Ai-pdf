@@ -246,8 +246,15 @@ On-device BM25 today; **Proposed:** in-document semantic search and
 cross-document search over the local library.
 
 ## 4.8 AI Editing
-Backend `document_ai` supports rewrite/translate/extract. **Proposed:**
-suggest-edits UX where the user reviews and accepts AI changes; never auto-apply.
+Backend `document_ai` supports rewrite/translate/extract.
+**Done (P6):** review-first **suggest-edits** — `POST /api/v1/document-ai/suggest-edits`
+(`api/v1/suggest_edits.py`) returns a list of discrete, reviewable suggestions
+(each with the exact `original` span, `suggestion`, `reason`, and `category`)
+instead of a whole rewritten blob, so the client can present accept/reject cards
+and apply only what the user approves. The server applies nothing and stores
+nothing; metering and the Pro bypass match the other Document AI endpoints. The
+response parser tolerates both `{"edits": [...]}` and bare-array model output and
+drops no-op/malformed suggestions. **Proposed:** inline anchored diffs in-canvas.
 
 ## 4.9 Multi-document Reasoning
 **Proposed:** index multiple documents in the BM25 store and answer questions
@@ -274,8 +281,13 @@ persisted server-side beyond the request lifecycle.
 - Free tier with a shared daily AI cap (`AI_FREE_DAILY_LIMIT`), Pro = unlimited,
   verified via purchase token (`services/ai/usage_limiter.is_pro` +
   `models/entitlement.py`, `services/billing/play_verifier.py`).
-- **Proposed:** back the in-memory counter with Redis for multi-instance; server
-  receipt validation hardening.
+- **Done (P5):** the free-tier counter is now backed by a pluggable metering
+  backend (`services/ai/usage_backend.py`) — `AI_METER_BACKEND=auto|memory|redis`.
+  The Redis backend uses an atomic `INCR` + daily `EXPIRE` keyed identically so
+  metering is correct across multiple instances, and fails **closed to
+  in-memory** on a cache outage (AI never hard-fails on Redis). The Pro-bypass
+  rule is unchanged.
+- **Proposed:** server receipt validation hardening; per-plan quotas.
 
 ## 5.3 Offline-first Strategy
 Full offline toolkit (`features/tools/`): compress, convert, split/merge,
@@ -283,8 +295,14 @@ rotate, OCR, stamps — plus on-device OCR + BM25. AI degrades gracefully to
 on-device when offline.
 
 ## 5.4 Plugin Architecture
-**Proposed:** a tool registry so new PDF tools and AI actions register
-declaratively (name, icon, handler, entitlement) without touching core screens.
+**Done (P5):** a declarative tool/AI-action registry
+(`services/plugins/registry.py`) where each capability describes itself once
+(id, name, description, kind, category, icon, route, entitlement, enabled, tags).
+The catalogue is served read-only at `GET /api/v1/plugins` (with
+kind/category/entitlement filters) and `GET /api/v1/plugins/{id}`, so the client
+can render tools dynamically and gate features by entitlement in one place. The
+registry is metadata-only; execution stays in the existing endpoints, keeping
+the change additive. **Proposed:** third-party/remote plugins.
 
 ## 5.5 Testing
 - **Now:** a few Dart unit tests, plus a backend **pytest** suite
@@ -307,8 +325,21 @@ declaratively (name, icon, handler, entitlement) without touching core screens.
   (`core/observability/`) wired to a provider.
 
 ## 5.8 Enterprise Features
-**Proposed:** SSO, team profiles, shared templates, audit export, on-prem
-managed-AI proxy, and admin usage dashboards.
+**Done (P5):**
+- **Teams** with role-based membership (owner/admin/member) —
+  `models/team.py`, `api/v1/teams.py`. Create/list/detail, add/remove members
+  (managers only; the owner cannot be removed), with non-members getting 404
+  (existence is not leaked).
+- **Shared templates** owned by a team (`SharedTemplate`) — list/create/delete,
+  where delete is restricted to the creator or a team manager.
+- **Audit export** — team-scoped, append-only `TeamAuditLog` records
+  member/template events; owners/admins export the trail at
+  `GET /api/v1/teams/{id}/audit`.
+- **Admin usage dashboard** — `GET /api/v1/admin/usage` (aggregate users, teams,
+  members, templates, active entitlements, metering config), gated by a shared
+  secret (`ADMIN_API_TOKEN` via the `X-Admin-Token` header; 503 when unset).
+
+**Proposed:** SSO, per-team AI quotas/billing, and an on-prem managed-AI proxy.
 
 ## 5.9 Long-term Roadmap
 1. Ship P0 editor foundation (history + serialisation + persistence).
