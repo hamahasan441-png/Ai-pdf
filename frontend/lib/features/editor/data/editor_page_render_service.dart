@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -21,21 +22,60 @@ class EditorPageRenderService {
     try {
       final longEdge = page.width > page.height ? page.width : page.height;
       final scale = longEdge > renderMaxEdge ? renderMaxEdge / longEdge : 1.0;
-      final rendered = await page.render(
-        // pdfx can return an unusable JPEG buffer on some Android PDFium
-        // versions (the editor then shows a completely empty canvas even
-        // though the document and page count loaded successfully). PNG is a
-        // little larger, but is lossless and consistently decodes on Android.
-        width: (page.width * scale).roundToDouble(),
-        height: (page.height * scale).roundToDouble(),
-        format: pdfx.PdfPageImageFormat.png,
-        backgroundColor: '#FFFFFF',
-      );
-      if (rendered != null) {
-        pageCache[index] = rendered.bytes;
+      final w = (page.width * scale).roundToDouble();
+      final h = (page.height * scale).roundToDouble();
+
+      // Some Android PDFium builds return an UNUSABLE image buffer for one of
+      // the pixel formats — the editor then shows a completely blank/dark canvas
+      // even though the document and page count loaded fine. Rather than betting
+      // on a single format (JPEG *or* PNG), render defensively: try PNG, fall
+      // back to JPEG, and only cache bytes that actually DECODE to a real image.
+      // This guarantees the viewer never caches a buffer that renders as nothing
+      // and works regardless of which format a given device mishandles.
+      final bytes =
+          await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.png) ??
+              await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.jpeg);
+      if (bytes != null) {
+        pageCache[index] = bytes;
       }
     } finally {
       await page.close();
+    }
+  }
+
+  /// Render [page] at [w]x[h] in [format]. Returns the bytes ONLY if they are
+  /// non-empty and decode to a valid, non-zero image; otherwise returns null so
+  /// the caller can fall back to another format.
+  Future<Uint8List?> _renderValidated(
+    pdfx.PdfPage page,
+    double w,
+    double h,
+    pdfx.PdfPageImageFormat format,
+  ) async {
+    try {
+      final rendered = await page.render(
+        width: w,
+        height: h,
+        format: format,
+        backgroundColor: '#FFFFFF',
+      );
+      final bytes = rendered?.bytes;
+      if (bytes == null || bytes.isEmpty) return null;
+
+      // Confirm the bytes are genuinely decodable (guards against a non-empty
+      // but corrupt/unusable buffer that would render as a blank canvas).
+      final codec = await ui.instantiateImageCodec(bytes);
+      try {
+        final frame = await codec.getNextFrame();
+        final image = frame.image;
+        final valid = image.width > 0 && image.height > 0;
+        image.dispose();
+        return valid ? bytes : null;
+      } finally {
+        codec.dispose();
+      }
+    } catch (_) {
+      return null;
     }
   }
 

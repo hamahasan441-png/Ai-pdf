@@ -7,6 +7,7 @@ SUMMARIZE = "/api/v1/document-ai/summarize"
 TRANSLATE = "/api/v1/document-ai/translate"
 EXTRACT = "/api/v1/document-ai/extract"
 CHAT = "/api/v1/document-ai/chat"
+ANALYZE = "/api/v1/document-ai/analyze"
 FIX_OCR = "/api/v1/document-ai/fix-ocr"
 
 
@@ -44,6 +45,20 @@ async def test_document_chat_success(client, mock_ai):
     )
     assert resp.status_code == 200
     assert resp.json()["answer"] == "MOCK_REPLY"
+
+
+async def test_analyze_returns_structured_json(client, mock_ai):
+    resp = await client.post(ANALYZE, json={"document_text": "Invoice #42, total 100 USD, due 2026-01-01"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["analysis"] == {"mock": True, "field": "value"}
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
+
+
+async def test_analyze_503_when_not_configured(client, monkeypatch):
+    monkeypatch.setattr(settings, "AI_API_KEY", "")
+    resp = await client.post(ANALYZE, json={"document_text": "hello"})
+    assert resp.status_code == 503
 
 
 async def test_fix_ocr_success(client, mock_ai):

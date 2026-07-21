@@ -97,6 +97,21 @@ class ExtractDataResponse(BaseModel):
     remaining: int = -1
 
 
+class AnalyzeRequest(BaseModel):
+    document_text: str = Field(..., max_length=50000)
+    language: str = "auto"
+
+
+class AnalyzeResponse(BaseModel):
+    """One structured 'understand this document' result.
+
+    Powers an Insights panel and seeds the chat's suggested questions. Distinct
+    from summarize/extract: it returns the full structured view in one call.
+    """
+    analysis: dict
+    remaining: int = -1
+
+
 class FixOcrRequest(BaseModel):
     text: str = Field(..., max_length=20000,
                       description="Raw OCR output that may contain recognition errors")
@@ -285,6 +300,50 @@ async def extract_data(
         max_tokens=4096,
     )
     return ExtractDataResponse(data=result, remaining=remaining)
+
+
+@router.post("/analyze", response_model=AnalyzeResponse)
+async def analyze_document(
+    req: AnalyzeRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Structured document intelligence: type, summary, entities, actions,
+    and suggested questions — returned as one JSON object for an Insights panel.
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    lang_hint = f" Respond in {req.language}." if req.language != "auto" else ""
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a document intelligence engine. Analyze the document and "
+                "return a single JSON object with EXACTLY these keys:\n"
+                '  "document_type": short label (e.g. invoice, contract, form, letter),\n'
+                '  "language": detected language name,\n'
+                '  "summary": 2-4 sentence plain summary,\n'
+                '  "key_points": array of short strings,\n'
+                '  "entities": {"people": [], "organizations": [], "dates": [], '
+                '"amounts": [], "ids": []},\n'
+                '  "action_items": array of short strings (may be empty),\n'
+                '  "suggested_questions": array of 3-5 questions a user might ask.\n'
+                f"Base everything ONLY on the document content.{lang_hint} "
+                "Respond with valid JSON only."
+            ),
+        },
+        {"role": "user", "content": f"Document:\n{req.document_text[:12000]}"},
+    ]
+
+    result = await ai_provider.chat_completion_json(
+        messages=messages,
+        use_advanced=True,
+        max_tokens=4096,
+    )
+    return AnalyzeResponse(analysis=result, remaining=remaining)
 
 
 @router.post("/fix-ocr", response_model=FixOcrResponse)
