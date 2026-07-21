@@ -1163,7 +1163,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       child: Scaffold(
       backgroundColor: const Color(0xFF2B2B2B),
       appBar: EditorTopBar(
-        title: _fileName ?? l10n.toolEditor,
+        // DIAGNOSTIC build marker — confirms the newly-built APK is installed.
+        title: 'DIAG ${_fileName ?? l10n.toolEditor}',
         currentPage: _current,
         pageCount: _pageCount,
         hasDocument: bytes != null,
