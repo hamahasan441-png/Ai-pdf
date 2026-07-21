@@ -246,8 +246,15 @@ On-device BM25 today; **Proposed:** in-document semantic search and
 cross-document search over the local library.
 
 ## 4.8 AI Editing
-Backend `document_ai` supports rewrite/translate/extract. **Proposed:**
-suggest-edits UX where the user reviews and accepts AI changes; never auto-apply.
+Backend `document_ai` supports rewrite/translate/extract.
+**Done (P6):** review-first **suggest-edits** — `POST /api/v1/document-ai/suggest-edits`
+(`api/v1/suggest_edits.py`) returns a list of discrete, reviewable suggestions
+(each with the exact `original` span, `suggestion`, `reason`, and `category`)
+instead of a whole rewritten blob, so the client can present accept/reject cards
+and apply only what the user approves. The server applies nothing and stores
+nothing; metering and the Pro bypass match the other Document AI endpoints. The
+response parser tolerates both `{"edits": [...]}` and bare-array model output and
+drops no-op/malformed suggestions. **Proposed:** inline anchored diffs in-canvas.
 
 ## 4.9 Multi-document Reasoning
 **Proposed:** index multiple documents in the BM25 store and answer questions
