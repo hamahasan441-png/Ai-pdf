@@ -57,8 +57,6 @@ jobs:
           flutter create --project-name ai_pdf --org com.aidocassistant --platforms android . 2>&1 | tee -a build.log || true
           git checkout -- lib/ pubspec.yaml analysis_options.yaml || true
           git checkout -- android/ || true
-          # This project uses Groovy Gradle files; remove any generated Kotlin
-          # DSL files so we never end up with both (which breaks Gradle).
           find android -name "*.gradle.kts" -delete 2>/dev/null || true
 
       - name: Install dependencies
@@ -71,12 +69,17 @@ jobs:
         working-directory: frontend
         run: |
           set -o pipefail
-          # --build-number drives versionCode (build.gradle reads flutter.versionCode),
-          # so every CI build produces a unique, increasing Play-compatible versionCode.
           flutter build apk --release \
             --build-number=${{ github.run_number }} \
             --dart-define=OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
             2>&1 | tee -a build.log
+
+      # Kill Gradle daemons spawned during the build so they don't linger as
+      # orphan Java processes (triggers CI "Cleaning up orphan processes" warning).
+      - name: Stop Gradle daemons
+        if: always()
+        working-directory: frontend/android
+        run: ./gradlew --stop 2>/dev/null || true
 
       # Runs whenever any previous step failed, so the exact error is always the
       # LAST thing in the log and easy to copy — regardless of which step broke.
@@ -96,7 +99,7 @@ jobs:
       # Keep the full log as an artifact for deeper inspection if needed.
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: build-log
           path: frontend/build.log
@@ -107,7 +110,7 @@ jobs:
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/AI-PDF.apk
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
