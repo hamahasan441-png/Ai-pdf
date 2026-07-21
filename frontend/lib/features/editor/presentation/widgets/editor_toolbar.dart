@@ -23,6 +23,8 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onPlaceSignatureDate;
   final VoidCallback onInsertProfileField;
   final VoidCallback onRotatePage;
+  final VoidCallback onAddStamp;
+  final VoidCallback onAddImage;
   final VoidCallback onOpen;
   final ValueChanged<Color> onColorChanged;
   final ValueChanged<double> onStrokeChanged;
@@ -50,6 +52,8 @@ class EditorToolbar extends StatelessWidget {
     required this.onPlaceSignatureDate,
     required this.onInsertProfileField,
     required this.onRotatePage,
+    required this.onAddStamp,
+    required this.onAddImage,
     required this.onOpen,
     required this.onColorChanged,
     required this.onStrokeChanged,
@@ -96,6 +100,8 @@ class EditorToolbar extends StatelessWidget {
                   _actionBtn(Icons.gesture, l10n.toolSign, onAddSignature, cs),
                   _actionBtn(Icons.event_available, l10n.signatureDate, onPlaceSignatureDate, cs),
                   _actionBtn(Icons.badge_outlined, l10n.myProfile, onInsertProfileField, cs),
+                  _actionBtn(Icons.stamp, 'Stamp', onAddStamp, cs),
+                  _actionBtn(Icons.image_outlined, 'Image', onAddImage, cs),
                   _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
                   _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
                   _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox, cs),
