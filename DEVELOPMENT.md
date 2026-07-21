@@ -1,197 +1,222 @@
-# AI PDF — Development Documentation
+# Pdoczy — Developer Guide
 
-## Overview
+## Architecture overview
 
-**AI PDF** is an Android-first Flutter app. Its two pillars:
-
-1. **Offline file tools** — JPG→PDF, compress, merge, split, a pro PDF editor, and page organizer. All run **on-device**; no network, nothing uploaded.
-2. **On-device AI** — "Understand" (chat with a document) and "Fill Form" (place answers onto the real form). The app calls **OpenRouter** (OpenAI-compatible) **directly from the phone** using the user's own API key, stored encrypted on device.
-
-A FastAPI backend exists in `backend/` for account-based flows (auth, encrypted profiles, server-side pipeline) but is **optional** — the shipped on-device experience does not require it.
-
----
-
-## Architecture (on-device path)
+Pdoczy is a **Flutter Android app** with an optional **FastAPI backend**. The app is designed offline-first: all PDF tools and the on-device AI work without any server. The backend adds managed AI (no user key needed), server-side billing verification, and PDF→Office conversion.
 
 ```
-┌──────────────────────────────────────────────┐
-│              Flutter Android App               │
-│   Material 3 · Riverpod · GoRouter · Dio       │
-│                                                │
-│  Offline tools:  pdfx (render) + pdf (create)  │
-│                  + image (compress)            │
-│  AI tools:       Dio → OpenRouter API          │
-│  Secrets:        flutter_secure_storage        │
-└───────────────┬───────────────────┬───────────┘
-                │ (AI only)          │ (optional account flows)
-        ┌───────┴────────┐   ┌───────┴───────────┐
-        │  OpenRouter    │   │  FastAPI backend  │
-        │  (user's key)  │   │  (optional/legacy)│
-        └────────────────┘   └───────────────────┘
-```
-
-The AI endpoint is configurable: OpenRouter (online) or any OpenAI-compatible server, including a local/LAN one for offline AI.
-
----
-
-## Frontend tech stack
-
-| Concern | Package | Notes |
-|--------|---------|-------|
-| State | flutter_riverpod ^2.4.9 | |
-| Routing | go_router ^13.2.0 | |
-| HTTP | dio ^5.4.0 | AI + optional backend |
-| Secure storage | flutter_secure_storage ^9.0.0 | OpenRouter key (encrypted) |
-| Prefs | shared_preferences ^2.2.2 | model, endpoint, recents |
-| Paths | path_provider ^2.1.2 | output files |
-| PDF render | pdfx ^2.6.0 | PDFium; capped-resolution rendering |
-| PDF create | pdf ^3.11.1 | export/flatten |
-| Images | image ^4.3.0 | compress/downscale (pure Dart) |
-| File pick | file_picker ^8.1.6 | SAF (no runtime permission) |
-| Image pick | image_picker ^1.1.2 | camera/photos |
-| Share | share_plus ^10.1.2 | |
-| Permissions | permission_handler ^11.3.1 | startup prompt (plugins also self-request) |
-| i18n | intl ^0.19.0 | date formatting |
-
-**Android toolchain (committed in `frontend/android/`):** AGP 8.7.0, Gradle 8.10.2, Kotlin 1.9.24, compileSdk 35, minSdk 24, targetSdk 34, `desugar_jdk_libs:2.0.4`, multidex on, minify/shrink **off**. Namespace `com.aidocassistant.app`. CI uses **Flutter 3.29.0** (required by pdfx 2.9.x, which uses the `SurfaceProducer.Callback.onSurfaceCleanup` API introduced in Flutter 3.29).
-
----
-
-## Project structure (frontend)
-
-```
-frontend/lib/
-├── main.dart                         # entry; global error boundary; loads AppSettings
-├── core/
-│   ├── config/
-│   │   ├── app_config.dart           # endpoints, model catalog, auto-router constants
-│   │   ├── app_settings.dart         # runtime settings: AI key (secure), model, endpoint, base URL
-│   │   └── router.dart               # GoRouter routes
-│   ├── constants/app_constants.dart
-│   ├── network/
-│   │   ├── api_client.dart           # Dio + auth interceptor (optional backend)
-│   │   └── openrouter_service.dart   # on-device AI: chat(), ask(), auto model routing, errors
-│   ├── services/
-│   │   ├── permission_service.dart   # storage/photos/camera prompt
-│   │   └── recent_files_service.dart # persisted recent files (ValueNotifier)
-│   └── theme/app_theme.dart
-└── features/
-    ├── home/presentation/home_screen.dart        # dashboard, quick actions, recents, app-bar: key/history/profile
-    ├── tools/
-    │   ├── models/filled_field.dart              # AI form-fill value + position (tolerant JSON parse)
-    │   ├── services/offline_pdf_service.dart     # merge/split/compress/jpg→pdf (capped rendering)
-    │   ├── services/output_actions.dart          # Save (SAF) / Share / mirror to "AI PDF" folder
-    │   ├── widgets/result_sheet.dart             # Preview/Save/Share sheet + FilePreviewScreen
-    │   └── presentation/
-    │       ├── tools_screen.dart                 # tools hub (Offline / AI sections)
-    │       ├── jpg_to_pdf_screen.dart
-    │       ├── compress_screen.dart
-    │       ├── pdf_tools_screen.dart             # merge / split
-    │       ├── pick_edit_screen.dart             # pro editor (see below)
-    │       └── organize_pages_screen.dart        # reorder/rotate/delete/merge pages
-    ├── ai/presentation/ai_chat_screen.dart       # Understand + Fill Form chat (mode enum)
-    ├── settings/presentation/ai_settings_screen.dart  # key/model/endpoint + Test
-    ├── recent/presentation/recent_files_screen.dart
-    ├── auth/…  home/…  upload/…  document/…  editor/…  profile/…   # account-based / legacy
+┌────────────────────────────────────────────────────────────────┐
+│                    Flutter Android App                          │
+│  Material 3 · Riverpod · GoRouter · 4 locales (en/es/ar/de)   │
+│                                                                │
+│  ┌─────────────┐  ┌────────────────┐  ┌────────────────────┐  │
+│  │ Offline PDF  │  │ On-device AI   │  │ Editor (modular)   │  │
+│  │ Tools (18)   │  │ OCR + BM25 RAG │  │ 25+ services       │  │
+│  │ pdfx + pdf   │  │ ML Kit + Dart  │  │ domain/data/app/ui │  │
+│  └─────────────┘  └───────┬────────┘  └────────────────────┘  │
+│                            │ AI queries                          │
+│  ┌─────────────────────────┼────────────────────────────────┐  │
+│  │      OpenRouterService  │  (direct, user's key)          │  │
+│  │      OR managed backend │  (server key, metered)         │  │
+│  └─────────────────────────┼────────────────────────────────┘  │
+└────────────────────────────┼───────────────────────────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │     FastAPI Backend          │
+              │  (optional / managed AI)     │
+              │                             │
+              │  Auth · Document AI (8 EP)  │
+              │  Forms · Billing · Convert  │
+              │  Usage limiter · Entitle.   │
+              │  PostgreSQL · Redis         │
+              └─────────────────────────────┘
 ```
 
 ---
 
-## On-device AI (`openrouter_service.dart`)
+## Frontend architecture
 
-- `chat(messages, {model})` — OpenAI-style multi-turn; images attached as data URLs on the first user turn so vision models can "see" pages.
-- **Auto routing:** model `'auto'` (default) resolves to a free **vision** model when the request has images, else a strong free **text** model.
-- **Fallback:** on a model-unavailable error, retries once with a known-good free model matching the request (vision/text).
-- `lastModelUsed` records the resolved slug (shown by Settings → Test).
-- Errors are mapped to friendly messages (no key / 401 / 402 credits / 429 rate limit / 400-404 model / 5xx / timeouts / offline).
+### State management
+- **Riverpod** (`flutter_riverpod`) for DI and reactive state
+- `EditorController` (StateNotifier) manages editor lifecycle (loading, page, export, dirty)
+- `SubscriptionController` manages entitlements (Pro/free/trial)
 
-Model catalog and constants live in `app_config.dart` (`aiModels`, `autoModel`, `autoVisionModel`, `autoTextModel`, `defaultAiModel`). The key is read via `AppSettings.openRouterKey()` (secure storage first, then optional `--dart-define` build value).
+### Routing
+- **GoRouter** with flat route table in `core/config/router.dart`
+- 25+ routes covering tools, AI, editor, settings, profile, subscription
 
-### Form filling (auto-place)
-`ai_chat_screen.dart` (Fill Form mode) collects info by chat, then **"Place answers on the form"** asks the AI for strict JSON `[{page,x,y,text}]`, parsed by `FilledField.tryParse` (tolerant of percent-vs-fraction, missing fields), and opens `PickEditScreen(initialPath, initialFields)` with the values dropped as editable text boxes on the correct pages.
+### Editor (the core product)
+The editor lives in `features/editor/` with clean-architecture layers:
+
+```
+features/editor/
+├── domain/
+│   ├── entities/       annotation.dart, page_layer.dart, detected_field.dart, editor_tool.dart
+│   └── services/       annotation_bounds_service.dart, selection_service.dart
+├── data/               25 stateless service classes (render, export, OCR, field input,
+│                       hit-test, canvas interaction, smart fill, signatures, ...)
+├── application/        EditorController + EditorState (StateNotifier)
+└── presentation/
+    └── widgets/        EditorCanvas, EditorToolbar, EditorTopBar, overlays, dialogs, sheets
+```
+
+**Key design decisions:**
+- All coordinates are **normalized 0..1** (position relative to page size)
+- Font size is stored in **PDF points (pt)** with fields for RTL, rotation, line-height
+- Annotations have **stable IDs** (UUID-style) for safe undo/selection/clipboard
+- `PageLayer` holds `items` (annotations) + `redo` stack per page
+- `AnnotationDraw` is shared between the on-screen painter AND the export compositor → what you see is what you export
+- Render is **JPEG** at capped resolution (proven reliable across Android PDFium builds)
+- `EditorDocumentViewport` is a **StatefulWidget** owning a persistent `TransformationController` (prevents transform reset on parent rebuilds)
+- The parent `Stack` uses `StackFit.expand` (required because all children are `Positioned`)
+
+### Smart Form Filler
+- On-device field detection: `ocr_field_detection_service.dart` (ML Kit OCR + glyph/shape/keyword heuristics)
+- Field ontology: `features/tools/services/form_ontology.dart` (100+ labels, 12+ languages, OCR-tolerant diacritic folding)
+- Profile matching: `profile_field_matcher.dart` + `smart_form_filler.dart` (multi-signal scoring, checkbox resolution, date normalization)
+- Review UX: detected fields shown as color-coded overlays → review sheet before placing
+
+### On-device AI
+- `core/network/openrouter_service.dart` — OpenAI-compatible client with auto-model routing, vision detection, fallback chain
+- `core/services/bm25_retriever.dart` — pure-Dart BM25 (Okapi) retriever, indexes OCR'd pages, returns page-cited passages
+- `core/services/ocr_service.dart` — Google ML Kit wrapper
+- `features/ai/presentation/ai_chat_screen.dart` — Understand + Fill Form modes, quick-action pills, grounded retrieval
+
+### Subscriptions & Ads
+- `features/subscription/` — Play Billing integration (in_app_purchase), EntitlementStore, SubscriptionController
+- `core/ads/` — Google AdMob (banners on browse screens only, interstitial after tool results, zero for Pro)
+- 3-day free trial, rewarded ad for single Convert unlock
 
 ---
 
-## PDF Editor (`pick_edit_screen.dart`)
+## Backend architecture
 
-- Memory-safe: pages rendered by pdfx at a capped long edge; only a few pages cached; far pages evicted.
-- Tools: pan/select, draw, highlight, text (movable, font size, bold, color), line, arrow, rectangle, oval, whiteout/redact, signature (savable + reuse), eraser, page rotate.
-- Selection: tap in pan mode to select any text/shape/stroke; move by drag; **resize handles** on shapes; **duplicate**, **bring-to-front**, **send-to-back**, delete.
-- Undo/redo per page. Unsaved-changes guard (`PopScope`) on back.
-- Export uses an **off-screen compositor**: each page re-rendered at up to 1800px and annotations painted onto a `Canvas` via `PictureRecorder` → crisp PDF that matches the screen. Shared `_AnnDraw` keeps on-screen and export drawing identical (resolution-independent scaling).
+### Tech
+- FastAPI + async SQLAlchemy 2.0 + PostgreSQL + Redis
+- JWT auth (access + refresh tokens, bcrypt hashing)
+- Fernet symmetric encryption for profile fields
+- OpenRouter AI provider with automatic model fallback
+
+### Key services
+| Service | Purpose |
+|---------|---------|
+| `ai/provider.py` | OpenRouter client with fallback chain |
+| `ai/model_router.py` | Free vs advanced model selection |
+| `ai/usage_limiter.py` | Shared free-tier daily cap + Pro bypass |
+| `ai/field_mapper.py` | 100+ field mappings across 12+ languages |
+| `ai/form_filler.py` | Multi-stage form filling pipeline |
+| `ai/understanding.py` | Document analysis (vision + text) |
+| `billing/play_verifier.py` | Google Play purchase verification |
+| `convert/converter.py` | PDF → Word/Excel/PPT (PyMuPDF + pdf2docx + python-pptx) |
+| `profile/profile_service.py` | Encrypted profile CRUD |
+
+### Security
+- Passwords: bcrypt (direct, with 72-byte truncation)
+- Profile fields: Fernet symmetric encryption at rest
+- JWT: access (30min) + refresh (7 days) with rotation
+- Production secrets guard: refuses to boot with default placeholder keys
+- Network security config: cleartext disabled by default
+- No data backed up (allowBackup=false)
+
+### CI (`backend-ci.yml`)
+- **Static checks**: `ruff --select F` (pyflakes) + `python -m compileall`
+- **Tests**: pytest against in-memory SQLite (no Postgres/network needed)
+- Covers: auth flow, AI metering, security (JWT/bcrypt/encryption), profile, config guard, forms
 
 ---
 
-## Routing (`core/config/router.dart`)
+## Android configuration
 
-| Route | Screen |
-|-------|--------|
-| `/home` | Dashboard (guest-friendly) |
-| `/tools` | Tools hub |
-| `/tools/jpg-to-pdf`, `/tools/compress`, `/tools/merge`, `/tools/split` | Offline tools |
-| `/tools/pick-edit` | PDF editor |
-| `/tools/organize` | Organize Pages |
-| `/ai` | Understand (AI chat) |
-| `/ai-form` | Fill Form (AI chat) |
-| `/settings` | AI Settings (key / model / endpoint / Test) |
-| `/recent` | Recent Files |
-| `/login`, `/register`, `/upload`, `/document/:id`, `/editor/:id`, `/profile` | Account-based / legacy |
+| Setting | Value |
+|---------|-------|
+| Package | `com.aidocassistant.app` |
+| compileSdk | 36 |
+| targetSdk | 35 |
+| minSdk | 24 |
+| Kotlin | 2.1.0 |
+| AGP | 8.7.0 |
+| Gradle | 8.10.2 |
+| Flutter | 3.29.0 (required by pdfx 2.9.x) |
+| Java target | 17 |
 
 ---
 
-## Build & release
+## Local development
 
-### CI (`.github/workflows/build-apk.yml`)
-On push to `main` (and PRs):
-1. Checkout, Java 17, Flutter **3.29.0**.
-2. `flutter create … android .` to fill gitignored files (gradle wrapper, mipmaps, local.properties), then `git checkout -- android/ lib/ pubspec.yaml` to restore committed files, and delete any generated `*.gradle.kts` (project uses Groovy).
-3. `flutter pub get` (tee'd to `build.log`).
-4. `flutter build apk --release --dart-define=OPENROUTER_API_KEY=<secret>` (secret optional).
-5. **On failure:** a "Show error summary on failure" step prints the key error lines last, and `build.log` is uploaded as an artifact.
-6. Rename to `AI-PDF.apk`, upload artifact, and (on `main`) **publish a GitHub Release** via `gh release create` → permanent link `releases/latest/download/AI-PDF.apk`.
-
-The release build is signed with the debug key (installable for personal use). `OPENROUTER_API_KEY` is optional; without it the app still works and the user pastes a key in-app.
-
-### Local
+### Frontend
 ```bash
 cd frontend
 flutter pub get
-flutter run                       # or: flutter build apk --release
+flutter run          # debug on connected device
+flutter build apk    # release APK
 ```
 
-Optional backend:
+### Backend
 ```bash
-docker-compose up -d              # PostgreSQL + Redis + FastAPI (port 8000)
+cd backend
+cp .env.example .env   # edit with real values
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Or with Docker:
+```bash
+docker-compose up -d   # PostgreSQL + Redis + FastAPI
+```
+
+### Tests
+```bash
+# Backend
+cd backend && pytest -q
+
+# Frontend
+cd frontend && flutter test
 ```
 
 ---
 
-## Conventions & decisions
+## Adding new features
 
-- **On-device first:** offline tools never touch the network; AI goes phone → OpenRouter directly. Keeps the app usable, private, and cheap.
-- **No secrets in the repo:** the OpenRouter key lives in encrypted device storage (or an optional CI secret via `--dart-define`). Never commit `sk-or-...` (GitHub push protection blocks it and it would leak).
-- **Build safety:** minify/shrink off; no code-gen; pinned toolchain; avoid risky native deps. Each change should keep CI green and be independently shippable.
-- **pdfx over printing/syncfusion:** explicit capped-resolution rendering → bounded memory (printing caused OOM; syncfusion removed an API we relied on).
-- **Raster export** for editor/organize: lossy but reliable and memory-safe.
+### New offline tool
+1. Create `frontend/lib/features/tools/presentation/<name>_screen.dart`
+2. Add the render/transform logic to `OfflinePdfService` (or a new service)
+3. Register a route in `core/config/router.dart`
+4. Add a card to `tools_screen.dart`
+5. Localize strings in all 4 ARB files (en/es/ar/de)
 
-### Adding a screen
-1. `lib/features/<name>/presentation/<name>_screen.dart`
-2. Register a route in `core/config/router.dart`.
-3. For AI, use `OpenRouterService`; for offline PDFs, use `OfflinePdfService` / pdfx / pdf.
+### New AI endpoint (backend)
+1. Add request/response models + handler to `backend/app/api/v1/document_ai.py`
+2. Use `_meter(request, user, db)` for consistent free-tier enforcement
+3. Add tests to `backend/tests/test_document_ai.py`
+4. Verify: `ruff check app tests --select F && python -m compileall -q app tests`
+
+### New editor annotation type
+1. Add subclass to `domain/entities/annotation.dart` (with stable `id`)
+2. Add drawing logic to `data/annotation_draw.dart`
+3. Add to `PageLayer` typed accessor
+4. Update `editor_canvas.dart` and `editor_export_service.dart`
+5. Extend `editor_hit_test_service.dart` for selection
 
 ---
 
-## Status
+## Design principles
 
-- [x] Offline: JPG→PDF, Compress, Merge, Split
-- [x] Pro PDF Editor (draw/text/shapes/whiteout/signature/rotate/select-move-resize/undo-redo/hi-res export)
-- [x] Organize Pages (reorder/rotate/delete/merge/export)
-- [x] On-device AI: Understand (chat + save answer as PDF) & Fill Form (auto-place answers)
-- [x] Model picker + Auto routing + configurable endpoint (online/offline)
-- [x] In-app AI Settings with Test; key encrypted on device
-- [x] Recent Files; Save/Share everywhere; guest mode
-- [x] Global error boundary (no crash screens)
-- [x] CI → signed APK + GitHub Release direct link
-- [ ] On-device OCR (planned; adds a native dependency)
-- [ ] Profile-powered auto-fill, templates, batch (roadmap)
-- [ ] Play Store release
+1. **Privacy first**: on-device by default; managed AI is opt-in and metered
+2. **Offline capable**: all PDF tools + OCR + BM25 RAG work without internet
+3. **Memory safe**: capped rendering, LRU eviction, isolate-based image ops
+4. **One render path**: `AnnotationDraw` shared between screen and export
+5. **Small PRs**: each change compiles + analyzes + tests before merge
+6. **No blind changes**: Flutter toolchain required for frontend changes (lesson learned from PR #84)
+
+---
+
+## Known issues & roadmap
+
+See `docs/MASTER_ENGINEERING_PLAN.md` for the full 5-part roadmap and `docs/EDITOR_AND_INTELLIGENCE_MASTERPLAN.md` for the deep editor/AI plan.
+
+**Next priorities:**
+- Inline text editing (caret + selection, not dialog)
+- RTL font embedding (Arabic/Kurdish searchable export)
+- AcroForm fill (native PDF form fields)
+- Multi-document RAG
+- Annotation persistence + crash recovery
