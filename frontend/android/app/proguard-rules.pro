@@ -11,6 +11,16 @@
 -keep class io.flutter.embedding.** { *; }
 -dontwarn io.flutter.embedding.**
 
+# --- Google Play Core (deferred components / split install) ---
+# Flutter's embedding references com.google.android.play.core.* (SplitCompat,
+# split install, deferred component manager). This app does NOT use deferred
+# components, so the Play Core library is not a dependency and those classes are
+# absent at R8 time. In AGP 8 R8 runs in full mode and FAILS the release build
+# on "Missing class com.google.android.play.core.*" unless we silence it here.
+# This is the canonical fix and is a no-op when the classes are genuinely used.
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+
 # --- Google ML Kit: text recognition (on-device OCR) ---
 # ML Kit loads model/detector classes via reflection and JNI.
 -keep class com.google.mlkit.** { *; }

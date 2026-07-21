@@ -99,7 +99,7 @@ jobs:
       # Keep the full log as an artifact for deeper inspection if needed.
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v5
         with:
           name: build-log
           path: frontend/build.log
@@ -110,7 +110,7 @@ jobs:
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/AI-PDF.apk
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v5
         with:
           name: AI-PDF-Release
           path: frontend/build/app/outputs/flutter-apk/AI-PDF.apk
