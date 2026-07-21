@@ -7,7 +7,7 @@ of the text content. Powers a "Document Outline" panel in the app.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -62,7 +62,7 @@ def _extract_bookmarks(data: bytes) -> list[dict] | None:
 @router.post("/outline", response_model=OutlineResponse)
 async def extract_outline(
     file: UploadFile = File(None),
-    document_text: str = "",
+    document_text: str = Form(""),
     request: Request = None,
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
