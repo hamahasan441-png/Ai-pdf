@@ -10,6 +10,8 @@ from app.api.v1.document_ai import router as document_ai_router
 from app.api.v1.document_compare import router as document_compare_router
 from app.api.v1.document_outline import router as document_outline_router
 from app.api.v1.documents import router as documents_router
+from app.api.v1.extract_actions import router as extract_actions_router
+from app.api.v1.extract_dates import router as extract_dates_router
 from app.api.v1.form_validate import router as form_validate_router
 from app.api.v1.forms import router as forms_router
 from app.api.v1.multi_doc_chat import router as multi_doc_router
@@ -29,5 +31,7 @@ api_router.include_router(form_validate_router, tags=["Forms"])
 api_router.include_router(document_outline_router, tags=["Document AI"])
 api_router.include_router(suggest_questions_router, tags=["Document AI"])
 api_router.include_router(multi_doc_router, tags=["Document AI"])
+api_router.include_router(extract_dates_router, tags=["Document AI"])
+api_router.include_router(extract_actions_router, tags=["Document AI"])
 api_router.include_router(billing_router, prefix="/billing", tags=["Billing"])
 api_router.include_router(convert_router, prefix="/convert", tags=["Convert"])
