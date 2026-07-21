@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
+import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
@@ -137,6 +138,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final SignatureRepository _signatureRepo = const SignatureRepository();
   final OcrFieldDetectionService _fieldDetection = const OcrFieldDetectionService();
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
+  final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final EditorFieldInputService _fieldInput = const EditorFieldInputService();
   final EditorAnnotationFactoryService _annotationFactory = const EditorAnnotationFactoryService();
   final EditorCanvasInteractionService _canvasInteraction = const EditorCanvasInteractionService();
@@ -448,6 +450,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
       }
       _editorController.finishOpenFile(pageCount: _pageCount, currentPage: 0);
 
+      // Restore any previously saved annotations (crash recovery).
+      final savedLayers = await _persistence.load(path);
+      if (savedLayers.isNotEmpty) {
+        _layers.addAll(savedLayers);
+        _hasUnsavedChanges = true;
+      }
+
       if (fields != null && fields.isNotEmpty) {
         _initialFields.applyInitialFields(
           fields: fields,
@@ -679,6 +688,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _guideY = guides.guideY;
       }
     });
+    _schedulePersist();
   }
 
   /// Resize the selected object so its bounding box becomes [nb] (normalized).
@@ -716,6 +726,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {
         _selected = _editorController.deleteSelected(_layer, _selected);
       });
+      _schedulePersist();
     }
   }
 
@@ -818,6 +829,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Add an annotation and reset the redo stack.
   void _pushItem(EditorAnnotation a) {
     _editorController.pushAnnotation(_layer, a);
+    _schedulePersist();
+  }
+
+  /// Save layers to disk (debounced: only the last call in a frame executes).
+  bool _persistScheduled = false;
+  void _schedulePersist() {
+    if (_persistScheduled) return;
+    _persistScheduled = true;
+    Future.microtask(() {
+      _persistScheduled = false;
+      final path = _editorController.state.filePath;
+      if (path != null && _layers.isNotEmpty) {
+        _persistence.save(filePath: path, layers: _layers);
+      }
+    });
   }
 
 
@@ -1017,6 +1043,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _selected = null;
       _multi.clear();
     });
+    _schedulePersist();
   }
 
   void _redoAction() {
@@ -1025,6 +1052,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _selected = null;
       _multi.clear();
     });
+    _schedulePersist();
   }
 
   Future<void> _addSignature() async {
@@ -1108,6 +1136,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showError('Nothing to export');
       } else {
         _editorController.finishExport();
+        // Clear the saved annotations — work is now in the exported PDF.
+        final srcPath = _editorController.state.filePath;
+        if (srcPath != null) _persistence.delete(srcPath);
       }
       return outPath;
     } catch (e) {
