@@ -82,7 +82,7 @@ class PickEditScreen extends StatefulWidget {
 }
 
 class _PickEditScreenState extends State<PickEditScreen> {
-  static const int _renderMaxEdge = 1400;
+  static const int _renderMaxEdge = 2400;
   static const int _maxCachedPages = 3;
 
   pdfx.PdfDocument? _doc;
@@ -1163,8 +1163,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       child: Scaffold(
       backgroundColor: const Color(0xFF2B2B2B),
       appBar: EditorTopBar(
-        // DIAGNOSTIC build marker — confirms the newly-built APK is installed.
-        title: 'DIAG ${_fileName ?? l10n.toolEditor}',
+        title: _fileName ?? l10n.toolEditor,
         currentPage: _current,
         pageCount: _pageCount,
         hasDocument: bytes != null,
