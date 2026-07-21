@@ -22,19 +22,21 @@ class EditorPageRenderService {
     try {
       final longEdge = page.width > page.height ? page.width : page.height;
       final scale = longEdge > renderMaxEdge ? renderMaxEdge / longEdge : 1.0;
-      final w = (page.width * scale).roundToDouble();
-      final h = (page.height * scale).roundToDouble();
+      final w = (page.width * scale).clamp(1.0, renderMaxEdge.toDouble()).toDouble();
+      final h = (page.height * scale).clamp(1.0, renderMaxEdge.toDouble()).toDouble();
 
-      // Some Android PDFium builds return an UNUSABLE image buffer for one of
-      // the pixel formats — the editor then shows a completely blank/dark canvas
-      // even though the document and page count loaded fine. Rather than betting
-      // on a single format (JPEG *or* PNG), render defensively: try PNG, fall
-      // back to JPEG, and only cache bytes that actually DECODE to a real image.
-      // This guarantees the viewer never caches a buffer that renders as nothing
-      // and works regardless of which format a given device mishandles.
+      // Render as JPEG FIRST. This is the exact format every other PDF screen in
+      // the app renders with successfully (compress, OCR, PDF->images, AI, tools
+      // via OfflinePdfService._renderPageCapped). An earlier change switched the
+      // editor to PNG to work around a device-specific "unusable buffer", but on
+      // some Android PDFium builds PNG comes back TRANSPARENT/blank — the bytes
+      // decode fine (non-zero size) yet nothing is visible, so the editor canvas
+      // was completely dark even though the page count loaded. JPEG is opaque and
+      // proven across the app; PNG is kept only as a fallback for the rare device
+      // where JPEG cannot be decoded.
       final bytes =
-          await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.png) ??
-              await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.jpeg);
+          await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.jpeg) ??
+              await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.png);
       if (bytes != null) {
         pageCache[index] = bytes;
       }
@@ -63,7 +65,7 @@ class EditorPageRenderService {
       if (bytes == null || bytes.isEmpty) return null;
 
       // Confirm the bytes are genuinely decodable (guards against a non-empty
-      // but corrupt/unusable buffer that would render as a blank canvas).
+      // but corrupt/unusable buffer).
       final codec = await ui.instantiateImageCodec(bytes);
       try {
         final frame = await codec.getNextFrame();
