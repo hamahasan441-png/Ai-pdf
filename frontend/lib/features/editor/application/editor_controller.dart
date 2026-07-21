@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/history/editor_command.dart';
+import 'package:ai_pdf/features/editor/domain/history/editor_history.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
 import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 
@@ -15,13 +17,25 @@ final editorControllerProvider =
   return EditorController();
 });
 
-/// Initial editor controller scaffold.
+/// Editor controller with Command-pattern undo/redo.
 ///
-/// This intentionally starts small: it provides a home for editor commands and
-/// shared state as logic is migrated out of `pick_edit_screen.dart` over future
-/// refactor steps.
+/// Internally uses [EditorHistory] for unlimited, object-level undo/redo.
+/// The public API is unchanged from the previous flat implementation so
+/// pick_edit_screen.dart requires zero modifications.
 class EditorController extends StateNotifier<EditorState> {
   EditorController() : super(const EditorState());
+
+  /// Per-page history stacks. Keyed by page index.
+  final Map<int, EditorHistory> _histories = {};
+
+  /// Get or create the history for a given page.
+  EditorHistory _historyFor(int page) =>
+      _histories.putIfAbsent(page, () => EditorHistory());
+
+  /// Current page's history.
+  EditorHistory get _currentHistory => _historyFor(state.currentPage);
+
+  // ─── Lifecycle ──────────────────────────────────────────────────────────
 
   void setLoading(bool value) {
     state = state.copyWith(loading: value);
@@ -56,6 +70,7 @@ class EditorController extends StateNotifier<EditorState> {
   }
 
   void beginOpenFile({required String fileName, String? filePath}) {
+    _histories.clear();
     state = EditorState(
       loading: true,
       exporting: false,
@@ -105,24 +120,48 @@ class EditorController extends StateNotifier<EditorState> {
     state = state.copyWith(hasUnsavedChanges: false);
   }
 
+  // ─── Undo / Redo (now backed by EditorHistory) ──────────────────────────
+
   void undo(PageLayer layer) {
-    if (layer.items.isEmpty) return;
-    layer.redo.add(layer.items.removeLast());
-    markDirty();
+    if (_currentHistory.undo(layer)) {
+      markDirty();
+    }
   }
 
   void redo(PageLayer layer) {
-    if (layer.redo.isEmpty) return;
-    layer.items.add(layer.redo.removeLast());
-    markDirty();
+    if (_currentHistory.redo(layer)) {
+      markDirty();
+    }
   }
 
   bool eraseLast(PageLayer layer) {
     if (layer.items.isEmpty) return false;
-    layer.redo.add(layer.items.removeLast());
+    final removed = layer.items.last;
+    _currentHistory.push(RemoveCommand(removed, layer), layer);
     markDirty();
     return true;
   }
+
+  // ─── Annotation mutations (all go through history) ──────────────────────
+
+  void pushAnnotation(PageLayer layer, EditorAnnotation annotation) {
+    _currentHistory.push(AddCommand(annotation), layer);
+    markDirty();
+  }
+
+  EditorAnnotation? deleteSelected(PageLayer layer, EditorAnnotation? selected) {
+    if (selected == null) return selected;
+    _currentHistory.push(RemoveCommand(selected, layer), layer);
+    markDirty();
+    return null;
+  }
+
+  void deleteMulti(PageLayer layer, Iterable<EditorAnnotation> selected) {
+    _currentHistory.push(RemoveBatchCommand(selected, layer), layer);
+    markDirty();
+  }
+
+  // ─── Selection / move / resize (unchanged API) ──────────────────────────
 
   SelectionSnapGuides? moveSelected(
     EditorAnnotation? selected,
@@ -193,27 +232,7 @@ class EditorController extends StateNotifier<EditorState> {
     markDirty();
   }
 
-  EditorAnnotation? deleteSelected(PageLayer layer, EditorAnnotation? selected) {
-    if (selected == null) return selected;
-    layer.items.remove(selected);
-    layer.redo.add(selected);
-    markDirty();
-    return null;
-  }
-
-  void deleteMulti(PageLayer layer, Iterable<EditorAnnotation> selected) {
-    for (final item in selected) {
-      layer.items.remove(item);
-      layer.redo.add(item);
-    }
-    markDirty();
-  }
-
-  void pushAnnotation(PageLayer layer, EditorAnnotation annotation) {
-    layer.items.add(annotation);
-    layer.redo.clear();
-    markDirty();
-  }
+  // ─── Clipboard / duplicate / reorder (unchanged API) ────────────────────
 
   EditorAnnotation? copySelected(
     EditorAnnotation? selected,
@@ -231,7 +250,7 @@ class EditorController extends StateNotifier<EditorState> {
     if (clipboard == null) return null;
     final copy = selection.cloneAnnotation(clipboard, 0.03);
     if (copy != null) {
-      layer.items.add(copy);
+      _currentHistory.push(AddCommand(copy), layer);
       markDirty();
     }
     return copy;
@@ -245,7 +264,7 @@ class EditorController extends StateNotifier<EditorState> {
     if (selected == null) return null;
     final copy = selection.cloneAnnotation(selected, 0.03);
     if (copy != null) {
-      layer.items.add(copy);
+      _currentHistory.push(AddCommand(copy), layer);
       markDirty();
     }
     return copy;
@@ -261,7 +280,9 @@ class EditorController extends StateNotifier<EditorState> {
       final copy = selection.cloneAnnotation(item, 0.03);
       if (copy != null) copies.add(copy);
     }
-    layer.items.addAll(copies);
+    for (final copy in copies) {
+      _currentHistory.push(AddCommand(copy), layer);
+    }
     if (copies.isNotEmpty) markDirty();
     return copies;
   }
