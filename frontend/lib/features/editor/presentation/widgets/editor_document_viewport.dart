@@ -1,6 +1,22 @@
 import 'package:flutter/material.dart';
 
-class EditorDocumentViewport extends StatelessWidget {
+/// Wraps the editor canvas in a pannable/zoomable viewport.
+///
+/// ### Why StatefulWidget + TransformationController
+/// `InteractiveViewer` without a persistent `TransformationController`
+/// **resets its transform on every parent rebuild**. The editor screen triggers
+/// rebuilds frequently (field detection, tool changes, selection) — each one
+/// was causing the canvas to momentarily appear then collapse back, creating
+/// the "shows for 0.5s then disappears" symptom.
+///
+/// ### Why LayoutBuilder is OUTSIDE InteractiveViewer
+/// `InteractiveViewer` (with default `constrained: true`) passes the parent's
+/// constraints to its child. But when `constrained: false` is used (or the
+/// child has no intrinsic size), `AspectRatio` receives infinite constraints
+/// and lays out at 0×0. By computing a concrete size from the available space
+/// and wrapping the child in a `SizedBox`, the layout is deterministic
+/// regardless of `InteractiveViewer`'s constraint mode.
+class EditorDocumentViewport extends StatefulWidget {
   final bool panEnabled;
   final bool scaleEnabled;
   final Widget child;
@@ -13,42 +29,54 @@ class EditorDocumentViewport extends StatelessWidget {
   });
 
   @override
+  State<EditorDocumentViewport> createState() => _EditorDocumentViewportState();
+}
+
+class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
+  final TransformationController _controller = TransformationController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Positioned.fill(
       bottom: 96,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Calculate the page size from the available space, maintaining A4
-          // portrait aspect ratio (1:1.414). LayoutBuilder here gets FINITE
-          // constraints from Positioned.fill (which fills the Stack minus the
-          // toolbar). We compute a concrete Size and pass it to the child via
-          // SizedBox so that InteractiveViewer's child has a FINITE intrinsic
-          // size. Without this, InteractiveViewer gives its child unbounded
-          // constraints → AspectRatio/Image.memory lay out at 0×0 → blank canvas.
+          // Compute a concrete page size from finite parent constraints.
+          // LayoutBuilder here gets FINITE constraints from Positioned.fill
+          // (which fills the Stack minus the toolbar). We pass a concrete Size
+          // via SizedBox so InteractiveViewer's child has a FINITE intrinsic
+          // size. Without this, AspectRatio/Image.memory lay out at 0×0.
           final maxW = constraints.maxWidth;
           final maxH = constraints.maxHeight;
-          const aspectRatio = 1 / 1.414; // A4 portrait
+          const aspect = 1 / 1.414; // A4 portrait
 
           double pageW, pageH;
-          if (maxW / maxH > aspectRatio) {
+          if (maxW / maxH > aspect) {
             // Height-limited
             pageH = maxH;
-            pageW = maxH * aspectRatio;
+            pageW = maxH * aspect;
           } else {
             // Width-limited
             pageW = maxW;
-            pageH = maxW / aspectRatio;
+            pageH = maxW / aspect;
           }
 
           return InteractiveViewer(
+            transformationController: _controller,
             maxScale: 5,
-            panEnabled: panEnabled,
-            scaleEnabled: scaleEnabled,
+            panEnabled: widget.panEnabled,
+            scaleEnabled: widget.scaleEnabled,
             child: Center(
               child: SizedBox(
                 width: pageW,
                 height: pageH,
-                child: RepaintBoundary(child: child),
+                child: RepaintBoundary(child: widget.child),
               ),
             ),
           );
