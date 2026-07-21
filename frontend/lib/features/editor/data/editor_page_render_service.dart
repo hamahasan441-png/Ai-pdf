@@ -1,13 +1,14 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:pdfx/pdfx.dart' as pdfx;
 
 /// Stateless PDF page renderer + cache eviction policy used by the editor.
 ///
-/// The editor screen still owns UI state, current page selection, and loading
-/// indicators; this service owns only the mechanical page rasterization and the
-/// memory-bounding cache trimming policy.
+/// Uses the EXACT same render call as [OfflinePdfService._renderPageCapped]
+/// (compress, OCR, PDF→Images, AI chat) — which works on every device. Previous
+/// attempts to switch formats (PNG) or add decode-validation introduced
+/// regressions on specific Android PDFium builds. This version is deliberately
+/// minimal and identical to the proven path.
 class EditorPageRenderService {
   const EditorPageRenderService();
 
@@ -22,60 +23,24 @@ class EditorPageRenderService {
     try {
       final longEdge = page.width > page.height ? page.width : page.height;
       final scale = longEdge > renderMaxEdge ? renderMaxEdge / longEdge : 1.0;
-      final w = (page.width * scale).roundToDouble();
-      final h = (page.height * scale).roundToDouble();
+      final renderW = (page.width * scale).clamp(1, renderMaxEdge.toDouble());
+      final renderH = (page.height * scale).clamp(1, renderMaxEdge.toDouble());
 
-      // Some Android PDFium builds return an UNUSABLE image buffer for one of
-      // the pixel formats — the editor then shows a completely blank/dark canvas
-      // even though the document and page count loaded fine. Rather than betting
-      // on a single format (JPEG *or* PNG), render defensively: try PNG, fall
-      // back to JPEG, and only cache bytes that actually DECODE to a real image.
-      // This guarantees the viewer never caches a buffer that renders as nothing
-      // and works regardless of which format a given device mishandles.
-      final bytes =
-          await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.png) ??
-              await _renderValidated(page, w, h, pdfx.PdfPageImageFormat.jpeg);
-      if (bytes != null) {
-        pageCache[index] = bytes;
+      // Render as JPEG — identical to OfflinePdfService._renderPageCapped which
+      // works on every device (compress, OCR, PDF→Images, AI, tools). No
+      // format-switching, no decode-validation, no codec wrapping. Just the
+      // proven render call with the proven format.
+      final rendered = await page.render(
+        width: renderW.toDouble(),
+        height: renderH.toDouble(),
+        format: pdfx.PdfPageImageFormat.jpeg,
+        backgroundColor: '#FFFFFF',
+      );
+      if (rendered != null && rendered.bytes.isNotEmpty) {
+        pageCache[index] = rendered.bytes;
       }
     } finally {
       await page.close();
-    }
-  }
-
-  /// Render [page] at [w]x[h] in [format]. Returns the bytes ONLY if they are
-  /// non-empty and decode to a valid, non-zero image; otherwise returns null so
-  /// the caller can fall back to another format.
-  Future<Uint8List?> _renderValidated(
-    pdfx.PdfPage page,
-    double w,
-    double h,
-    pdfx.PdfPageImageFormat format,
-  ) async {
-    try {
-      final rendered = await page.render(
-        width: w,
-        height: h,
-        format: format,
-        backgroundColor: '#FFFFFF',
-      );
-      final bytes = rendered?.bytes;
-      if (bytes == null || bytes.isEmpty) return null;
-
-      // Confirm the bytes are genuinely decodable (guards against a non-empty
-      // but corrupt/unusable buffer that would render as a blank canvas).
-      final codec = await ui.instantiateImageCodec(bytes);
-      try {
-        final frame = await codec.getNextFrame();
-        final image = frame.image;
-        final valid = image.width > 0 && image.height > 0;
-        image.dispose();
-        return valid ? bytes : null;
-      } finally {
-        codec.dispose();
-      }
-    } catch (_) {
-      return null;
     }
   }
 
