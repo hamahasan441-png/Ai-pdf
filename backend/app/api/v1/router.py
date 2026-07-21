@@ -12,6 +12,7 @@ from app.api.v1.documents import router as documents_router
 from app.api.v1.forms import router as forms_router
 from app.api.v1.multi_doc_chat import router as multi_doc_router
 from app.api.v1.profile import router as profile_router
+from app.api.v1.suggest_questions import router as suggest_questions_router
 
 api_router = APIRouter()
 
@@ -22,6 +23,7 @@ api_router.include_router(ai_router, prefix="/ai", tags=["Managed AI"])
 api_router.include_router(document_ai_router, tags=["Document AI"])
 api_router.include_router(document_compare_router, tags=["Document AI"])
 api_router.include_router(forms_router, tags=["Forms"])
+api_router.include_router(suggest_questions_router, tags=["Document AI"])
 api_router.include_router(multi_doc_router, tags=["Document AI"])
 api_router.include_router(billing_router, prefix="/billing", tags=["Billing"])
 api_router.include_router(convert_router, prefix="/convert", tags=["Convert"])
