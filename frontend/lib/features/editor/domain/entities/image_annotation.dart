@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 
@@ -57,5 +57,44 @@ class ImageAnnotation extends EditorAnnotation {
       bytes: bytes,
       label: label,
     );
+  }
+
+  @override
+  Rect get bounds => Rect.fromLTWH(pos.dx, pos.dy, width, height);
+
+  @override
+  void translate(Offset delta) {
+    pos = clampOffset01(pos + delta);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    pos = Offset(next.left.clamp(0.0, 1.0), next.top.clamp(0.0, 1.0));
+    width = next.width.abs().clamp(0.01, 1.0);
+    height = next.height.abs().clamp(0.01, 1.0);
+  }
+
+  @override
+  ImageAnnotation clone({double shift = 0, String? id}) {
+    final c = ImageAnnotation(
+      pos: Offset(pos.dx + shift, pos.dy + shift),
+      width: width,
+      height: height,
+      bytes: bytes,
+      rotation: rotation,
+      label: label,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(ImageAnnotation o) {
+    pos = o.pos;
+    width = o.width;
+    height = o.height;
+    rotation = o.rotation;
+    copyBaseFrom(o);
   }
 }

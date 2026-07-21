@@ -11,30 +11,22 @@ class SelectionSnapGuides {
 }
 
 /// Mutation helpers for moving, resizing, cloning, snapping, and aligning
-/// editor annotations. These methods intentionally mutate the passed annotation
-/// objects so the screen can keep its current state model while the logic moves
-/// out of the widget class.
+/// editor annotations.
+///
+/// Per-object geometry (translate / scaleTo / clone) now lives on the
+/// [EditorAnnotation] objects themselves via the unified Transformable
+/// contract; this service delegates to it so every current and future object
+/// type is handled uniformly, and keeps the higher-level snapping / alignment
+/// orchestration that spans multiple objects.
 class SelectionService {
   const SelectionService();
 
-  Offset _clampOff(Offset o, [double max = 1.0]) =>
-      Offset(o.dx.clamp(0.0, max), o.dy.clamp(0.0, max));
-
   void moveAnnotation(EditorAnnotation a, Offset d) {
-    if (a is ShapeAnnotation) {
-      a.start = _clampOff(a.start + d);
-      a.end = _clampOff(a.end + d);
-    } else if (a is TextAnnotation) {
-      a.pos = _clampOff(a.pos + d, 0.98);
-    } else if (a is StrokeAnnotation) {
-      for (var i = 0; i < a.points.length; i++) {
-        a.points[i] = _clampOff(a.points[i] + d);
-      }
-    }
+    a.translate(d);
   }
 
   void moveSelected(EditorAnnotation sel, Offset deltaNorm) {
-    moveAnnotation(sel, deltaNorm);
+    sel.translate(deltaNorm);
   }
 
   void scaleSelectedTo(
@@ -42,33 +34,7 @@ class SelectionService {
     Rect nextBounds,
     AnnotationBoundsService bounds,
   ) {
-    final oldBounds = bounds.boundsOf(sel);
-    final ow = oldBounds.width.abs() < 1e-6 ? 1e-6 : oldBounds.width;
-    final oh = oldBounds.height.abs() < 1e-6 ? 1e-6 : oldBounds.height;
-
-    double mapX(double x) => nextBounds.left + (x - oldBounds.left) / ow * nextBounds.width;
-    double mapY(double y) => nextBounds.top + (y - oldBounds.top) / oh * nextBounds.height;
-
-    if (sel is StrokeAnnotation) {
-      for (var i = 0; i < sel.points.length; i++) {
-        sel.points[i] = Offset(
-          mapX(sel.points[i].dx).clamp(0.0, 1.0),
-          mapY(sel.points[i].dy).clamp(0.0, 1.0),
-        );
-      }
-    } else if (sel is ShapeAnnotation) {
-      sel.start = Offset(
-        mapX(sel.start.dx).clamp(0.0, 1.0),
-        mapY(sel.start.dy).clamp(0.0, 1.0),
-      );
-      sel.end = Offset(
-        mapX(sel.end.dx).clamp(0.0, 1.0),
-        mapY(sel.end.dy).clamp(0.0, 1.0),
-      );
-    } else if (sel is TextAnnotation) {
-      sel.pos = Offset(nextBounds.left.clamp(0.0, 0.98), nextBounds.top.clamp(0.0, 0.98));
-      sel.size = (sel.size * (nextBounds.height / oh)).clamp(0.01, 0.2);
-    }
+    sel.scaleTo(nextBounds);
   }
 
   SelectionSnapGuides snapSelected(
@@ -135,43 +101,7 @@ class SelectionService {
   }
 
   EditorAnnotation? cloneAnnotation(EditorAnnotation sel, double d) {
-    if (sel is ShapeAnnotation) {
-      return ShapeAnnotation(
-        sel.type,
-        Offset(sel.start.dx + d, sel.start.dy + d),
-        Offset(sel.end.dx + d, sel.end.dy + d),
-        sel.color,
-        sel.width,
-      );
-    }
-    if (sel is TextAnnotation) {
-      return TextAnnotation(
-        Offset(sel.pos.dx + d, sel.pos.dy + d),
-        sel.text,
-        sel.color,
-        sel.size,
-        sel.bold,
-        italic: sel.italic,
-        underline: sel.underline,
-        fontFamily: sel.fontFamily,
-        textAlign: sel.textAlign,
-        textDirection: sel.textDirection,
-        lineHeight: sel.lineHeight,
-        charSpacing: sel.charSpacing,
-        width: sel.width,
-        height: sel.height,
-        rotation: sel.rotation,
-      );
-    }
-    if (sel is StrokeAnnotation) {
-      return StrokeAnnotation(
-        sel.points.map((p) => Offset(p.dx + d, p.dy + d)).toList(),
-        sel.color,
-        sel.width,
-        sel.highlight,
-      );
-    }
-    return null;
+    return sel.clone(shift: d);
   }
 
   void bringToFront(EditorAnnotation sel, List<EditorAnnotation> items) {

@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/material.dart' show Color;
 
@@ -77,5 +77,56 @@ class FormFieldAnnotation extends EditorAnnotation {
       fieldKind: kind,
       label: label,
     );
+  }
+
+  @override
+  Rect get bounds => Rect.fromLTWH(pos.dx, pos.dy, width, height);
+
+  @override
+  void translate(Offset delta) {
+    pos = clampOffset01(pos + delta);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    pos = Offset(next.left.clamp(0.0, 1.0), next.top.clamp(0.0, 1.0));
+    width = next.width.abs().clamp(0.02, 1.0);
+    height = next.height.abs().clamp(0.01, 1.0);
+  }
+
+  @override
+  FormFieldAnnotation clone({double shift = 0, String? id}) {
+    final c = FormFieldAnnotation(
+      pos: Offset(pos.dx + shift, pos.dy + shift),
+      width: width,
+      height: height,
+      fieldKind: fieldKind,
+      label: label,
+      value: value,
+      required: required,
+      checked: checked,
+      borderColor: borderColor,
+      fillColor: fillColor,
+      fontSize: fontSize,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(FormFieldAnnotation o) {
+    pos = o.pos;
+    width = o.width;
+    height = o.height;
+    fieldKind = o.fieldKind;
+    label = o.label;
+    value = o.value;
+    required = o.required;
+    checked = o.checked;
+    borderColor = o.borderColor;
+    fillColor = o.fillColor;
+    fontSize = o.fontSize;
+    copyBaseFrom(o);
   }
 }

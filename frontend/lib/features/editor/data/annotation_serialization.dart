@@ -8,11 +8,34 @@ import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 /// Pure-Dart JSON serialization for the annotation model.
 ///
 /// Design notes:
-/// - Additive: the existing annotation classes are UNCHANGED (no abstract
-///   method added). This extension approach is non-breaking.
+/// - Additive & backward compatible: new shared props (opacity/locked/visible/
+///   zIndex/metadata) are written under stable keys. Files written by an older
+///   build simply omit them and are restored with defaults; files written by a
+///   newer build are still readable by an older build (unknown keys ignored).
 /// - Round-trip safe: fromJson(toJson(x)) recreates an equivalent annotation.
 /// - Graceful: fromJson skips corrupt entries rather than throwing so a
 ///   partially-corrupt save file never blocks the editor from opening.
+
+// ---------------------------------------------------------------------------
+// Shared base props
+// ---------------------------------------------------------------------------
+
+Map<String, dynamic> _baseToJson(EditorAnnotation a) => {
+      'opacity': a.opacity,
+      'locked': a.locked,
+      'visible': a.visible,
+      'zIndex': a.zIndex,
+      if (a.metadata.isNotEmpty) 'metadata': a.metadata,
+    };
+
+void _applyBase(EditorAnnotation a, Map<String, dynamic> j) {
+  a.opacity = (j['opacity'] as num?)?.toDouble() ?? a.opacity;
+  a.locked = j['locked'] as bool? ?? a.locked;
+  a.visible = j['visible'] as bool? ?? a.visible;
+  a.zIndex = (j['zIndex'] as num?)?.toInt() ?? a.zIndex;
+  final m = j['metadata'];
+  if (m is Map) a.metadata = Map<String, dynamic>.from(m);
+}
 
 // ---------------------------------------------------------------------------
 // Serialize
@@ -32,6 +55,7 @@ Map<String, dynamic> _strokeToJson(StrokeAnnotation s) => {
       'color': s.color.value,
       'width': s.width,
       'highlight': s.highlight,
+      ..._baseToJson(s),
     };
 
 Map<String, dynamic> _shapeToJson(ShapeAnnotation s) => {
@@ -45,7 +69,7 @@ Map<String, dynamic> _shapeToJson(ShapeAnnotation s) => {
       'color': s.color.value,
       'width': s.width,
       'filled': s.filled,
-      'opacity': s.opacity,
+      ..._baseToJson(s),
     };
 
 Map<String, dynamic> _textToJson(TextAnnotation t) => {
@@ -67,6 +91,7 @@ Map<String, dynamic> _textToJson(TextAnnotation t) => {
       'width': t.width,
       'height': t.height,
       'rotation': t.rotation,
+      ..._baseToJson(t),
     };
 
 // ---------------------------------------------------------------------------
@@ -77,16 +102,22 @@ Map<String, dynamic> _textToJson(TextAnnotation t) => {
 EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
   try {
     final type = j['type'] as String?;
+    EditorAnnotation? a;
     switch (type) {
       case 'stroke':
-        return _strokeFromJson(j);
+        a = _strokeFromJson(j);
+        break;
       case 'shape':
-        return _shapeFromJson(j);
+        a = _shapeFromJson(j);
+        break;
       case 'text':
-        return _textFromJson(j);
+        a = _textFromJson(j);
+        break;
       default:
         return null;
     }
+    _applyBase(a, j);
+    return a;
   } catch (_) {
     return null;
   }

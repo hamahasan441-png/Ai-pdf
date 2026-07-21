@@ -568,12 +568,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _marqueeStart = n;
         _marqueeEnd = n;
       }
+      if (_selMode == 'move' && _multi.isNotEmpty) {
+        // Capture a single undoable step for the whole drag-move.
+        _editorController.beginEdit(_multi, label: 'Move');
+      }
       setState(() {});
       return;
     }
     if (_tool == EditTool.pan && _selected != null) {
       // Start moving selected object
       _dragOffset = n;
+      _editorController.beginEdit([_selected!], label: 'Move');
       return;
     }
     if (_isFreehand) {
@@ -630,6 +635,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
             bounds: _bounds,
           ));
       }
+      // Commit the drag-move (no-op for marquee / zero-movement selections).
+      _editorController.commitEdit(_layer);
       _selMode = 'none';
       _marqueeStart = null;
       _marqueeEnd = null;
@@ -640,6 +647,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       return;
     }
     _dragOffset = null;
+    _editorController.commitEdit(_layer);
     _guideX = null;
     _guideY = null;
     final stroke = _isFreehand
@@ -743,8 +751,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Quick, precise font sizing for the selected value so it fits its field.
   /// [factor] > 1 enlarges, < 1 shrinks. Size is normalized to canvas height.
   void _resizeSelectedText(double factor) {
+    final sel = _selected;
+    if (sel == null) return;
     setState(() {
-      _editorController.resizeSelectedText(_selected, factor, _selection);
+      _editorController.beginEdit([sel], label: 'Resize text');
+      _editorController.resizeSelectedText(sel, factor, _selection);
+      _editorController.commitEdit(_layer, force: true);
     });
   }
 
@@ -785,8 +797,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color);
     if (picked == null) return;
     setState(() {
+      _editorController.beginEdit([sel], label: 'Text colour');
       sel.color = picked;
-      _hasUnsavedChanges = true;
+      _editorController.commitEdit(_layer, force: true);
     });
   }
 
@@ -826,14 +839,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _alignMulti(String how) {
     if (_multi.length < 2) return;
     setState(() {
-      _editorController.alignMulti(_multi, how, _selection, _bounds);
+      _editorController.alignMulti(_multi, how, _selection, _bounds, _layer);
     });
   }
 
   void _distributeMulti(Axis axis) {
     if (_multi.length < 3) return;
     setState(() {
-      _editorController.distributeMulti(_multi.toList(), axis, _selection, _bounds);
+      _editorController.distributeMulti(_multi.toList(), axis, _selection, _bounds, _layer);
     });
   }
 
@@ -1069,15 +1082,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   // --- Inline text editing (P1) ---
   TextAnnotation? _inlineEditing; // annotation currently being edited inline
+  bool _inlineEditTxnOpen = false; // true when editing EXISTING text (undoable)
 
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
     // For NEW text boxes, use inline editing directly on the canvas.
     // For existing text, also use inline (replaces the modal dialog).
     if (isNew) {
-      // Add the annotation first so it's in the layer.
+      // Add the annotation first so it's in the layer. The AddCommand already
+      // makes creation undoable, so no separate edit transaction is needed.
       if (!_layer.items.contains(box)) {
         _pushItem(box);
       }
+      _inlineEditTxnOpen = false;
+    } else {
+      // Editing existing text — capture a single undoable edit step.
+      _editorController.beginEdit([box], label: 'Edit text');
+      _inlineEditTxnOpen = true;
     }
     setState(() {
       _inlineEditing = box;
@@ -1094,7 +1114,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (editing.text.isEmpty) {
         // Empty text → remove the annotation (user cleared it).
         _layer.items.remove(editing);
+        if (_inlineEditTxnOpen) _editorController.cancelEdit();
+      } else if (_inlineEditTxnOpen) {
+        _editorController.commitEdit(_layer, force: true);
       }
+      _inlineEditTxnOpen = false;
       _hasUnsavedChanges = true;
       _schedulePersist();
     });
@@ -1120,8 +1144,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       color: s.color,
     );
     setState(() {
+      _editorController.beginEdit([s], label: 'Shape style');
       if (_annotationEdit.applyShapeStyleResult(s, result)) {
-        _hasUnsavedChanges = true;
+        _editorController.commitEdit(_layer, force: true);
+      } else {
+        _editorController.cancelEdit();
       }
     });
   }
@@ -1287,8 +1314,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
         currentPage: _current,
         pageCount: _pageCount,
         hasDocument: bytes != null,
-        canUndo: _layer.items.isNotEmpty,
-        canRedo: _layer.redo.isNotEmpty,
+        canUndo: _editorController.canUndo,
+        canRedo: _editorController.canRedo,
         canPaste: _clipboard != null,
         loading: _loading,
         onUndo: _undo,
@@ -1390,6 +1417,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
               );
               _hasUnsavedChanges = true;
             }),
+            onMoveTextStart: (t) {
+              setState(() => _selected = t);
+              _editorController.beginEdit([t], label: 'Move text');
+            },
+            onMoveTextEnd: () => setState(() => _editorController.commitEdit(_layer)),
+            onResizeStart: () {
+              final sel = _selected;
+              if (sel != null) _editorController.beginEdit([sel], label: 'Resize');
+            },
+            onResizeEnd: () => setState(() => _editorController.commitEdit(_layer)),
             onResizeBounds: _scaleSelectedTo,
             onTextDecrease: () => _resizeSelectedText(0.9),
             onTextIncrease: () => _resizeSelectedText(1.1),

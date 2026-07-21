@@ -76,12 +76,19 @@ class EditorScaleHandle extends StatelessWidget {
   final bool bottomRight;
   final ValueChanged<Rect> onResizeBounds;
 
+  /// Fired when the resize drag begins / ends, so the history engine can record
+  /// the whole resize as a single undoable step.
+  final VoidCallback? onResizeStart;
+  final VoidCallback? onResizeEnd;
+
   const EditorScaleHandle({
     super.key,
     required this.size,
     required this.bounds,
     required this.bottomRight,
     required this.onResizeBounds,
+    this.onResizeStart,
+    this.onResizeEnd,
   });
 
   @override
@@ -92,6 +99,8 @@ class EditorScaleHandle extends StatelessWidget {
       left: hx - 15,
       top: hy - 15,
       child: GestureDetector(
+        onPanStart: onResizeStart == null ? null : (_) => onResizeStart!(),
+        onPanEnd: onResizeEnd == null ? null : (_) => onResizeEnd!(),
         onPanUpdate: (d) {
           final dxN = d.delta.dx / size.width;
           final dyN = d.delta.dy / size.height;
