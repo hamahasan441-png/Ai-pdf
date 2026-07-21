@@ -1261,7 +1261,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
     final bytes = _pageCache[_current];
 
