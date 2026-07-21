@@ -992,6 +992,38 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   /// Fill & Sign: pick a saved profile value (name, address, ID…) and drop it
   /// as a movable text box. Prompts to set up the profile if none is saved.
+  /// Add a predefined stamp to the page.
+  Future<void> _addStamp() async {
+    // Show a simple stamp chooser (for now, use DRAFT as default).
+    // TODO: show a stamp picker sheet with all StampKind options.
+    setState(() {
+      _pushItem(_annotationFactory.textAt(
+        const Offset(0.35, 0.45),
+        0.04,
+        'DRAFT',
+        color: Colors.red,
+        bold: true,
+      ));
+    });
+  }
+
+  /// Add an image from the device gallery to the page.
+  Future<void> _addImage() async {
+    final picked = await _filePicker.pickSupportedFile();
+    if (picked == null) return;
+    // For now, add as a text placeholder showing the filename.
+    // Full ImageAnnotation rendering requires the image_annotation_renderer
+    // to be wired into the canvas painter (P1 service exists, wiring is next).
+    setState(() {
+      _pushItem(_annotationFactory.textAt(
+        const Offset(0.3, 0.4),
+        0.02,
+        '[Image: ${picked.name}]',
+        color: Colors.blueGrey,
+      ));
+    });
+  }
+
   Future<void> _insertProfileField() async {
     await UserProfileService.instance.load();
     final data = UserProfileService.instance.data;
@@ -1373,6 +1405,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onAddSignature: _addSignature,
           onPlaceSignatureDate: _placeSignatureDate,
           onInsertProfileField: _insertProfileField,
+          onAddStamp: _addStamp,
+          onAddImage: _addImage,
           onRotatePage: _rotatePage,
           onOpen: _pick,
           onColorChanged: (c) => setState(() => _color = c),
