@@ -11,6 +11,8 @@ import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
+import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
+import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
@@ -140,6 +142,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final OcrFieldDetectionService _fieldDetection = const OcrFieldDetectionService();
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
+  final PagePreloaderService _preloader = const PagePreloaderService();
+  final RevisionHistoryService _revisionHistory = const RevisionHistoryService();
   final EditorFieldInputService _fieldInput = const EditorFieldInputService();
   final EditorAnnotationFactoryService _annotationFactory = const EditorAnnotationFactoryService();
   final EditorCanvasInteractionService _canvasInteraction = const EditorCanvasInteractionService();
@@ -509,6 +513,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _showFields = false;
       _showEditLines = false;
     });
+    // Pre-render adjacent pages for instant page-switching.
+    if (_doc != null) {
+      _preloader.preloadAdjacent(
+        doc: _doc!,
+        currentPage: index,
+        pageCount: _pageCount,
+        pageCache: _pageCache,
+        renderMaxEdge: _renderMaxEdge,
+      );
+    }
   }
 
   void _showError(String msg) {
@@ -831,6 +845,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _pushItem(EditorAnnotation a) {
     _editorController.pushAnnotation(_layer, a);
     _schedulePersist();
+    // Log to revision history for cross-session undo / version tracking.
+    final path = _editorController.state.filePath;
+    if (path != null) {
+      _revisionHistory.appendEntry(
+        filePath: path,
+        commandType: 'add',
+        description: 'Add ${a.runtimeType.toString().replaceAll("Annotation", "")}',
+      );
+    }
   }
 
   /// Save layers to disk (debounced: only the last call in a frame executes).
