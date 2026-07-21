@@ -31,6 +31,7 @@ class EditorScreenBody extends StatelessWidget {
       return EditorEmptyState(loading: loading, onPick: onPick);
     }
     return Stack(
+      fit: StackFit.expand,
       children: [
         documentViewport,
         EditorLoadingOverlay(
