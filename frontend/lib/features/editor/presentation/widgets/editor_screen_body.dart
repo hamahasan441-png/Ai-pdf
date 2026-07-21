@@ -13,6 +13,7 @@ class EditorScreenBody extends StatelessWidget {
   final VoidCallback onPick;
   final Widget documentViewport;
   final Widget toolbar;
+  final Widget? inlineOverlay;
 
   const EditorScreenBody({
     super.key,
@@ -23,6 +24,7 @@ class EditorScreenBody extends StatelessWidget {
     required this.onPick,
     required this.documentViewport,
     required this.toolbar,
+    this.inlineOverlay,
   });
 
   @override
@@ -34,6 +36,7 @@ class EditorScreenBody extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         documentViewport,
+        if (inlineOverlay != null) inlineOverlay!,
         EditorLoadingOverlay(
           loading: loading,
           detecting: detecting,
