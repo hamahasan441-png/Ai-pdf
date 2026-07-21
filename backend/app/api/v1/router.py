@@ -4,8 +4,10 @@ from fastapi import APIRouter
 
 from app.api.v1.admin import router as admin_router
 from app.api.v1.ai import router as ai_router
+from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
+from app.api.v1.chat_history import router as chat_history_router
 from app.api.v1.health_dashboard import router as health_dashboard_router
 from app.api.v1.convert import router as convert_router
 from app.api.v1.plugins import router as plugins_router
@@ -23,6 +25,7 @@ from app.api.v1.profile import router as profile_router
 from app.api.v1.suggest_edits import router as suggest_edits_router
 from app.api.v1.suggest_questions import router as suggest_questions_router
 from app.api.v1.text_layer import router as text_layer_router
+from app.api.v1.webhooks import router as webhooks_router
 
 api_router = APIRouter()
 
@@ -47,3 +50,6 @@ api_router.include_router(health_dashboard_router, tags=["System"])
 api_router.include_router(plugins_router, tags=["Plugins"])
 api_router.include_router(teams_router, prefix="/teams", tags=["Teams"])
 api_router.include_router(admin_router, tags=["Admin"])
+api_router.include_router(api_keys_router, tags=["API Keys"])
+api_router.include_router(webhooks_router, tags=["Webhooks"])
+api_router.include_router(chat_history_router, tags=["Chat History"])
