@@ -48,15 +48,21 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Compute a concrete page size from finite parent constraints.
+          // LayoutBuilder here gets FINITE constraints from Positioned.fill
+          // (which fills the Stack minus the toolbar). We pass a concrete Size
+          // via SizedBox so InteractiveViewer's child has a FINITE intrinsic
+          // size. Without this, AspectRatio/Image.memory lay out at 0×0.
           final maxW = constraints.maxWidth;
           final maxH = constraints.maxHeight;
           const aspect = 1 / 1.414; // A4 portrait
 
           double pageW, pageH;
           if (maxW / maxH > aspect) {
+            // Height-limited
             pageH = maxH;
             pageW = maxH * aspect;
           } else {
+            // Width-limited
             pageW = maxW;
             pageH = maxW / aspect;
           }
