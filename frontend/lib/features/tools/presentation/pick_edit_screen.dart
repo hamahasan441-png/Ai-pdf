@@ -86,7 +86,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   static const int _maxCachedPages = 3;
 
   pdfx.PdfDocument? _doc;
-  final Map<int, Uint8List> _pageCache = {}; // page index -> rendered PNG bytes
+  final Map<int, Uint8List> _pageCache = {}; // page index -> jpeg bytes
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
 

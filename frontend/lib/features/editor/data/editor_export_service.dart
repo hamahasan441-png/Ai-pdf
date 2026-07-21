@@ -184,15 +184,10 @@ class EditorExportService {
       try {
         final longEdge = page.width > page.height ? page.width : page.height;
         final scale = longEdge > exportMaxEdge ? exportMaxEdge / longEdge : 1.0;
-        // Must match EditorPageRenderService: pdfx can return an unusable JPEG
-        // buffer on some Android PDFium versions, which then fails to decode via
-        // instantiateImageCodec below and produces a BLANK exported page even
-        // though the editor viewer shows the page fine. PNG decodes reliably on
-        // Android; round dimensions to whole pixels for a valid raster.
         final img = await page.render(
-          width: (page.width * scale).roundToDouble(),
-          height: (page.height * scale).roundToDouble(),
-          format: pdfx.PdfPageImageFormat.png,
+          width: page.width * scale,
+          height: page.height * scale,
+          format: pdfx.PdfPageImageFormat.jpeg,
           backgroundColor: '#FFFFFF',
         );
         baseBytes = img?.bytes;
