@@ -30,6 +30,9 @@ from app.main import app
 from app.models import document as _document  # noqa: F401
 from app.models import entitlement as _entitlement  # noqa: F401
 from app.models import user as _user  # noqa: F401
+from app.models import api_key as _api_key  # noqa: F401
+from app.models import webhook as _webhook  # noqa: F401
+from app.models import chat_history as _chat_history  # noqa: F401
 
 
 @pytest_asyncio.fixture
