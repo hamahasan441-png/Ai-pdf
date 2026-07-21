@@ -13,6 +13,9 @@ import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
+import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
+import 'package:ai_pdf/features/editor/data/export_settings_service.dart';
+import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
@@ -144,6 +147,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final PagePreloaderService _preloader = const PagePreloaderService();
   final RevisionHistoryService _revisionHistory = const RevisionHistoryService();
+  final FormProfileService _formProfiles = const FormProfileService();
+  final ExportSettingsService _exportSettings = const ExportSettingsService();
+  final CrossFieldLogicService _crossField = const CrossFieldLogicService();
   final EditorFieldInputService _fieldInput = const EditorFieldInputService();
   final EditorAnnotationFactoryService _annotationFactory = const EditorAnnotationFactoryService();
   final EditorCanvasInteractionService _canvasInteraction = const EditorCanvasInteractionService();
@@ -369,7 +375,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
     await UserProfileService.instance.load();
     final profile = UserProfileService.instance.data;
-    final result = _profileAutoFill.autoFill(fields: fields, profile: profile);
+
+    // Compute dependent fields (full name, age, net/gross) before auto-fill.
+    final enrichedProfile = Map<String, String>.from(profile);
+    final computed = _crossField.computeDependents(enrichedProfile);
+    enrichedProfile.addAll(computed);
+
+    final result = _profileAutoFill.autoFill(fields: fields, profile: enrichedProfile);
 
     if (!mounted) return;
     if (result.annotations.isNotEmpty) {
@@ -931,6 +943,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context)!.smartFillPlaced(confirmed.length))),
       );
+      // Save filled values as a form profile for next time.
+      if (_editorController.state.fileName != null) {
+        final values = <String, String>{};
+        for (final f in confirmed) {
+          values[f.label] = f.value;
+        }
+        _formProfiles.saveProfile(
+          formType: _editorController.state.fileName!,
+          fieldValues: values,
+        );
+      }
     } catch (e) {
       _showError('Smart Fill failed: $e');
     } finally {
