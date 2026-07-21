@@ -100,7 +100,7 @@ class EditorToolbar extends StatelessWidget {
                   _actionBtn(Icons.gesture, l10n.toolSign, onAddSignature, cs),
                   _actionBtn(Icons.event_available, l10n.signatureDate, onPlaceSignatureDate, cs),
                   _actionBtn(Icons.badge_outlined, l10n.myProfile, onInsertProfileField, cs),
-                  _actionBtn(Icons.stamp, 'Stamp', onAddStamp, cs),
+                  _actionBtn(Icons.approval, 'Stamp', onAddStamp, cs),
                   _actionBtn(Icons.image_outlined, 'Image', onAddImage, cs),
                   _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
                   _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
