@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
         from app.models import user as _user  # noqa: F401
         from app.models import document as _document  # noqa: F401
         from app.models import entitlement as _entitlement  # noqa: F401
+        from app.models import team as _team  # noqa: F401
 
         await init_db()
     except Exception as e:  # noqa: BLE001 - never block boot on DB init

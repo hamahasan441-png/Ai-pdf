@@ -75,6 +75,17 @@ class Settings(BaseSettings):
 
     # Managed AI metering (free tier). Pro users (verified purchase) are unlimited.
     AI_FREE_DAILY_LIMIT: int = 15
+    # Metering backend for the free-tier counter:
+    #   "auto"   -> Redis when REDIS_URL is reachable, else in-memory (default)
+    #   "memory" -> always in-memory (single instance / dev / tests)
+    #   "redis"  -> always Redis (fail closed to in-memory if the client errors)
+    # Redis is required for correct metering across multiple backend instances.
+    AI_METER_BACKEND: str = "auto"
+
+    # Admin dashboard access. When empty, the /admin/* endpoints return 503
+    # (disabled). Set a long random token and send it as the X-Admin-Token
+    # header to read aggregate usage/enterprise metrics.
+    ADMIN_API_TOKEN: str = ""
 
     # Google Play Billing verification (server-side, spoof-proof entitlement).
     # Provide the service-account JSON (raw string or file contents) with the
