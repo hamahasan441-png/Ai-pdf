@@ -1,6 +1,6 @@
 """Tests for the health dashboard endpoint."""
 
-URL = "/health/dashboard"
+URL = "/api/v1/health/dashboard"
 
 
 async def test_health_dashboard_response(client):
