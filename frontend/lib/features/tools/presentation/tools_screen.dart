@@ -42,6 +42,14 @@ class ToolsScreen extends ConsumerWidget {
             childAspectRatio: 1.1,
             children: [
               _ToolCard(
+                icon: Icons.document_scanner,
+                label: 'Scan Document',
+                desc: 'Camera scan with auto edge detection & perspective fix',
+                color: const Color(0xFF2E9E7B),
+                badge: l10n.badgeOffline,
+                onTap: () => context.push('/tools/scan'),
+              ),
+              _ToolCard(
                 icon: Icons.auto_fix_high,
                 label: l10n.smartFormFiller,
                 desc: l10n.smartFormFillerDesc,
