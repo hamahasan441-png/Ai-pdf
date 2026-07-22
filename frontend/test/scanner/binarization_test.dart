@@ -64,7 +64,8 @@ void main() {
     test('applyThreshold produces a clean split', () {
       final gray = <int>[10, 60, 130, 200, 250];
       final out = svc.applyThreshold(gray, 128);
-      expect(out, [0, 0, 0, 255, 255]);
+      // 10<=128 -> 0, 60<=128 -> 0, 130>128 -> 255, 200>128 -> 255, 250>128 -> 255
+      expect(out, [0, 0, 255, 255, 255]);
     });
 
     test('empty input returns a safe mid threshold', () {
