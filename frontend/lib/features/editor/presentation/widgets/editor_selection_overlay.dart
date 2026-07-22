@@ -1,17 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-/// Compute an object's rotation (radians) from a rotate-handle drag.
-///
-/// [center] and [pointer] are in the same (canvas pixel) space. Result matches
-/// the renderers' `canvas.rotate(-rotation)` convention: 0 = handle straight
-/// up, and dragging the handle clockwise rotates the object clockwise.
-double rotationForHandle(Offset center, Offset pointer) {
-  final a = math.atan2(pointer.dy - center.dy, pointer.dx - center.dx);
-  return -(a + math.pi / 2);
-}
+import 'package:ai_pdf/features/editor/domain/services/rotation_math.dart';
 
 /// A single icon button used inside the floating selection action bars.
 /// Meets the 44×44 dp minimum touch target required by Material and

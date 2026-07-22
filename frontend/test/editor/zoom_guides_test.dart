@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_pdf/features/editor/data/tile_zoom_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
+import 'package:ai_pdf/features/editor/domain/services/rotation_math.dart';
 import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 
 void main() {
   group('TileZoomService planner (Phase 6)', () {
