@@ -228,12 +228,13 @@ class EditorController extends StateNotifier<EditorState> {
     EditorAnnotation? selected,
     Offset deltaNorm,
     SelectionService selection,
-    AnnotationBoundsService bounds,
-  ) {
+    AnnotationBoundsService bounds, {
+    List<EditorAnnotation> others = const [],
+  }) {
     if (selected == null) return null;
     selection.moveSelected(selected, deltaNorm);
     markDirty();
-    return selection.snapSelected(selected, bounds);
+    return selection.snapSelected(selected, bounds, others: others);
   }
 
   SelectionSnapGuides? scaleSelectedTo(

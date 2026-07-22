@@ -1,5 +1,17 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+/// Compute an object's rotation (radians) from a rotate-handle drag.
+///
+/// [center] and [pointer] are in the same (canvas pixel) space. Result matches
+/// the renderers' `canvas.rotate(-rotation)` convention: 0 = handle straight
+/// up, and dragging the handle clockwise rotates the object clockwise.
+double rotationForHandle(Offset center, Offset pointer) {
+  final a = math.atan2(pointer.dy - center.dy, pointer.dx - center.dx);
+  return -(a + math.pi / 2);
+}
 
 /// A single icon button used inside the floating selection action bars.
 /// Meets the 44×44 dp minimum touch target required by Material and
@@ -129,6 +141,61 @@ class EditorScaleHandle extends StatelessWidget {
             size: 12,
             color: Colors.white,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A circular rotation handle rendered above the selection box. Dragging it
+/// turns the object around its centre. Shown only for object types that render
+/// and export rotation end-to-end (images and stamps).
+class EditorRotateHandle extends StatelessWidget {
+  final Size size;
+  final Rect bounds;
+  final ValueChanged<double> onRotate;
+  final VoidCallback? onRotateStart;
+  final VoidCallback? onRotateEnd;
+
+  const EditorRotateHandle({
+    super.key,
+    required this.size,
+    required this.bounds,
+    required this.onRotate,
+    this.onRotateStart,
+    this.onRotateEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final left = bounds.center.dx * size.width - 15;
+    final top = bounds.top * size.height - 44;
+    final center = Offset(
+      bounds.center.dx * size.width,
+      bounds.center.dy * size.height,
+    );
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        onPanStart: onRotateStart == null ? null : (_) => onRotateStart!(),
+        onPanEnd: onRotateEnd == null ? null : (_) => onRotateEnd!(),
+        onPanUpdate: (d) {
+          final pointer = Offset(left + d.localPosition.dx, top + d.localPosition.dy);
+          onRotate(rotationForHandle(center, pointer));
+        },
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2563EB),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: const [
+              BoxShadow(color: Color(0x66000000), blurRadius: 4),
+            ],
+          ),
+          child: const Icon(Icons.rotate_right, size: 14, color: Colors.white),
         ),
       ),
     );
