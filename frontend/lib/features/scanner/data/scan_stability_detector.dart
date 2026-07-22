@@ -1,8 +1,6 @@
-import 'dart:math' as math;
-
 /// The result of evaluating whether a live frame is good enough to auto-capture.
 class StabilityResult {
-  /// Variance of the Laplacian — higher means sharper (less blur).
+  /// Sharpness metric — higher means sharper (less blur).
   final double sharpness;
 
   /// Mean absolute frame difference — higher means more motion.
@@ -22,13 +20,13 @@ class StabilityResult {
   bool get readyToCapture => sharpEnough && still;
 }
 
-/// Decides when a live camera frame is stable and sharp enough to auto-capture,
-/// the hallmark of a professional scanner (no shutter button needed).
+/// Decides when a live camera frame is stable and sharp enough to auto-capture.
 ///
-/// - **Sharpness** uses the *variance of the Laplacian* — the classic,
-///   fast focus/blur metric: a blurry frame has a smooth Laplacian (low
-///   variance), a sharp frame has strong edges (high variance).
-/// - **Motion** is the mean absolute difference between consecutive frames.
+/// - **Sharpness** uses average absolute neighbor difference — flat images
+///   score near zero, high-frequency patterns (like a checkerboard) score high.
+/// - **Motion** is the mean absolute per-pixel difference between consecutive
+///   frames. Returns [double.infinity] when frames cannot be compared (null
+///   previous, mismatched sizes).
 ///
 /// Both operate on downscaled grayscale grids (`List<int>`, 0..255, row-major),
 /// so the detector is pure Dart, cheap to run per preview frame, and fully
@@ -36,52 +34,64 @@ class StabilityResult {
 class ScanStabilityDetector {
   const ScanStabilityDetector();
 
-  /// Default sharpness cutoff (variance of Laplacian on 0..255 data). Tunable
-  /// per device; ~100 is a common blur threshold in the literature.
-  static const double defaultSharpnessThreshold = 100.0;
+  /// Default sharpness cutoff. A checkerboard easily exceeds this; a flat
+  /// (uniform) image produces ~0.
+  static const double defaultSharpnessThreshold = 10.0;
 
   /// Default motion cutoff (mean abs diff per pixel, 0..255 scale).
-  static const double defaultMotionThreshold = 6.0;
+  static const double defaultMotionThreshold = 5.0;
 
-  /// Variance of the Laplacian over the interior pixels of [gray].
+  /// Sharpness metric: average absolute difference between each pixel and its
+  /// right and bottom neighbors. A uniform image → 0; a checkerboard → ~255.
+  ///
+  /// Returns 0 for degenerate sizes (width ≤ 1 or height ≤ 1 or length mismatch).
   double blurScore(List<int> gray, int width, int height) {
-    if (width < 3 || height < 3 || gray.length != width * height) return 0.0;
-    var sum = 0.0;
-    var sumSq = 0.0;
-    var count = 0;
-    for (var y = 1; y < height - 1; y++) {
-      for (var x = 1; x < width - 1; x++) {
-        final c = gray[y * width + x];
-        final lap = (gray[(y - 1) * width + x] +
-                gray[(y + 1) * width + x] +
-                gray[y * width + (x - 1)] +
-                gray[y * width + (x + 1)] -
-                4 * c)
-            .toDouble();
-        sum += lap;
-        sumSq += lap * lap;
-        count++;
+    if (width <= 1 || height <= 1) return 0.0;
+    if (gray.length != width * height) return 0.0;
+
+    double sumDiff = 0.0;
+    int count = 0;
+
+    for (var y = 0; y < height; y++) {
+      for (var x = 0; x < width; x++) {
+        final int idx = y * width + x;
+        final int v = gray[idx];
+
+        if (x + 1 < width) {
+          sumDiff += (v - gray[y * width + (x + 1)]).abs();
+          count++;
+        }
+        if (y + 1 < height) {
+          sumDiff += (v - gray[(y + 1) * width + x]).abs();
+          count++;
+        }
       }
     }
+
     if (count == 0) return 0.0;
-    final mean = sum / count;
-    return math.max(0.0, sumSq / count - mean * mean);
+    return sumDiff / count;
   }
 
-  /// Mean absolute per-pixel difference between two equally-sized frames.
-  double motionScore(List<int> current, List<int> previous) {
-    if (current.length != previous.length || current.isEmpty) {
-      return double.infinity; // unknown / not comparable -> treat as moving
-    }
-    var total = 0.0;
+  /// Mean absolute per-pixel difference between two frames.
+  ///
+  /// Returns [double.infinity] if [previous] is null or sizes don't match
+  /// (treat as "moving" / not comparable).
+  double motionScore(List<int> current, List<int>? previous) {
+    if (previous == null) return double.infinity;
+    if (current.length != previous.length) return double.infinity;
+    if (current.isEmpty) return 0.0;
+
+    double sum = 0.0;
     for (var i = 0; i < current.length; i++) {
-      total += (current[i] - previous[i]).abs();
+      sum += (current[i] - previous[i]).abs();
     }
-    return total / current.length;
+    return sum / current.length;
   }
 
-  /// Evaluate a frame. [previous] may be null on the very first frame (then
-  /// motion is treated as "moving" so we don't fire instantly).
+  /// Evaluate a frame for auto-capture readiness.
+  ///
+  /// [previous] may be null on the very first frame (motion is then treated as
+  /// infinity so we don't fire instantly).
   StabilityResult evaluate(
     List<int> current,
     List<int>? previous,
@@ -91,13 +101,13 @@ class ScanStabilityDetector {
     double motionThreshold = defaultMotionThreshold,
   }) {
     final sharpness = blurScore(current, width, height);
-    final motion =
-        previous == null ? double.infinity : motionScore(current, previous);
+    final motion = motionScore(current, previous);
+
     return StabilityResult(
       sharpness: sharpness,
       motion: motion,
-      sharpEnough: sharpness >= sharpnessThreshold,
-      still: motion <= motionThreshold,
+      sharpEnough: sharpness > sharpnessThreshold,
+      still: motion.isFinite && motion < motionThreshold,
     );
   }
 }
