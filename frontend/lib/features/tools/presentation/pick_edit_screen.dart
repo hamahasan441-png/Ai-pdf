@@ -72,6 +72,23 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_too
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnail_strip.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
+import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_redaction_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_multi_doc_chat_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
+import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_highlight_painter.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_redaction_overlay.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_compare_view.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_multi_doc_chat_panel.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_layer_panel.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_review_panel.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_ops_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
 import '../../profile/presentation/profile_screen.dart';
@@ -198,6 +215,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
   bool _detecting = false;
   List<DetectedField> get _pageFields => _fields[_current] ?? const [];
 
+  // --- Phase 27-34 controllers (wired UI features) ---
+  final EditorSearchController _searchController = EditorSearchController();
+  final EditorRedactionController _redactionController = EditorRedactionController();
+  final EditorOutlineController _outlineController = EditorOutlineController();
+  final EditorCompareController _compareController = EditorCompareController();
+  final EditorMultiDocChatController _chatController = EditorMultiDocChatController();
+  final EditorLayerController _layerController = EditorLayerController();
+  final EditorFormReviewController _formReviewController = EditorFormReviewController();
+  final EditorPageOpsController _pageOpsController = EditorPageOpsController();
+
   // --- Saved signatures (persisted across sessions) ---
   static final List<List<Offset>> _savedSignatures = [];
   static bool _signaturesLoaded = false;
@@ -230,6 +257,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _ocr.dispose();
     _imageRenderer.dispose();
     _editorController.dispose();
+    _searchController.dispose();
+    _redactionController.dispose();
+    _outlineController.dispose();
+    _compareController.dispose();
+    _chatController.dispose();
+    _layerController.dispose();
+    _formReviewController.dispose();
+    _pageOpsController.dispose();
     super.dispose();
   }
 
@@ -586,6 +621,46 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  // ---- Phase 27-34 toolbar actions ----
+
+  void _toggleSearch() {
+    setState(() {
+      if (_searchController.state.active) {
+        _searchController.close();
+      } else {
+        _searchController.open();
+      }
+    });
+  }
+
+  void _toggleRedaction() {
+    setState(() {
+      if (_redactionController.state.active) {
+        _redactionController.deactivate();
+      } else {
+        _redactionController.activate();
+        _redactionController.setCurrentPage(_current);
+      }
+    });
+  }
+
+  void _toggleOutline() {
+    setState(() => _outlineController.toggle());
+  }
+
+  void _toggleChat() {
+    setState(() => _chatController.toggle());
+  }
+
+  void _toggleLayers() {
+    setState(() => _layerController.toggle());
+  }
+
+  void _showPageOps() {
+    _pageOpsController.show(pageCount: _pageCount);
+    setState(() {});
   }
 
   // ---- Page management (Phase 10) ----
@@ -1559,6 +1634,69 @@ class _PickEditScreenState extends State<PickEditScreen> {
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
+        searchBar: _searchController.state.active
+            ? EditorSearchBar(
+                searchState: _searchController.state,
+                onQueryChanged: (q) => setState(() => _searchController.setQuery(q)),
+                onNext: () => setState(() => _searchController.next()),
+                onPrevious: () => setState(() => _searchController.previous()),
+                onClose: () => setState(() => _searchController.close()),
+                onCaseSensitiveChanged: (v) => setState(() => _searchController.setCaseSensitive(v)),
+                onWholeWordChanged: (v) => setState(() => _searchController.setWholeWord(v)),
+              )
+            : null,
+        redactionOverlay: _redactionController.state.active
+            ? EditorRedactionOverlay(
+                redactionState: _redactionController.state,
+                pageSize: const Size(1, 1), // will be scaled by parent
+                currentPage: _current,
+              )
+            : null,
+        outlinePanel: _outlineController.state.visible
+            ? EditorOutlinePanel(
+                outlineState: _outlineController.state,
+                onJumpToPage: _goToPage,
+                onToggleNode: (n) => setState(() => _outlineController.toggleNode(n)),
+                onExpandAll: () => setState(() => _outlineController.expandAll()),
+                onCollapseAll: () => setState(() => _outlineController.collapseAll()),
+                onClose: () => setState(() => _outlineController.hide()),
+              )
+            : null,
+        chatPanel: _chatController.state.visible
+            ? EditorMultiDocChatPanel(
+                chatState: _chatController.state,
+                onSend: (msg) => setState(() => _chatController.sendUserMessage(msg)),
+                onNewSession: () => setState(() => _chatController.newSession()),
+                onClose: () => setState(() => _chatController.hide()),
+                onRemoveDocument: (id) => setState(() => _chatController.removeDocument(id)),
+              )
+            : null,
+        layerPanel: _layerController.state.visible
+            ? EditorLayerPanel(
+                layerState: _layerController.state,
+                onToggleVisibility: (id) => setState(() => _layerController.toggleVisibility(id)),
+                onToggleLock: (id) => setState(() => _layerController.toggleLock(id)),
+                onSetOpacity: (id, v) => setState(() => _layerController.setOpacity(id, v)),
+                onReorder: (o, n) => setState(() => _layerController.reorder(o, n)),
+                onShowAll: () => setState(() => _layerController.showAll()),
+                onHideAll: () => setState(() => _layerController.hideAll()),
+                onClose: () => setState(() => _layerController.hide()),
+              )
+            : null,
+        formReviewPanel: _formReviewController.state.visible
+            ? EditorFormReviewPanel(
+                reviewState: _formReviewController.state,
+                onAccept: (id) => setState(() => _formReviewController.acceptField(id)),
+                onReject: (id) => setState(() => _formReviewController.rejectField(id)),
+                onAcceptAllValid: () => setState(() => _formReviewController.acceptAllValid()),
+                onRejectAllPending: () => setState(() => _formReviewController.rejectAllPending()),
+                onApply: () {
+                  _formReviewController.beginApply();
+                  setState(() => _formReviewController.finishApply());
+                },
+                onClose: () => setState(() => _formReviewController.hide()),
+              )
+            : null,
         inlineOverlay: _inlineEditing != null
             ? Positioned.fill(
                 bottom: 96,
@@ -1727,6 +1865,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onAddImage: _addImage,
           onRotatePage: _rotatePage,
           onOpen: _pick,
+          onSearch: _toggleSearch,
+          onRedact: _toggleRedaction,
+          onOutline: _toggleOutline,
+          onChat: _toggleChat,
+          onLayers: _toggleLayers,
+          onPageOps: _showPageOps,
           onColorChanged: (c) => setState(() => _color = c),
           onStrokeChanged: (v) => setState(() => _stroke = v),
           onTextSizeChanged: (v) => setState(() => _textSize = v),
