@@ -17,7 +17,6 @@ import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
-import 'package:ai_pdf/features/editor/data/export_settings_service.dart';
 import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
@@ -182,7 +181,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final PageReorderService _pageReorder = const PageReorderService();
   final RevisionHistoryService _revisionHistory = const RevisionHistoryService();
   final FormProfileService _formProfiles = const FormProfileService();
-  final ExportSettingsService _exportSettings = const ExportSettingsService();
   final CrossFieldLogicService _crossField = const CrossFieldLogicService();
   final EditorFieldInputService _fieldInput = const EditorFieldInputService();
   final EditorAnnotationFactoryService _annotationFactory = const EditorAnnotationFactoryService();
@@ -485,7 +483,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
       FieldType.name,
     );
     if (val != null && val.trim().isNotEmpty) {
-      setState(() => _pushItem(_annotationFactory.typedSignature(val.trim())));
+      setState(() {
+        // Auto-select the typed signature so it can be moved/resized right away,
+        // consistent with drawn/saved signatures and other annotations.
+        final typed = _annotationFactory.typedSignature(val.trim());
+        _pushItem(typed);
+        _selected = typed;
+        _tool = EditTool.pan;
+      });
     }
   }
 
@@ -926,13 +931,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     });
   }
 
-
-  /// Resize a selected shape by adjusting its end point.
-  void _resizeSelected(Offset newEndNorm) {
-    setState(() {
-      _editorController.resizeSelectedShape(_selected, newEndNorm, _selection);
-    });
-  }
 
   /// Quick, precise font sizing for the selected value so it fits its field.
   /// [factor] > 1 enlarges, < 1 shrinks. Size is normalized to canvas height.
@@ -1499,8 +1497,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
     if (points != null && points.length > 1) {
       setState(() {
-        _pushItem(_signatureInsert.signatureFromPadPoints(points!));
+        // Insert as a normal stroke annotation, then immediately select it and
+        // switch to the pan tool so the user can drag it and resize it via the
+        // selection handles — same behaviour as stamps / images / text boxes.
+        final signature = _signatureInsert.signatureFromPadPoints(points!);
+        _pushItem(signature);
+        _selected = signature;
+        _tool = EditTool.pan;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signature added — drag to move, use the corner handles to resize.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
