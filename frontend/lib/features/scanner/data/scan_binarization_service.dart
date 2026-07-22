@@ -65,11 +65,11 @@ class ScanBinarizationService {
 
     final out = List<int>.filled(n, 0);
     for (var y = 0; y < height; y++) {
-      final y0 = math.max(0, y - half);
-      final y1 = math.min(height - 1, y + half);
+      final y0 = (y - half).clamp(0, height - 1);
+      final y1 = (y + half).clamp(0, height - 1);
       for (var x = 0; x < width; x++) {
-        final x0 = math.max(0, x - half);
-        final x1 = math.min(width - 1, x + half);
+        final x0 = (x - half).clamp(0, width - 1);
+        final x1 = (x + half).clamp(0, width - 1);
 
         final count = (x1 - x0 + 1) * (y1 - y0 + 1);
         final s = _rectSum(sum, iw, x0, y0, x1, y1);

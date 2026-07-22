@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
 
 /// Reorderable grid of captured pages for the review stage (Phase 51).
