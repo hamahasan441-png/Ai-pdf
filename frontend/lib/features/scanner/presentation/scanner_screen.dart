@@ -350,14 +350,12 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       final doc = pw.Document();
       for (final page in state.pages) {
         final image = pw.MemoryImage(page.displayBytes);
-        final format = PdfPageFormat(
-          image.width!.toDouble(),
-          image.height!.toDouble(),
-        );
         doc.addPage(
           pw.Page(
-            pageFormat: format,
-            build: (_) => pw.Image(image, fit: pw.BoxFit.contain),
+            pageFormat: PdfPageFormat.a4,
+            build: (_) => pw.Center(
+              child: pw.Image(image, fit: pw.BoxFit.contain),
+            ),
           ),
         );
       }
