@@ -11,8 +11,10 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
+import 'package:ai_pdf/features/editor/data/background_page_renderer.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
+import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/export_settings_service.dart';
@@ -68,6 +70,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart'
 import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnail_strip.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
@@ -156,8 +159,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Bumped when an async image decode completes, to force a canvas repaint.
   int _canvasRevision = 0;
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
+  final BackgroundPageRenderer _bgRenderer = const BackgroundPageRenderer();
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final PagePreloaderService _preloader = const PagePreloaderService();
+  final PageReorderService _pageReorder = const PageReorderService();
   final RevisionHistoryService _revisionHistory = const RevisionHistoryService();
   final FormProfileService _formProfiles = const FormProfileService();
   final ExportSettingsService _exportSettings = const ExportSettingsService();
@@ -554,14 +559,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _showFields = false;
       _showEditLines = false;
     });
-    // Pre-render adjacent pages for instant page-switching.
+    // Pre-render adjacent pages in the background (off-main-thread downscale)
+    // for instant page-switching without janking the UI.
     if (_doc != null) {
-      _preloader.preloadAdjacent(
-        doc: _doc!,
-        currentPage: index,
-        pageCount: _pageCount,
+      for (final adj in [index - 1, index + 1]) {
+        if (adj >= 0 && adj < _pageCount) {
+          _bgRenderer.renderInBackground(
+            doc: _doc!,
+            index: adj,
+            pageCache: _pageCache,
+            renderMaxEdge: _renderMaxEdge,
+          ).then((_) {
+            if (mounted) setState(() {}); // refresh thumbnails
+          });
+        }
+      }
+      _bgRenderer.evictFarPages(
         pageCache: _pageCache,
-        renderMaxEdge: _renderMaxEdge,
+        keepIndex: index,
+        maxCachedPages: _maxCachedPages,
       );
     }
   }
@@ -570,6 +586,66 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  // ---- Page management (Phase 10) ----
+
+  void _onPageAction(int index, String action) {
+    switch (action) {
+      case 'delete':
+        _deletePage(index);
+        break;
+      case 'duplicate':
+        _duplicatePage(index);
+        break;
+      case 'insert':
+        _insertBlankPage(index + 1);
+        break;
+    }
+  }
+
+  void _deletePage(int index) {
+    if (_pageCount <= 1) return;
+    setState(() {
+      final newCount = _pageReorder.deletePage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      if (_current >= _pageCount) _current = _pageCount - 1;
+      _hasUnsavedChanges = true;
+      _selected = null;
+      _multi.clear();
+    });
+  }
+
+  void _duplicatePage(int index) {
+    setState(() {
+      final newCount = _pageReorder.duplicatePage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _insertBlankPage(int index) {
+    setState(() {
+      final newCount = _pageReorder.insertBlankPage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      _hasUnsavedChanges = true;
+    });
+    _goToPage(index);
   }
 
   // ---- Gesture handling (coordinates normalized to canvas) ----
@@ -1620,6 +1696,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onUnderline: _toggleSelectionUnderline,
           onColor: _pickSelectionColor,
         ),
+        thumbnailStrip: _pageCount > 1
+            ? EditorPageThumbnailStrip(
+                pageCount: _pageCount,
+                currentPage: _current,
+                pageCache: _pageCache,
+                onPageTap: _goToPage,
+                onPageAction: _onPageAction,
+              )
+            : null,
         toolbar: EditorToolbar(
           tool: _tool,
           detecting: _detecting,
