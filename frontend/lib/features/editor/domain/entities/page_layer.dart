@@ -1,4 +1,6 @@
 import 'annotation.dart';
+import 'image_annotation.dart';
+import 'stamp_annotation.dart';
 
 /// Per-page annotation layer with undo + redo history.
 ///
@@ -15,6 +17,10 @@ class PageLayer {
       items.whereType<ShapeAnnotation>().toList();
   List<TextAnnotation> get texts =>
       items.whereType<TextAnnotation>().toList();
+  List<ImageAnnotation> get images =>
+      items.whereType<ImageAnnotation>().toList();
+  List<StampAnnotation> get stamps =>
+      items.whereType<StampAnnotation>().toList();
 
   /// Returns the first annotation whose [id] matches, or null.
   EditorAnnotation? findById(String id) {

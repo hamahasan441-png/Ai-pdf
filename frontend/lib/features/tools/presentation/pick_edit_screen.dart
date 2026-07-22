@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -36,9 +37,13 @@ import 'package:ai_pdf/features/editor/data/editor_initial_fields_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_signature_insert_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_signature_flow_service.dart';
 import 'package:ai_pdf/features/editor/data/ocr_field_detection_service.dart';
+import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
+import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/signature_repository.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
@@ -143,6 +148,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final OcrService _ocr = OcrService();
   final SignatureRepository _signatureRepo = const SignatureRepository();
   final OcrFieldDetectionService _fieldDetection = const OcrFieldDetectionService();
+  final ImageAnnotationRenderer _imageRenderer = ImageAnnotationRenderer();
+  final StampAnnotationRenderer _stampRenderer = const StampAnnotationRenderer();
+
+  /// Bumped when an async image decode completes, to force a canvas repaint.
+  int _canvasRevision = 0;
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final PagePreloaderService _preloader = const PagePreloaderService();
@@ -210,8 +220,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void dispose() {
     _doc?.close();
     _ocr.dispose();
+    _imageRenderer.dispose();
     _editorController.dispose();
     super.dispose();
+  }
+
+  /// Decode & cache an image annotation for painting, then repaint. Safe to
+  /// call for any annotation type (no-op for non-images).
+  void _prepareIfImage(EditorAnnotation? a) {
+    if (a is! ImageAnnotation) return;
+    _imageRenderer.prepare(a).then((_) {
+      if (mounted) setState(() => _canvasRevision++);
+    });
   }
 
   // ---- Smart field detection (E1) --------------------------------------
@@ -472,6 +492,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (savedLayers.isNotEmpty) {
         _layers.addAll(savedLayers);
         _hasUnsavedChanges = true;
+        // Decode any restored image annotations so they paint on first view.
+        for (final l in savedLayers.values) {
+          for (final img in l.images) {
+            _prepareIfImage(img);
+          }
+        }
       }
 
       if (fields != null && fields.isNotEmpty) {
@@ -788,6 +814,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _tool = EditTool.pan;
       }
     });
+    _prepareIfImage(_selected);
   }
 
   /// Quick colour picker for the selected text value.
@@ -809,6 +836,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _selected = _editorController.duplicateSelected(_layer, sel, _selection);
     });
+    _prepareIfImage(_selected);
   }
 
   void _bringToFront() {
@@ -863,6 +891,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _multi
         ..clear()
         ..addAll(copies);
+      for (final c in copies) {
+        _prepareIfImage(c);
+      }
     });
   }
 
@@ -1028,36 +1059,80 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   /// Fill & Sign: pick a saved profile value (name, address, ID…) and drop it
   /// as a movable text box. Prompts to set up the profile if none is saved.
-  /// Add a predefined stamp to the page.
+  /// Add a professional stamp (APPROVED, DRAFT, CONFIDENTIAL, …) to the page.
   Future<void> _addStamp() async {
-    // Show a simple stamp chooser (for now, use DRAFT as default).
-    // TODO: show a stamp picker sheet with all StampKind options.
+    const choices = <StampKind>[
+      StampKind.approved,
+      StampKind.rejected,
+      StampKind.confidential,
+      StampKind.draft,
+      StampKind.finalVersion,
+      StampKind.paid,
+      StampKind.voided,
+      StampKind.urgent,
+      StampKind.copy,
+    ];
+    final kind = await showModalBottomSheet<StampKind>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            for (final k in choices)
+              ListTile(
+                leading: const Icon(Icons.approval),
+                title: Text(StampAnnotation.centered(kind: k, color: Colors.black).displayText),
+                onTap: () => Navigator.pop(ctx, k),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (kind == null || !mounted) return;
+    final color = switch (kind) {
+      StampKind.approved || StampKind.paid || StampKind.finalVersion => Colors.green.shade700,
+      StampKind.rejected || StampKind.voided || StampKind.urgent => Colors.red.shade700,
+      _ => _color,
+    };
     setState(() {
-      _pushItem(_annotationFactory.textAt(
-        const Offset(0.35, 0.45),
-        0.04,
-        'DRAFT',
-        color: Colors.red,
-        bold: true,
-      ));
+      final stamp = StampAnnotation.centered(kind: kind, color: color);
+      _pushItem(stamp);
+      _selected = stamp;
+      _tool = EditTool.pan;
     });
   }
 
-  /// Add an image from the device gallery to the page.
+  /// Add an image (photo / logo / scanned signature) from device storage as a
+  /// movable, resizable [ImageAnnotation].
   Future<void> _addImage() async {
     final picked = await _filePicker.pickSupportedFile();
     if (picked == null) return;
-    // For now, add as a text placeholder showing the filename.
-    // Full ImageAnnotation rendering requires the image_annotation_renderer
-    // to be wired into the canvas painter (P1 service exists, wiring is next).
-    setState(() {
-      _pushItem(_annotationFactory.textAt(
-        const Offset(0.3, 0.4),
-        0.02,
-        '[Image: ${picked.name}]',
-        color: Colors.blueGrey,
-      ));
-    });
+    try {
+      final bytes = await File(picked.path).readAsBytes();
+      // Decode once to learn the aspect ratio so the placed image isn't warped.
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final aspect = frame.image.height == 0
+          ? 1.0
+          : frame.image.width / frame.image.height;
+      frame.image.dispose();
+      codec.dispose();
+
+      final annotation = ImageAnnotation.centered(
+        bytes: bytes,
+        aspectRatio: aspect,
+        label: picked.name,
+      );
+      // Decode + cache before it becomes visible so it paints immediately.
+      await _imageRenderer.prepare(annotation);
+      if (!mounted) return;
+      setState(() {
+        _pushItem(annotation);
+        _selected = annotation;
+        _tool = EditTool.pan;
+      });
+    } catch (e) {
+      _showError('Could not add image: $e');
+    }
   }
 
   Future<void> _insertProfileField() async {
@@ -1402,6 +1477,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
             marqueeEnd: _marqueeEnd,
             selected: _selected,
             boundsOf: _boundsOf,
+            imageRenderer: _imageRenderer,
+            stampRenderer: _stampRenderer,
+            canvasRevision: _canvasRevision,
             onTapUp: _onTapUp,
             onPanStart: _onPanStart,
             onPanUpdate: _onPanUpdate,

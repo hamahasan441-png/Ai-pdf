@@ -11,7 +11,10 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import 'package:ai_pdf/features/editor/data/annotation_draw.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
+import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
+import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 
 /// Off-screen export compositor for the editor.
@@ -22,6 +25,9 @@ import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 /// into the page image so they always render correctly.
 class EditorExportService {
   static const double exportMaxEdge = 1800;
+
+  final StampAnnotationRenderer _stampRenderer = const StampAnnotationRenderer();
+  final RtlTextRenderer _rtlText = const RtlTextRenderer();
 
   const EditorExportService();
 
@@ -87,6 +93,10 @@ class EditorExportService {
                       width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
                       child: pw.Text(
                         t.text,
+                        textAlign: _pwAlign(t.textAlign),
+                        textDirection: t.textDirection == TextDirection.rtl
+                            ? pw.TextDirection.rtl
+                            : pw.TextDirection.ltr,
                         style: pw.TextStyle(
                           font: fonts.pick(t.fontFamily, t.bold, t.italic),
                           fontSize: t.size * pageH,
@@ -113,6 +123,22 @@ class EditorExportService {
     final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
     await File(outPath).writeAsBytes(await pdf.save());
     return outPath;
+  }
+
+  /// Map the editor's [TextAlign] to the PDF widget library's equivalent so
+  /// exported vector text is aligned exactly like the on-screen preview.
+  pw.TextAlign _pwAlign(TextAlign a) {
+    switch (a) {
+      case TextAlign.center:
+        return pw.TextAlign.center;
+      case TextAlign.right:
+      case TextAlign.end:
+        return pw.TextAlign.right;
+      case TextAlign.justify:
+        return pw.TextAlign.justify;
+      default:
+        return pw.TextAlign.left;
+    }
   }
 
   bool _isLatin1(String s) {
@@ -172,6 +198,39 @@ class EditorExportService {
     );
   }
 
+  /// Decode and composite an [ImageAnnotation] onto the off-screen [canvas],
+  /// honouring position, size and rotation (mirrors ImageAnnotationRenderer so
+  /// the export matches the on-screen preview).
+  Future<void> _drawImageAnnotation(Canvas canvas, Size size, ImageAnnotation ann) async {
+    try {
+      final codec = await ui.instantiateImageCodec(ann.bytes);
+      final frame = await codec.getNextFrame();
+      final img = frame.image;
+      final rect = Rect.fromLTWH(
+        ann.pos.dx * size.width,
+        ann.pos.dy * size.height,
+        ann.width * size.width,
+        ann.height * size.height,
+      );
+      final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+      final paint = Paint()..filterQuality = FilterQuality.high;
+      canvas.save();
+      if (ann.rotation != 0) {
+        canvas.translate(rect.center.dx, rect.center.dy);
+        canvas.rotate(-ann.rotation);
+        canvas.translate(-rect.width / 2, -rect.height / 2);
+        canvas.drawImageRect(img, src, Rect.fromLTWH(0, 0, rect.width, rect.height), paint);
+      } else {
+        canvas.drawImageRect(img, src, rect, paint);
+      }
+      canvas.restore();
+      img.dispose();
+      codec.dispose();
+    } catch (_) {
+      // Skip an undecodable image rather than aborting the whole export.
+    }
+  }
+
   Future<({Uint8List bytes, int width, int height})?> _composePagePng({
     required int index,
     required pdfx.PdfDocument? doc,
@@ -210,6 +269,10 @@ class EditorExportService {
       canvas.drawImage(base, Offset.zero, Paint());
       final layer = layers[index];
       if (layer != null) {
+        // Background layer: images (photos / logos / scanned signatures).
+        for (final im in layer.images) {
+          await _drawImageAnnotation(canvas, size, im);
+        }
         for (final s in layer.strokes) {
           AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
         }
@@ -219,9 +282,15 @@ class EditorExportService {
           }
           AnnotationDraw.shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
         }
+        // Stamps (bordered label boxes) sit above shapes, matching the preview.
+        for (final st in layer.stamps) {
+          _stampRenderer.paint(canvas, size, st);
+        }
+        // Non-Latin text is rasterized with full RTL/BiDi handling so Arabic,
+        // Kurdish and Persian export in the correct visual order.
         for (final t in layer.texts) {
           if (!_isLatin1(t.text)) {
-            AnnotationDraw.text(canvas, size, t);
+            _rtlText.paint(canvas, size, t);
           }
         }
       }

@@ -1,8 +1,11 @@
+import 'dart:convert' show base64Decode, base64Encode;
 import 'dart:ui' show Offset, TextAlign, TextDirection;
 
 import 'package:flutter/material.dart' show Color, Colors;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 
 /// Pure-Dart JSON serialization for the annotation model.
@@ -45,8 +48,37 @@ Map<String, dynamic> annotationToJson(EditorAnnotation a) {
   if (a is StrokeAnnotation) return _strokeToJson(a);
   if (a is ShapeAnnotation) return _shapeToJson(a);
   if (a is TextAnnotation) return _textToJson(a);
+  if (a is ImageAnnotation) return _imageToJson(a);
+  if (a is StampAnnotation) return _stampToJson(a);
   return {'type': 'unknown', 'id': a.id};
 }
+
+Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
+      'type': 'image',
+      'id': im.id,
+      'posX': im.pos.dx,
+      'posY': im.pos.dy,
+      'width': im.width,
+      'height': im.height,
+      'rotation': im.rotation,
+      'label': im.label,
+      'bytes': base64Encode(im.bytes),
+      ..._baseToJson(im),
+    };
+
+Map<String, dynamic> _stampToJson(StampAnnotation st) => {
+      'type': 'stamp',
+      'id': st.id,
+      'posX': st.pos.dx,
+      'posY': st.pos.dy,
+      'width': st.width,
+      'height': st.height,
+      'kind': st.kind.name,
+      'customText': st.customText,
+      'color': st.color.value,
+      'rotation': st.rotation,
+      ..._baseToJson(st),
+    };
 
 Map<String, dynamic> _strokeToJson(StrokeAnnotation s) => {
       'type': 'stroke',
@@ -113,6 +145,12 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
       case 'text':
         a = _textFromJson(j);
         break;
+      case 'image':
+        a = _imageFromJson(j);
+        break;
+      case 'stamp':
+        a = _stampFromJson(j);
+        break;
       default:
         return null;
     }
@@ -176,6 +214,34 @@ TextAnnotation _textFromJson(Map<String, dynamic> j) {
     charSpacing: (j['charSpacing'] as num?)?.toDouble() ?? 0.0,
     width: (j['width'] as num?)?.toDouble(),
     height: (j['height'] as num?)?.toDouble(),
+    rotation: (j['rotation'] as num?)?.toDouble() ?? 0.0,
+    id: j['id'] as String?,
+  );
+}
+
+ImageAnnotation _imageFromJson(Map<String, dynamic> j) {
+  return ImageAnnotation(
+    pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+    width: (j['width'] as num).toDouble(),
+    height: (j['height'] as num).toDouble(),
+    bytes: base64Decode(j['bytes'] as String),
+    rotation: (j['rotation'] as num?)?.toDouble() ?? 0.0,
+    label: j['label'] as String? ?? 'Image',
+    id: j['id'] as String?,
+  );
+}
+
+StampAnnotation _stampFromJson(Map<String, dynamic> j) {
+  return StampAnnotation(
+    pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+    width: (j['width'] as num).toDouble(),
+    height: (j['height'] as num).toDouble(),
+    kind: StampKind.values.firstWhere(
+      (e) => e.name == j['kind'],
+      orElse: () => StampKind.custom,
+    ),
+    customText: j['customText'] as String? ?? '',
+    color: Color(j['color'] as int? ?? 0xFF000000),
     rotation: (j['rotation'] as num?)?.toDouble() ?? 0.0,
     id: j['id'] as String?,
   );
