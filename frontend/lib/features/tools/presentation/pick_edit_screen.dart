@@ -743,7 +743,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Move a selected object by a normalized delta.
   void _moveSelected(Offset deltaNorm) {
     setState(() {
-      final guides = _editorController.moveSelected(_selected, deltaNorm, _selection, _bounds);
+      final guides = _editorController.moveSelected(
+        _selected,
+        deltaNorm,
+        _selection,
+        _bounds,
+        others: _layer.items,
+      );
       if (guides != null) {
         _guideX = guides.guideX;
         _guideY = guides.guideY;
@@ -783,6 +789,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _editorController.beginEdit([sel], label: 'Resize text');
       _editorController.resizeSelectedText(sel, factor, _selection);
       _editorController.commitEdit(_layer, force: true);
+    });
+  }
+
+  /// Set the rotation (radians) of the selected object during a rotate-handle
+  /// drag. Bumps the canvas revision so the painter (which caches by list
+  /// length) repaints the rotated image/stamp.
+  void _rotateSelected(double radians) {
+    final sel = _selected;
+    if (sel == null) return;
+    setState(() {
+      if (sel is ImageAnnotation) {
+        sel.rotation = radians;
+      } else if (sel is StampAnnotation) {
+        sel.rotation = radians;
+      } else if (sel is TextAnnotation) {
+        sel.rotation = radians;
+      }
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
     });
   }
 
@@ -1505,6 +1530,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
             },
             onResizeEnd: () => setState(() => _editorController.commitEdit(_layer)),
             onResizeBounds: _scaleSelectedTo,
+            onRotateStart: () {
+              final sel = _selected;
+              if (sel != null) _editorController.beginEdit([sel], label: 'Rotate');
+            },
+            onRotate: _rotateSelected,
+            onRotateEnd: () => setState(() => _editorController.commitEdit(_layer, force: true)),
             onTextDecrease: () => _resizeSelectedText(0.9),
             onTextIncrease: () => _resizeSelectedText(1.1),
             onPickTextColor: _pickSelectedTextColor,

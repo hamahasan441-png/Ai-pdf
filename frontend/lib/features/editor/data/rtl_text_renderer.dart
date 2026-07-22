@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
@@ -32,21 +33,20 @@ class RtlTextRenderer {
         ? TextAlign.right
         : t.textAlign;
 
+    final base = TextStyle(
+      color: t.color,
+      fontSize: t.size * size.height,
+      fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
+      fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+      decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: t.color,
+      fontFamily: t.fontFamily,
+      height: t.lineHeight,
+      letterSpacing: t.charSpacing,
+    );
+
     final tp = TextPainter(
-      text: TextSpan(
-        text: t.text,
-        style: TextStyle(
-          color: t.color,
-          fontSize: t.size * size.height,
-          fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-          fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-          decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-          decorationColor: t.color,
-          fontFamily: t.fontFamily,
-          height: t.lineHeight,
-          letterSpacing: t.charSpacing,
-        ),
-      ),
+      text: buildAnnotationTextSpan(t, base),
       textDirection: direction,
       textAlign: align,
     )..layout(maxWidth: size.width * (1 - t.pos.dx));

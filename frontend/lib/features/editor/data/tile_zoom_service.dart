@@ -13,9 +13,13 @@ import 'dart:typed_data';
 /// 3. Each visible tile is rendered at native resolution from the PDF.
 /// 4. Tiles are composited on top of the base image.
 ///
-/// This service defines the tiling contract; the actual tile rendering
-/// requires either pdfrx's built-in tiling or custom platform-channel calls
-/// to PDFium (both future work).
+/// This service defines the tiling contract and the memory-safety math; the
+/// actual per-tile pixel rendering requires a backend that can render a
+/// **sub-region** of a page (pdfrx's built-in tiling, or a platform-channel
+/// call into PDFium). The current `pdfx` backend can only render a whole page
+/// at a chosen size, so wiring live tiles is deferred to that backend swap —
+/// meanwhile [needsHighRes] / [targetMaxEdge] keep any high-res pass bounded so
+/// zoom can never exhaust memory on low-end devices.
 class TileZoomService {
   const TileZoomService();
 
@@ -65,6 +69,26 @@ class TileZoomService {
       }
     }
     return tiles;
+  }
+
+  /// Whether a higher-resolution pass is worthwhile at [zoom]. Below the
+  /// activation threshold the base render is already sharp enough.
+  bool needsHighRes(double zoom) => zoom >= tileActivationZoom;
+
+  /// The target max-edge (in px) to render content at [zoom] so on-screen
+  /// pixel density stays ~1:1, clamped to [hardCap] to bound memory.
+  ///
+  /// This is the memory-safety valve: a tile/whole-page renderer must never
+  /// exceed [hardCap] pixels on its long edge regardless of zoom, so a deep
+  /// zoom on a low-end device can't trigger an OutOfMemoryError.
+  int targetMaxEdge({
+    required int baseMaxEdge,
+    required double zoom,
+    required int hardCap,
+  }) {
+    if (zoom <= 1.0) return baseMaxEdge;
+    final scaled = (baseMaxEdge * zoom).round();
+    return scaled.clamp(baseMaxEdge, hardCap);
   }
 
   /// Compute the pixel rect a tile covers on the rendered page.

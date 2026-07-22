@@ -39,52 +39,113 @@ class SelectionService {
 
   SelectionSnapGuides snapSelected(
     EditorAnnotation sel,
-    AnnotationBoundsService bounds,
-  ) {
-    const threshold = 0.014;
-    double? gx;
-    double? gy;
+    AnnotationBoundsService bounds, {
+    List<EditorAnnotation> others = const [],
+  }) {
+    // 1) Object-to-object snapping takes priority: align the dragged object's
+    //    edges/centre to any other object's edges/centre (like desktop editors).
+    final obj = _snapToObjects(sel, bounds, others);
+    double? gx = obj.guideX;
+    double? gy = obj.guideY;
 
-    final b = bounds.boundsOf(sel);
-    for (final line in const [0.25, 0.5, 0.75]) {
-      if ((b.center.dx - line).abs() < threshold) {
-        moveAnnotation(sel, Offset(line - b.center.dx, 0));
-        gx = line;
-        break;
-      }
-    }
+    // 2) Fall back to page guide lines (thirds + edges) per axis not yet snapped.
+    const threshold = 0.014;
 
     if (gx == null) {
-      final b1 = bounds.boundsOf(sel);
-      if (b1.left.abs() < threshold) {
-        moveAnnotation(sel, Offset(-b1.left, 0));
-        gx = 0;
-      } else if ((b1.right - 1).abs() < threshold) {
-        moveAnnotation(sel, Offset(1 - b1.right, 0));
-        gx = 1;
+      final b = bounds.boundsOf(sel);
+      for (final line in const [0.25, 0.5, 0.75]) {
+        if ((b.center.dx - line).abs() < threshold) {
+          moveAnnotation(sel, Offset(line - b.center.dx, 0));
+          gx = line;
+          break;
+        }
       }
-    }
-
-    final b2 = bounds.boundsOf(sel);
-    for (final line in const [0.25, 0.5, 0.75]) {
-      if ((b2.center.dy - line).abs() < threshold) {
-        moveAnnotation(sel, Offset(0, line - b2.center.dy));
-        gy = line;
-        break;
+      if (gx == null) {
+        final b1 = bounds.boundsOf(sel);
+        if (b1.left.abs() < threshold) {
+          moveAnnotation(sel, Offset(-b1.left, 0));
+          gx = 0;
+        } else if ((b1.right - 1).abs() < threshold) {
+          moveAnnotation(sel, Offset(1 - b1.right, 0));
+          gx = 1;
+        }
       }
     }
 
     if (gy == null) {
-      final b3 = bounds.boundsOf(sel);
-      if (b3.top.abs() < threshold) {
-        moveAnnotation(sel, Offset(0, -b3.top));
-        gy = 0;
-      } else if ((b3.bottom - 1).abs() < threshold) {
-        moveAnnotation(sel, Offset(0, 1 - b3.bottom));
-        gy = 1;
+      final b2 = bounds.boundsOf(sel);
+      for (final line in const [0.25, 0.5, 0.75]) {
+        if ((b2.center.dy - line).abs() < threshold) {
+          moveAnnotation(sel, Offset(0, line - b2.center.dy));
+          gy = line;
+          break;
+        }
+      }
+      if (gy == null) {
+        final b3 = bounds.boundsOf(sel);
+        if (b3.top.abs() < threshold) {
+          moveAnnotation(sel, Offset(0, -b3.top));
+          gy = 0;
+        } else if ((b3.bottom - 1).abs() < threshold) {
+          moveAnnotation(sel, Offset(0, 1 - b3.bottom));
+          gy = 1;
+        }
       }
     }
 
+    return SelectionSnapGuides(guideX: gx, guideY: gy);
+  }
+
+  /// Snap [sel] to the nearest edge/centre of any other object within a small
+  /// threshold, returning the guide line positions (normalised) that were hit.
+  /// Pure geometry: compares left/centre/right and top/centre/bottom of [sel]
+  /// against the same anchors on every other object and applies the closest.
+  SelectionSnapGuides _snapToObjects(
+    EditorAnnotation sel,
+    AnnotationBoundsService bounds,
+    List<EditorAnnotation> others,
+  ) {
+    if (others.isEmpty) return const SelectionSnapGuides();
+    const threshold = 0.012;
+    final b = bounds.boundsOf(sel);
+    final selXs = [b.left, b.center.dx, b.right];
+    final selYs = [b.top, b.center.dy, b.bottom];
+
+    double? gx;
+    double? gy;
+    double? offX;
+    double? offY;
+    double bestX = threshold;
+    double bestY = threshold;
+
+    for (final o in others) {
+      if (identical(o, sel)) continue;
+      final r = bounds.boundsOf(o);
+      for (final rx in [r.left, r.center.dx, r.right]) {
+        for (final sx in selXs) {
+          final d = (rx - sx).abs();
+          if (d < bestX) {
+            bestX = d;
+            gx = rx;
+            offX = rx - sx;
+          }
+        }
+      }
+      for (final ry in [r.top, r.center.dy, r.bottom]) {
+        for (final sy in selYs) {
+          final d = (ry - sy).abs();
+          if (d < bestY) {
+            bestY = d;
+            gy = ry;
+            offY = ry - sy;
+          }
+        }
+      }
+    }
+
+    if (offX != null || offY != null) {
+      moveAnnotation(sel, Offset(offX ?? 0, offY ?? 0));
+    }
     return SelectionSnapGuides(guideX: gx, guideY: gy);
   }
 

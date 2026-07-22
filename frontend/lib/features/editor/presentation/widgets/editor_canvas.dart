@@ -3,12 +3,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/core/services/ocr_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
+import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 
@@ -56,6 +59,11 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback? onMoveTextEnd;
   final VoidCallback? onResizeStart;
   final VoidCallback? onResizeEnd;
+
+  /// Rotation handle hooks (shown for images/stamps, which render rotation).
+  final ValueChanged<double>? onRotate;
+  final VoidCallback? onRotateStart;
+  final VoidCallback? onRotateEnd;
   final VoidCallback onTextDecrease;
   final VoidCallback onTextIncrease;
   final VoidCallback onPickTextColor;
@@ -114,6 +122,9 @@ class EditorCanvas extends StatelessWidget {
     this.onMoveTextEnd,
     this.onResizeStart,
     this.onResizeEnd,
+    this.onRotate,
+    this.onRotateStart,
+    this.onRotateEnd,
     required this.onTextDecrease,
     required this.onTextIncrease,
     required this.onPickTextColor,
@@ -147,7 +158,14 @@ class EditorCanvas extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.memory(bytes, fit: BoxFit.fill, gaplessPlayback: true),
+              Image.memory(
+                bytes,
+                fit: BoxFit.fill,
+                gaplessPlayback: true,
+                // Smoother resampling when the InteractiveViewer scales the
+                // page bitmap up on zoom (zero extra memory vs. the default).
+                filterQuality: FilterQuality.medium,
+              ),
               CustomPaint(
                 painter: EditorCanvasPainter(
                   layer.strokes,
@@ -280,16 +298,19 @@ class EditorCanvas extends StatelessWidget {
                         decoration: BoxDecoration(
                           border: selected == t ? Border.all(color: Colors.blue, width: 2) : null,
                         ),
-                        child: Text(
-                          t.text,
-                          style: TextStyle(
-                            color: t.color,
-                            fontSize: t.size * size.height,
-                            fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                            fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                            decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-                            decorationColor: t.color,
-                            fontFamily: t.fontFamily,
+                        child: Text.rich(
+                          buildAnnotationTextSpan(
+                            t,
+                            TextStyle(
+                              color: t.color,
+                              fontSize: t.size * size.height,
+                              fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
+                              fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+                              decoration:
+                                  t.underline ? TextDecoration.underline : TextDecoration.none,
+                              decorationColor: t.color,
+                              fontFamily: t.fontFamily,
+                            ),
                           ),
                         ),
                       ),
@@ -313,6 +334,15 @@ class EditorCanvas extends StatelessWidget {
                   onResizeStart: onResizeStart,
                   onResizeEnd: onResizeEnd,
                 ),
+                if (onRotate != null &&
+                    (selected is ImageAnnotation || selected is StampAnnotation))
+                  EditorRotateHandle(
+                    size: size,
+                    bounds: boundsOf(selected!),
+                    onRotate: onRotate!,
+                    onRotateStart: onRotateStart,
+                    onRotateEnd: onRotateEnd,
+                  ),
               ],
               if (selected != null)
                 EditorSelectionActionBar(

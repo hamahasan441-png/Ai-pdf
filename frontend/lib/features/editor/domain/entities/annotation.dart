@@ -225,6 +225,31 @@ class ShapeAnnotation extends EditorAnnotation {
   }
 }
 
+/// A single styled run within a rich-text [TextAnnotation].
+///
+/// Each override is nullable: a null field means "inherit the annotation's
+/// base style" so a run only needs to specify what differs. [sizeScale] is a
+/// multiplier applied to the base font size (1.0 = same size).
+class TextRun {
+  final String text;
+  final bool? bold;
+  final bool? italic;
+  final bool? underline;
+  final Color? color;
+  final String? fontFamily;
+  final double? sizeScale;
+
+  const TextRun(
+    this.text, {
+    this.bold,
+    this.italic,
+    this.underline,
+    this.color,
+    this.fontFamily,
+    this.sizeScale,
+  });
+}
+
 /// A text box annotation.
 ///
 /// Font size ([size]) is stored in **PDF points** (pt), not as a normalised
@@ -281,6 +306,11 @@ class TextAnnotation extends EditorAnnotation {
   /// Rotation in radians. 0 = upright. Positive = counter-clockwise.
   double rotation;
 
+  /// Optional rich-text runs. When null/empty the whole box uses the base
+  /// style above (the common case). When present, the runs define per-span
+  /// styling and their concatenation should equal [text].
+  List<TextRun>? runs;
+
   TextAnnotation(
     this.pos,
     this.text,
@@ -297,6 +327,7 @@ class TextAnnotation extends EditorAnnotation {
     this.width,
     this.height,
     this.rotation = 0.0,
+    this.runs,
     super.id,
   });
 
@@ -337,6 +368,7 @@ class TextAnnotation extends EditorAnnotation {
       width: width,
       height: height,
       rotation: rotation,
+      runs: runs == null ? null : List<TextRun>.of(runs!),
       id: id,
     );
     c.copyBaseFrom(this);
@@ -360,6 +392,7 @@ class TextAnnotation extends EditorAnnotation {
     width = o.width;
     height = o.height;
     rotation = o.rotation;
+    runs = o.runs == null ? null : List<TextRun>.of(o.runs!);
     copyBaseFrom(o);
   }
 }
