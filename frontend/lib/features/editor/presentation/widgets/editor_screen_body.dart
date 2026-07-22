@@ -14,6 +14,8 @@ class EditorScreenBody extends StatelessWidget {
   final Widget documentViewport;
   final Widget toolbar;
   final Widget? inlineOverlay;
+  final Widget? richTextToolbar;
+  final Widget? thumbnailStrip;
 
   const EditorScreenBody({
     super.key,
@@ -25,6 +27,8 @@ class EditorScreenBody extends StatelessWidget {
     required this.documentViewport,
     required this.toolbar,
     this.inlineOverlay,
+    this.richTextToolbar,
+    this.thumbnailStrip,
   });
 
   @override
@@ -43,6 +47,9 @@ class EditorScreenBody extends StatelessWidget {
           detectingLabel: detecting ? detectingLabel : null,
         ),
         Positioned(left: 0, right: 0, bottom: 0, child: toolbar),
+        if (thumbnailStrip != null)
+          Positioned(left: 0, right: 0, bottom: 96, child: thumbnailStrip!),
+        if (richTextToolbar != null) richTextToolbar!,
       ],
     );
   }

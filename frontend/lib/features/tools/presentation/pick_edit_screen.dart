@@ -11,8 +11,10 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
+import 'package:ai_pdf/features/editor/data/background_page_renderer.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
+import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/export_settings_service.dart';
@@ -32,6 +34,7 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_rich_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_scan_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_initial_fields_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_signature_insert_service.dart';
@@ -65,7 +68,9 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_d
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnail_strip.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
@@ -154,8 +159,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Bumped when an async image decode completes, to force a canvas repaint.
   int _canvasRevision = 0;
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
+  final BackgroundPageRenderer _bgRenderer = const BackgroundPageRenderer();
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final PagePreloaderService _preloader = const PagePreloaderService();
+  final PageReorderService _pageReorder = const PageReorderService();
   final RevisionHistoryService _revisionHistory = const RevisionHistoryService();
   final FormProfileService _formProfiles = const FormProfileService();
   final ExportSettingsService _exportSettings = const ExportSettingsService();
@@ -181,6 +188,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorSmartFillService _smartFill = const EditorSmartFillService();
   final EditorExistingTextService _existingText = const EditorExistingTextService();
   final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
+  final EditorRichTextService _richText = const EditorRichTextService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
   bool _showFields = false;
 
@@ -551,14 +559,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _showFields = false;
       _showEditLines = false;
     });
-    // Pre-render adjacent pages for instant page-switching.
+    // Pre-render adjacent pages in the background (off-main-thread downscale)
+    // for instant page-switching without janking the UI.
     if (_doc != null) {
-      _preloader.preloadAdjacent(
-        doc: _doc!,
-        currentPage: index,
-        pageCount: _pageCount,
+      for (final adj in [index - 1, index + 1]) {
+        if (adj >= 0 && adj < _pageCount) {
+          _bgRenderer.renderInBackground(
+            doc: _doc!,
+            index: adj,
+            pageCache: _pageCache,
+            renderMaxEdge: _renderMaxEdge,
+          ).then((_) {
+            if (mounted) setState(() {}); // refresh thumbnails
+          });
+        }
+      }
+      _bgRenderer.evictFarPages(
         pageCache: _pageCache,
-        renderMaxEdge: _renderMaxEdge,
+        keepIndex: index,
+        maxCachedPages: _maxCachedPages,
       );
     }
   }
@@ -567,6 +586,66 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  // ---- Page management (Phase 10) ----
+
+  void _onPageAction(int index, String action) {
+    switch (action) {
+      case 'delete':
+        _deletePage(index);
+        break;
+      case 'duplicate':
+        _duplicatePage(index);
+        break;
+      case 'insert':
+        _insertBlankPage(index + 1);
+        break;
+    }
+  }
+
+  void _deletePage(int index) {
+    if (_pageCount <= 1) return;
+    setState(() {
+      final newCount = _pageReorder.deletePage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      if (_current >= _pageCount) _current = _pageCount - 1;
+      _hasUnsavedChanges = true;
+      _selected = null;
+      _multi.clear();
+    });
+  }
+
+  void _duplicatePage(int index) {
+    setState(() {
+      final newCount = _pageReorder.duplicatePage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _insertBlankPage(int index) {
+    setState(() {
+      final newCount = _pageReorder.insertBlankPage(
+        index: index,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+      );
+      _pageCount = newCount;
+      _hasUnsavedChanges = true;
+    });
+    _goToPage(index);
   }
 
   // ---- Gesture handling (coordinates normalized to canvas) ----
@@ -1183,6 +1262,58 @@ class _PickEditScreenState extends State<PickEditScreen> {
   // --- Inline text editing (P1) ---
   TextAnnotation? _inlineEditing; // annotation currently being edited inline
   bool _inlineEditTxnOpen = false; // true when editing EXISTING text (undoable)
+  TextSelection _inlineSelection = const TextSelection.collapsed(offset: 0);
+
+  /// Whether the inline editor has a non-collapsed text selection (range).
+  bool get _hasInlineSelection =>
+      _inlineEditing != null && !_inlineSelection.isCollapsed;
+
+  /// Apply bold toggle to the currently selected range in the inline editor.
+  void _toggleSelectionBold() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleBold(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleSelectionItalic() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleItalic(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleSelectionUnderline() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleUnderline(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Future<void> _pickSelectionColor() async {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color);
+    if (picked == null || !mounted) return;
+    setState(() {
+      editing.runs = _richText.applyStyle(
+        editing,
+        start: _inlineSelection.start,
+        end: _inlineSelection.end,
+        color: picked,
+      );
+      _hasUnsavedChanges = true;
+    });
+  }
 
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
     // For NEW text boxes, use inline editing directly on the canvas.
@@ -1467,6 +1598,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                             canvasSize: Size(pageW, pageH),
                             onDone: _commitInlineEdit,
                             onTextChanged: _onInlineTextChanged,
+                            onSelectionChanged: (sel) =>
+                                setState(() => _inlineSelection = sel),
                           ),
                         ),
                       ],
@@ -1554,6 +1687,23 @@ class _PickEditScreenState extends State<PickEditScreen> {
             resolveTypeIcon: _typeIcon,
           ),
         ),
+        richTextToolbar: EditorRichTextToolbar(
+          hasFocus: _inlineEditing != null,
+          hasSelection: _hasInlineSelection,
+          onBold: _toggleSelectionBold,
+          onItalic: _toggleSelectionItalic,
+          onUnderline: _toggleSelectionUnderline,
+          onColor: _pickSelectionColor,
+        ),
+        thumbnailStrip: _pageCount > 1
+            ? EditorPageThumbnailStrip(
+                pageCount: _pageCount,
+                currentPage: _current,
+                pageCache: _pageCache,
+                onPageTap: _goToPage,
+                onPageAction: _onPageAction,
+              )
+            : null,
         toolbar: EditorToolbar(
           tool: _tool,
           detecting: _detecting,

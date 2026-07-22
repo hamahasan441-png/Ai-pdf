@@ -9,21 +9,26 @@ import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 /// widget appears at the annotation's screen position as a transparent
 /// `TextField` overlay. The user edits text in-place — no modal dialog needed.
 ///
+/// ### Rich text selection
+/// Exposes [onSelectionChanged] so the parent can show a styling toolbar when
+/// the user has a non-collapsed selection. The parent calls back to apply
+/// bold/italic/underline/colour to the selected range via the rich-text service.
+///
 /// ### Lifecycle
 /// 1. Parent provides the annotation, canvas size, and an `onDone` callback.
 /// 2. This widget auto-focuses the TextField on mount.
 /// 3. On focus-loss (tap elsewhere) or explicit submit, `onDone` fires with
 ///    the edited text. Parent commits it as a single undo command.
 /// 4. If text is empty on done, parent may delete the annotation.
-///
-/// ### Position
-/// The widget is positioned via a `Positioned` in the parent's Stack using
-/// normalised pos × canvasSize (same coordinate system as the annotation).
 class InlineTextEditor extends StatefulWidget {
   final TextAnnotation annotation;
   final Size canvasSize;
   final VoidCallback onDone;
   final ValueChanged<String> onTextChanged;
+
+  /// Fires when the user's text selection changes. The parent uses this to
+  /// show/hide the rich-text formatting toolbar and apply per-range styling.
+  final void Function(TextSelection selection)? onSelectionChanged;
 
   const InlineTextEditor({
     super.key,
@@ -31,6 +36,7 @@ class InlineTextEditor extends StatefulWidget {
     required this.canvasSize,
     required this.onDone,
     required this.onTextChanged,
+    this.onSelectionChanged,
   });
 
   @override
@@ -45,6 +51,7 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.annotation.text);
+    _controller.addListener(_onSelectionUpdate);
     _focusNode = FocusNode();
     _focusNode.addListener(_onFocusChange);
     // Auto-focus after the first frame so the keyboard appears immediately.
@@ -55,6 +62,7 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
 
   @override
   void dispose() {
+    _controller.removeListener(_onSelectionUpdate);
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     _controller.dispose();
@@ -67,10 +75,18 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
     }
   }
 
+  void _onSelectionUpdate() {
+    widget.onSelectionChanged?.call(_controller.selection);
+  }
+
   void _commit() {
     widget.onTextChanged(_controller.text);
     widget.onDone();
   }
+
+  /// The current selection — exposed so the parent can read it when applying
+  /// a style toggle to the selected range.
+  TextSelection get selection => _controller.selection;
 
   @override
   Widget build(BuildContext context) {

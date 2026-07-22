@@ -51,7 +51,19 @@ class RtlTextRenderer {
       textAlign: align,
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
 
-    tp.paint(canvas, Offset(t.pos.dx * size.width, t.pos.dy * size.height));
+    final px = t.pos.dx * size.width;
+    final py = t.pos.dy * size.height;
+
+    if (t.rotation != 0) {
+      canvas.save();
+      canvas.translate(px + tp.width / 2, py + tp.height / 2);
+      canvas.rotate(-t.rotation);
+      canvas.translate(-tp.width / 2, -tp.height / 2);
+      tp.paint(canvas, Offset.zero);
+      canvas.restore();
+    } else {
+      tp.paint(canvas, Offset(px, py));
+    }
   }
 
   /// Detect text direction from content.

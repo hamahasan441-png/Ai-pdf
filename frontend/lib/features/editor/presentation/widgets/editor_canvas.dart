@@ -298,18 +298,21 @@ class EditorCanvas extends StatelessWidget {
                         decoration: BoxDecoration(
                           border: selected == t ? Border.all(color: Colors.blue, width: 2) : null,
                         ),
-                        child: Text.rich(
-                          buildAnnotationTextSpan(
-                            t,
-                            TextStyle(
-                              color: t.color,
-                              fontSize: t.size * size.height,
-                              fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                              fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                              decoration:
-                                  t.underline ? TextDecoration.underline : TextDecoration.none,
-                              decorationColor: t.color,
-                              fontFamily: t.fontFamily,
+                        child: Transform.rotate(
+                          angle: -t.rotation,
+                          child: Text.rich(
+                            buildAnnotationTextSpan(
+                              t,
+                              TextStyle(
+                                color: t.color,
+                                fontSize: t.size * size.height,
+                                fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
+                                fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+                                decoration:
+                                    t.underline ? TextDecoration.underline : TextDecoration.none,
+                                decorationColor: t.color,
+                                fontFamily: t.fontFamily,
+                              ),
                             ),
                           ),
                         ),
@@ -335,7 +338,9 @@ class EditorCanvas extends StatelessWidget {
                   onResizeEnd: onResizeEnd,
                 ),
                 if (onRotate != null &&
-                    (selected is ImageAnnotation || selected is StampAnnotation))
+                    (selected is TextAnnotation ||
+                     selected is ImageAnnotation ||
+                     selected is StampAnnotation))
                   EditorRotateHandle(
                     size: size,
                     bounds: boundsOf(selected!),

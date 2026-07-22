@@ -17,7 +17,7 @@ import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 class PagePreloaderService {
   const PagePreloaderService();
 
-  final EditorPageRenderService _renderer = const EditorPageRenderService();
+  static const EditorPageRenderService _renderer = EditorPageRenderService();
 
   /// Pre-render pages adjacent to [currentPage].
   /// Call this after each page navigation completes.
