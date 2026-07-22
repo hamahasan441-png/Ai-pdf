@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/material.dart' show Color;
 
@@ -90,5 +90,48 @@ class StampAnnotation extends EditorAnnotation {
       customText: customText,
       color: color,
     );
+  }
+
+  @override
+  Rect get bounds => Rect.fromLTWH(pos.dx, pos.dy, width, height);
+
+  @override
+  void translate(Offset delta) {
+    pos = clampOffset01(pos + delta);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    pos = Offset(next.left.clamp(0.0, 1.0), next.top.clamp(0.0, 1.0));
+    width = next.width.abs().clamp(0.02, 1.0);
+    height = next.height.abs().clamp(0.01, 1.0);
+  }
+
+  @override
+  StampAnnotation clone({double shift = 0, String? id}) {
+    final c = StampAnnotation(
+      pos: Offset(pos.dx + shift, pos.dy + shift),
+      width: width,
+      height: height,
+      kind: kind,
+      customText: customText,
+      color: color,
+      rotation: rotation,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(StampAnnotation o) {
+    pos = o.pos;
+    width = o.width;
+    height = o.height;
+    kind = o.kind;
+    customText = o.customText;
+    color = o.color;
+    rotation = o.rotation;
+    copyBaseFrom(o);
   }
 }

@@ -10,16 +10,81 @@ String _newId() {
   return '$ts-$rand';
 }
 
+/// Clamp a normalised offset into the [0, max] page range on both axes.
+Offset clampOffset01(Offset o, [double max = 1.0]) =>
+    Offset(o.dx.clamp(0.0, max), o.dy.clamp(0.0, max));
+
 /// Shape kinds for the vector shape tools.
 enum ShapeType { line, arrow, rect, oval, whiteout }
 
-/// Base type for anything drawn on a page.
-/// Every subclass carries a stable [id] so undo/redo, selection, and
-/// clipboard operations can find the correct instance without relying on
-/// object-identity comparisons that break after clone operations.
+/// Base type for anything drawn on a page — the editor's unified Document
+/// Object Model (DOM) node.
+///
+/// Every object, regardless of kind, is [Transformable]: it exposes a
+/// normalised bounding box and can be translated, scaled, cloned, and restored
+/// from a snapshot. This lets the selection engine, history engine, and
+/// clipboard treat every object uniformly and lets new object types be added
+/// without touching those subsystems.
+///
+/// ### Shared presentation state
+/// - [opacity]   — 0..1 alpha applied to the whole object (1 = opaque).
+/// - [locked]    — when true the object should not be moved/edited by gestures.
+/// - [visible]   — when false the object is hidden (kept in the model/export).
+/// - [zIndex]    — advisory paint order hint (list order remains authoritative).
+/// - [metadata]  — free-form bag for future features (AI provenance, links…).
+///
+/// Every subclass carries a stable [id] so undo/redo, selection, and clipboard
+/// operations can find the correct instance without relying on object-identity
+/// comparisons that break after clone operations.
 abstract class EditorAnnotation {
   final String id;
-  EditorAnnotation({String? id}) : id = id ?? _newId();
+
+  double opacity;
+  bool locked;
+  bool visible;
+  int zIndex;
+  Map<String, dynamic> metadata;
+
+  EditorAnnotation({
+    String? id,
+    this.opacity = 1.0,
+    this.locked = false,
+    this.visible = true,
+    this.zIndex = 0,
+    Map<String, dynamic>? metadata,
+  })  : id = id ?? _newId(),
+        metadata = metadata ?? <String, dynamic>{};
+
+  // ── Transformable contract ────────────────────────────────────────────
+
+  /// Normalised (0..1) axis-aligned bounding box on the page.
+  Rect get bounds;
+
+  /// Translate the object by a normalised [delta] (clamped to the page).
+  void translate(Offset delta);
+
+  /// Resize the object so its bounding box becomes [next] (normalised).
+  void scaleTo(Rect next);
+
+  /// Deep copy this object. [shift] offsets the copy diagonally (normalised);
+  /// [id] lets callers preserve the id (for history snapshots) — omit it to
+  /// mint a fresh id (for duplicate / paste).
+  EditorAnnotation clone({double shift = 0, String? id});
+
+  /// Restore this object's mutable state from [other] (a snapshot of the same
+  /// runtime type). Used by the history engine to undo/redo in place, keeping
+  /// existing references (selection, inline editor) valid.
+  void restoreFrom(covariant EditorAnnotation other);
+
+  /// Copy the shared presentation state from [o]. Subclasses call this from
+  /// their [clone] and [restoreFrom] implementations.
+  void copyBaseFrom(EditorAnnotation o) {
+    opacity = o.opacity;
+    locked = o.locked;
+    visible = o.visible;
+    zIndex = o.zIndex;
+    metadata = Map<String, dynamic>.of(o.metadata);
+  }
 }
 
 /// A freehand stroke or highlight (normalised 0..1 coordinates).
@@ -36,6 +101,61 @@ class StrokeAnnotation extends EditorAnnotation {
     this.highlight, {
     super.id,
   });
+
+  @override
+  Rect get bounds {
+    if (points.isEmpty) return Rect.zero;
+    var minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+    for (final p in points) {
+      minX = math.min(minX, p.dx);
+      minY = math.min(minY, p.dy);
+      maxX = math.max(maxX, p.dx);
+      maxY = math.max(maxY, p.dy);
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  @override
+  void translate(Offset delta) {
+    for (var i = 0; i < points.length; i++) {
+      points[i] = clampOffset01(points[i] + delta);
+    }
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    final old = bounds;
+    final ow = old.width.abs() < 1e-6 ? 1e-6 : old.width;
+    final oh = old.height.abs() < 1e-6 ? 1e-6 : old.height;
+    for (var i = 0; i < points.length; i++) {
+      final p = points[i];
+      points[i] = Offset(
+        (next.left + (p.dx - old.left) / ow * next.width).clamp(0.0, 1.0),
+        (next.top + (p.dy - old.top) / oh * next.height).clamp(0.0, 1.0),
+      );
+    }
+  }
+
+  @override
+  StrokeAnnotation clone({double shift = 0, String? id}) {
+    final c = StrokeAnnotation(
+      points.map((p) => Offset(p.dx + shift, p.dy + shift)).toList(),
+      color,
+      width,
+      highlight,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(StrokeAnnotation o) {
+    points
+      ..clear()
+      ..addAll(o.points.map((p) => Offset(p.dx, p.dy)));
+    copyBaseFrom(o);
+  }
 }
 
 /// A straight line, arrow, rectangle, oval, or whiteout box.
@@ -46,7 +166,6 @@ class ShapeAnnotation extends EditorAnnotation {
   Color color;
   double width;
   bool filled;
-  double opacity;
 
   ShapeAnnotation(
     this.type,
@@ -55,9 +174,55 @@ class ShapeAnnotation extends EditorAnnotation {
     this.color,
     this.width, [
     this.filled = false,
-    this.opacity = 1.0,
+    double opacity = 1.0,
     String? id,
-  ]) : super(id: id);
+  ]) : super(id: id, opacity: opacity);
+
+  @override
+  Rect get bounds => Rect.fromPoints(start, end);
+
+  @override
+  void translate(Offset delta) {
+    start = clampOffset01(start + delta);
+    end = clampOffset01(end + delta);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    final old = bounds;
+    final ow = old.width.abs() < 1e-6 ? 1e-6 : old.width;
+    final oh = old.height.abs() < 1e-6 ? 1e-6 : old.height;
+    double mapX(double x) => next.left + (x - old.left) / ow * next.width;
+    double mapY(double y) => next.top + (y - old.top) / oh * next.height;
+    start = Offset(mapX(start.dx).clamp(0.0, 1.0), mapY(start.dy).clamp(0.0, 1.0));
+    end = Offset(mapX(end.dx).clamp(0.0, 1.0), mapY(end.dy).clamp(0.0, 1.0));
+  }
+
+  @override
+  ShapeAnnotation clone({double shift = 0, String? id}) {
+    final c = ShapeAnnotation(
+      type,
+      Offset(start.dx + shift, start.dy + shift),
+      Offset(end.dx + shift, end.dy + shift),
+      color,
+      width,
+      filled,
+      opacity,
+      id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(ShapeAnnotation o) {
+    start = o.start;
+    end = o.end;
+    color = o.color;
+    width = o.width;
+    filled = o.filled;
+    copyBaseFrom(o);
+  }
 }
 
 /// A text box annotation.
@@ -134,4 +299,67 @@ class TextAnnotation extends EditorAnnotation {
     this.rotation = 0.0,
     super.id,
   });
+
+  @override
+  Rect get bounds {
+    final w = (text.length * size * 0.55).clamp(0.02, 1.0);
+    return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), size * 1.3);
+  }
+
+  @override
+  void translate(Offset delta) {
+    pos = clampOffset01(pos + delta, 0.98);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    final old = bounds;
+    final oh = old.height.abs() < 1e-6 ? 1e-6 : old.height;
+    pos = Offset(next.left.clamp(0.0, 0.98), next.top.clamp(0.0, 0.98));
+    size = (size * (next.height / oh)).clamp(0.01, 0.2);
+  }
+
+  @override
+  TextAnnotation clone({double shift = 0, String? id}) {
+    final c = TextAnnotation(
+      Offset(pos.dx + shift, pos.dy + shift),
+      text,
+      color,
+      size,
+      bold,
+      italic: italic,
+      underline: underline,
+      fontFamily: fontFamily,
+      textAlign: textAlign,
+      textDirection: textDirection,
+      lineHeight: lineHeight,
+      charSpacing: charSpacing,
+      width: width,
+      height: height,
+      rotation: rotation,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(TextAnnotation o) {
+    pos = o.pos;
+    text = o.text;
+    color = o.color;
+    size = o.size;
+    bold = o.bold;
+    italic = o.italic;
+    underline = o.underline;
+    fontFamily = o.fontFamily;
+    textAlign = o.textAlign;
+    textDirection = o.textDirection;
+    lineHeight = o.lineHeight;
+    charSpacing = o.charSpacing;
+    width = o.width;
+    height = o.height;
+    rotation = o.rotation;
+    copyBaseFrom(o);
+  }
 }

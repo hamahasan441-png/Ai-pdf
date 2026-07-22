@@ -92,93 +92,85 @@ class RemoveBatchCommand extends EditorCommand {
   }
 }
 
-/// Move an annotation (captures before/after position).
-class MoveCommand extends EditorCommand {
-  final EditorAnnotation annotation;
-  final dynamic _before; // Offset for text/image, or start+end for shape
-  final dynamic _after;
+/// Restore the mutable state of one or more annotations to a captured
+/// before/after snapshot.
+///
+/// This is the generic command that makes *every* in-place edit undoable —
+/// move, resize/scale, alignment, distribution, colour, style, font size, and
+/// inline text changes — regardless of the object type. It works by asking each
+/// live annotation to [EditorAnnotation.restoreFrom] a detached memento of its
+/// own runtime type, so existing references (selection, inline editor) stay
+/// valid after undo/redo.
+///
+/// The [targets] are the live objects in the layer; [_before] and [_after] are
+/// same-index memento snapshots produced via `target.clone(id: target.id)`.
+/// The edit is applied *live* before the command is pushed, so [execute]
+/// (used for redo) simply re-applies the already-current after-state and is a
+/// no-op on first push.
+class RestoreStateCommand extends EditorCommand {
+  final List<EditorAnnotation> _targets;
+  final List<EditorAnnotation> _before;
+  final List<EditorAnnotation> _after;
+  final String _label;
 
-  MoveCommand._(this.annotation, this._before, this._after);
-
-  /// Create from a text annotation's position change.
-  factory MoveCommand.text(TextAnnotation t, {required dynamic beforePos, required dynamic afterPos}) {
-    return MoveCommand._(t, beforePos, afterPos);
-  }
-
-  /// Create from a shape annotation's endpoint change.
-  factory MoveCommand.shape(ShapeAnnotation s, {required dynamic beforeStart, required dynamic beforeEnd, required dynamic afterStart, required dynamic afterEnd}) {
-    return MoveCommand._(s, (beforeStart, beforeEnd), (afterStart, afterEnd));
-  }
+  RestoreStateCommand(
+    List<EditorAnnotation> targets,
+    List<EditorAnnotation> before,
+    List<EditorAnnotation> after, [
+    this._label = 'Edit',
+  ])  : _targets = List<EditorAnnotation>.of(targets),
+        _before = List<EditorAnnotation>.of(before),
+        _after = List<EditorAnnotation>.of(after);
 
   @override
-  String get label => 'Move';
+  String get label => _label;
 
   @override
   void execute(PageLayer layer) {
-    _apply(_after);
+    for (var i = 0; i < _targets.length; i++) {
+      _targets[i].restoreFrom(_after[i]);
+    }
   }
 
   @override
   void undo(PageLayer layer) {
-    _apply(_before);
-  }
-
-  void _apply(dynamic state) {
-    if (annotation is TextAnnotation) {
-      (annotation as TextAnnotation).pos = state;
-    } else if (annotation is ShapeAnnotation && state is (dynamic, dynamic)) {
-      (annotation as ShapeAnnotation).start = state.$1;
-      (annotation as ShapeAnnotation).end = state.$2;
+    for (var i = 0; i < _targets.length; i++) {
+      _targets[i].restoreFrom(_before[i]);
     }
   }
 }
 
-/// Edit a text annotation's content/style (captures full before/after state).
-class EditTextCommand extends EditorCommand {
-  final TextAnnotation annotation;
-  final String _beforeText;
-  final String _afterText;
-  final double _beforeSize;
-  final double _afterSize;
-  final bool _beforeBold;
-  final bool _afterBold;
-  final int _beforeColor;
-  final int _afterColor;
+/// Restore the paint order of a layer to a captured before/after snapshot.
+///
+/// Used by bring-to-front / send-to-back (and any future grouping / reorder
+/// operation). Captures the full [PageLayer.items] ordering so it is robust for
+/// single- and multi-object reordering alike.
+class ReorderCommand extends EditorCommand {
+  final List<EditorAnnotation> _before;
+  final List<EditorAnnotation> _after;
+  final String _label;
 
-  EditTextCommand({
-    required this.annotation,
-    required String beforeText,
-    required String afterText,
-    required double beforeSize,
-    required double afterSize,
-    required bool beforeBold,
-    required bool afterBold,
-    required int beforeColor,
-    required int afterColor,
-  })  : _beforeText = beforeText,
-        _afterText = afterText,
-        _beforeSize = beforeSize,
-        _afterSize = afterSize,
-        _beforeBold = beforeBold,
-        _afterBold = afterBold,
-        _beforeColor = beforeColor,
-        _afterColor = afterColor;
+  ReorderCommand(
+    List<EditorAnnotation> before,
+    List<EditorAnnotation> after, [
+    this._label = 'Reorder',
+  ])  : _before = List<EditorAnnotation>.of(before),
+        _after = List<EditorAnnotation>.of(after);
 
   @override
-  String get label => 'Edit text';
+  String get label => _label;
 
   @override
   void execute(PageLayer layer) {
-    annotation.text = _afterText;
-    annotation.size = _afterSize;
-    annotation.bold = _afterBold;
-    // Color is an int stored on the annotation — caller converts.
+    layer.items
+      ..clear()
+      ..addAll(_after);
   }
 
   @override
   void undo(PageLayer layer) {
-    annotation.text = _beforeText;
-    annotation.size = _beforeSize;
-    annotation.bold = _beforeBold;
+    layer.items
+      ..clear()
+      ..addAll(_before);
   }
 }

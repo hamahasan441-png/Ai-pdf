@@ -43,6 +43,12 @@ class EditorCanvas extends StatelessWidget {
   final void Function(TextAnnotation text) onSelectText;
   final void Function(TextAnnotation text, DragUpdateDetails details, Size canvasSize) onMoveText;
   final void Function(Rect nextBounds) onResizeBounds;
+
+  /// Drag lifecycle hooks so a whole move / resize becomes one undo step.
+  final void Function(TextAnnotation text)? onMoveTextStart;
+  final VoidCallback? onMoveTextEnd;
+  final VoidCallback? onResizeStart;
+  final VoidCallback? onResizeEnd;
   final VoidCallback onTextDecrease;
   final VoidCallback onTextIncrease;
   final VoidCallback onPickTextColor;
@@ -94,6 +100,10 @@ class EditorCanvas extends StatelessWidget {
     required this.onSelectText,
     required this.onMoveText,
     required this.onResizeBounds,
+    this.onMoveTextStart,
+    this.onMoveTextEnd,
+    this.onResizeStart,
+    this.onResizeEnd,
     required this.onTextDecrease,
     required this.onTextIncrease,
     required this.onPickTextColor,
@@ -245,7 +255,11 @@ class EditorCanvas extends StatelessWidget {
                           onEditText(t);
                         }
                       },
+                      onPanStart: _canDragText
+                          ? (_) => onMoveTextStart?.call(t)
+                          : null,
                       onPanUpdate: _canDragText ? (d) => onMoveText(t, d, size) : null,
+                      onPanEnd: _canDragText ? (_) => onMoveTextEnd?.call() : null,
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
@@ -273,12 +287,16 @@ class EditorCanvas extends StatelessWidget {
                   bounds: boundsOf(selected!),
                   bottomRight: false,
                   onResizeBounds: onResizeBounds,
+                  onResizeStart: onResizeStart,
+                  onResizeEnd: onResizeEnd,
                 ),
                 EditorScaleHandle(
                   size: size,
                   bounds: boundsOf(selected!),
                   bottomRight: true,
                   onResizeBounds: onResizeBounds,
+                  onResizeStart: onResizeStart,
+                  onResizeEnd: onResizeEnd,
                 ),
               ],
               if (selected != null)

@@ -35,6 +35,17 @@ class EditorController extends StateNotifier<EditorState> {
   /// Current page's history.
   EditorHistory get _currentHistory => _historyFor(state.currentPage);
 
+  /// Whether the current page has an undoable / redoable action. These drive
+  /// the toolbar button states and reflect the *real* command history (not a
+  /// proxy such as "the layer has items").
+  bool get canUndo => _currentHistory.canUndo;
+  bool get canRedo => _currentHistory.canRedo;
+  String? get nextUndoLabel => _currentHistory.nextUndoLabel;
+  String? get nextRedoLabel => _currentHistory.nextRedoLabel;
+
+  /// In-flight in-place edit transaction (see [beginEdit] / [commitEdit]).
+  _EditTransaction? _txn;
+
   // ─── Lifecycle ──────────────────────────────────────────────────────────
 
   void setLoading(bool value) {
@@ -134,6 +145,56 @@ class EditorController extends StateNotifier<EditorState> {
     }
   }
 
+  // ─── In-place edit transactions ─────────────────────────────────────────
+  //
+  // Continuous gestures (drag-move, resize) mutate annotations live, once per
+  // frame. To make them a single undoable step — instead of hundreds — the
+  // screen calls [beginEdit] at gesture start (capturing a before-snapshot) and
+  // [commitEdit] at gesture end (capturing the after-snapshot and pushing one
+  // [RestoreStateCommand]). Discrete edits (colour, style, font size, inline
+  // text) use the same pair with `force: true`.
+
+  /// Begin capturing an in-place edit of [targets]. Overwrites any open txn.
+  void beginEdit(Iterable<EditorAnnotation> targets, {String label = 'Edit'}) {
+    final list = targets.toList(growable: false);
+    _txn = _EditTransaction(
+      list,
+      [for (final a in list) a.clone(id: a.id)],
+      label,
+    );
+  }
+
+  /// Discard the open edit transaction without pushing anything.
+  void cancelEdit() {
+    _txn = null;
+  }
+
+  /// Commit the open edit transaction. Pushes a [RestoreStateCommand] when the
+  /// state actually changed (bounds differ) or when [force] is set (for style
+  /// edits that don't move the bounding box, e.g. colour / bold). No-op if no
+  /// transaction is open.
+  void commitEdit(PageLayer layer, {bool force = false}) {
+    final txn = _txn;
+    _txn = null;
+    if (txn == null || txn.targets.isEmpty) return;
+    final after = [for (final a in txn.targets) a.clone(id: a.id)];
+    var changed = force;
+    if (!changed) {
+      for (var i = 0; i < txn.targets.length; i++) {
+        if (txn.before[i].bounds != after[i].bounds) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+    _currentHistory.push(
+      RestoreStateCommand(txn.targets, txn.before, after, txn.label),
+      layer,
+    );
+    markDirty();
+  }
+
   bool eraseLast(PageLayer layer) {
     if (layer.items.isEmpty) return false;
     final removed = layer.items.last;
@@ -217,9 +278,11 @@ class EditorController extends StateNotifier<EditorState> {
     String how,
     SelectionService selection,
     AnnotationBoundsService bounds,
+    PageLayer layer,
   ) {
-    selection.alignAnnotations(selectionSet, how, bounds);
-    markDirty();
+    _runTracked(layer, selectionSet, 'Align', () {
+      selection.alignAnnotations(selectionSet, how, bounds);
+    });
   }
 
   void distributeMulti(
@@ -227,8 +290,30 @@ class EditorController extends StateNotifier<EditorState> {
     Axis axis,
     SelectionService selection,
     AnnotationBoundsService bounds,
+    PageLayer layer,
   ) {
-    selection.distributeAnnotations(selectionSet, axis, bounds);
+    _runTracked(layer, selectionSet, 'Distribute', () {
+      selection.distributeAnnotations(selectionSet, axis, bounds);
+    });
+  }
+
+  /// Run a multi-object mutation [action] and record it as a single undoable
+  /// [RestoreStateCommand] (used by align / distribute).
+  void _runTracked(
+    PageLayer layer,
+    Iterable<EditorAnnotation> targets,
+    String label,
+    void Function() action,
+  ) {
+    final list = targets.toList(growable: false);
+    if (list.isEmpty) {
+      action();
+      return;
+    }
+    final before = [for (final a in list) a.clone(id: a.id)];
+    action();
+    final after = [for (final a in list) a.clone(id: a.id)];
+    _currentHistory.push(RestoreStateCommand(list, before, after, label), layer);
     markDirty();
   }
 
@@ -293,7 +378,10 @@ class EditorController extends StateNotifier<EditorState> {
     SelectionService selection,
   ) {
     if (selected == null) return;
+    final before = List<EditorAnnotation>.of(layer.items);
     selection.bringToFront(selected, layer.items);
+    final after = List<EditorAnnotation>.of(layer.items);
+    _currentHistory.push(ReorderCommand(before, after, 'Bring to front'), layer);
     markDirty();
   }
 
@@ -303,7 +391,19 @@ class EditorController extends StateNotifier<EditorState> {
     SelectionService selection,
   ) {
     if (selected == null) return;
+    final before = List<EditorAnnotation>.of(layer.items);
     selection.sendToBack(selected, layer.items);
+    final after = List<EditorAnnotation>.of(layer.items);
+    _currentHistory.push(ReorderCommand(before, after, 'Send to back'), layer);
     markDirty();
   }
+}
+
+/// Snapshot of an in-flight in-place edit (see [EditorController.beginEdit]).
+class _EditTransaction {
+  final List<EditorAnnotation> targets;
+  final List<EditorAnnotation> before; // same-index mementos
+  final String label;
+
+  _EditTransaction(this.targets, this.before, this.label);
 }
