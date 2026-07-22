@@ -108,14 +108,16 @@ class AnnotationDraw {
         style: TextStyle(
           color: t.color,
           fontSize: t.size * size.height,
-          fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+          // w700/w400 match the exported Helvetica-Bold/Helvetica weights so
+          // the preview and the PDF agree (WYSIWYG).
+          fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
           fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
           decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
           decorationColor: t.color,
           fontFamily: t.fontFamily,
         ),
       ),
-      textDirection: TextDirection.ltr,
+      textDirection: t.textDirection ?? TextDirection.ltr,
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
     tp.paint(canvas, Offset(t.pos.dx * size.width, t.pos.dy * size.height));
   }

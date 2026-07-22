@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/core/services/ocr_service.dart';
+import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
+import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
@@ -33,6 +35,11 @@ class EditorCanvas extends StatelessWidget {
   final Offset? marqueeEnd;
   final EditorAnnotation? selected;
   final Rect Function(EditorAnnotation) boundsOf;
+  final ImageAnnotationRenderer imageRenderer;
+  final StampAnnotationRenderer stampRenderer;
+
+  /// Bumped when an async image decode finishes, forcing a canvas repaint.
+  final int canvasRevision;
   final void Function(Offset localPosition, Size canvasSize) onTapUp;
   final void Function(Offset localPosition, Size canvasSize) onPanStart;
   final void Function(Offset localPosition, Size canvasSize) onPanUpdate;
@@ -90,6 +97,9 @@ class EditorCanvas extends StatelessWidget {
     required this.marqueeEnd,
     required this.selected,
     required this.boundsOf,
+    required this.imageRenderer,
+    required this.stampRenderer,
+    this.canvasRevision = 0,
     required this.onTapUp,
     required this.onPanStart,
     required this.onPanUpdate,
@@ -142,6 +152,10 @@ class EditorCanvas extends StatelessWidget {
                 painter: EditorCanvasPainter(
                   layer.strokes,
                   layer.shapes,
+                  layer.images,
+                  layer.stamps,
+                  imageRenderer,
+                  stampRenderer,
                   drawing,
                   shapeStart,
                   shapeEnd,
@@ -149,6 +163,7 @@ class EditorCanvas extends StatelessWidget {
                   color,
                   stroke,
                   highlightPreview,
+                  revision: canvasRevision,
                 ),
               ),
               if (showFields) ...pageFields.map((f) {
@@ -270,7 +285,7 @@ class EditorCanvas extends StatelessWidget {
                           style: TextStyle(
                             color: t.color,
                             fontSize: t.size * size.height,
-                            fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
                             fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
                             decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
                             decorationColor: t.color,

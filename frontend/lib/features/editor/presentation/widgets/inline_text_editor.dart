@@ -84,7 +84,7 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
       style: TextStyle(
         color: t.color,
         fontSize: fontSize.clamp(8.0, 120.0),
-        fontWeight: t.bold ? FontWeight.w800 : FontWeight.w500,
+        fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
         fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
         decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
         decorationColor: t.color,

@@ -27,6 +27,11 @@ class EditorHitTestService {
         }
         final r = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(0.02);
         if (r.contains(n)) return item;
+      } else {
+        // Box-based objects (image, stamp, form field): use the unified
+        // Transformable bounds so every current and future object type is
+        // selectable without a bespoke branch.
+        if (item.bounds.inflate(0.01).contains(n)) return item;
       }
     }
     return null;
