@@ -28,8 +28,8 @@ import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dar
 class EditorExportService {
   static const double exportMaxEdge = 1800;
 
-  final StampAnnotationRenderer _stampRenderer = const StampAnnotationRenderer();
-  final RtlTextRenderer _rtlText = const RtlTextRenderer();
+  static const StampAnnotationRenderer _stampRenderer = StampAnnotationRenderer();
+  static const RtlTextRenderer _rtlText = RtlTextRenderer();
 
   const EditorExportService();
 
