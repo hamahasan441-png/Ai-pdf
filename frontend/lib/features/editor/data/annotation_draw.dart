@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 
@@ -102,21 +103,19 @@ class AnnotationDraw {
 
   static void text(Canvas canvas, Size size, TextAnnotation t) {
     if (t.text.isEmpty) return;
+    final base = TextStyle(
+      color: t.color,
+      fontSize: t.size * size.height,
+      // w700/w400 match the exported Helvetica-Bold/Helvetica weights so
+      // the preview and the PDF agree (WYSIWYG).
+      fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
+      fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+      decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: t.color,
+      fontFamily: t.fontFamily,
+    );
     final tp = TextPainter(
-      text: TextSpan(
-        text: t.text,
-        style: TextStyle(
-          color: t.color,
-          fontSize: t.size * size.height,
-          // w700/w400 match the exported Helvetica-Bold/Helvetica weights so
-          // the preview and the PDF agree (WYSIWYG).
-          fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-          fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-          decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-          decorationColor: t.color,
-          fontFamily: t.fontFamily,
-        ),
-      ),
+      text: buildAnnotationTextSpan(t, base),
       textDirection: t.textDirection ?? TextDirection.ltr,
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
     tp.paint(canvas, Offset(t.pos.dx * size.width, t.pos.dy * size.height));

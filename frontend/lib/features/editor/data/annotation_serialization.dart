@@ -123,8 +123,39 @@ Map<String, dynamic> _textToJson(TextAnnotation t) => {
       'width': t.width,
       'height': t.height,
       'rotation': t.rotation,
+      if (t.runs != null) 'runs': t.runs!.map(_runToJson).toList(),
       ..._baseToJson(t),
     };
+
+Map<String, dynamic> _runToJson(TextRun r) => {
+      'text': r.text,
+      if (r.bold != null) 'bold': r.bold,
+      if (r.italic != null) 'italic': r.italic,
+      if (r.underline != null) 'underline': r.underline,
+      if (r.color != null) 'color': r.color!.value,
+      if (r.fontFamily != null) 'fontFamily': r.fontFamily,
+      if (r.sizeScale != null) 'sizeScale': r.sizeScale,
+    };
+
+List<TextRun>? _runsFromJson(Map<String, dynamic> j) {
+  final raw = j['runs'];
+  if (raw is! List) return null;
+  final out = <TextRun>[];
+  for (final e in raw) {
+    if (e is Map<String, dynamic>) {
+      out.add(TextRun(
+        e['text'] as String? ?? '',
+        bold: e['bold'] as bool?,
+        italic: e['italic'] as bool?,
+        underline: e['underline'] as bool?,
+        color: e['color'] == null ? null : Color(e['color'] as int),
+        fontFamily: e['fontFamily'] as String?,
+        sizeScale: (e['sizeScale'] as num?)?.toDouble(),
+      ));
+    }
+  }
+  return out.isEmpty ? null : out;
+}
 
 // ---------------------------------------------------------------------------
 // Deserialize
@@ -215,6 +246,7 @@ TextAnnotation _textFromJson(Map<String, dynamic> j) {
     width: (j['width'] as num?)?.toDouble(),
     height: (j['height'] as num?)?.toDouble(),
     rotation: (j['rotation'] as num?)?.toDouble() ?? 0.0,
+    runs: _runsFromJson(j),
     id: j['id'] as String?,
   );
 }

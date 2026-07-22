@@ -74,3 +74,12 @@ flutter:
   uses-material-design: true
   # Generate AppLocalizations from lib/l10n/*.arb (see l10n.yaml).
   generate: true
+
+  # Bundled font directory. Drop Unicode TTFs here (see assets/fonts/README.md)
+  # to enable SEARCHABLE Arabic/Kurdish/Persian/Hebrew text in exported PDFs.
+  # A whole-directory entry means new .ttf files are picked up automatically on
+  # the next build with no further pubspec/code changes. When the fonts are
+  # absent the editor transparently falls back to rasterized (non-searchable)
+  # RTL text, so this declaration is safe to ship as-is.
+  assets:
+    - assets/fonts/

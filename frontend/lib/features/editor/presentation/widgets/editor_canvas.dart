@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/core/services/ocr_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
@@ -280,16 +281,19 @@ class EditorCanvas extends StatelessWidget {
                         decoration: BoxDecoration(
                           border: selected == t ? Border.all(color: Colors.blue, width: 2) : null,
                         ),
-                        child: Text(
-                          t.text,
-                          style: TextStyle(
-                            color: t.color,
-                            fontSize: t.size * size.height,
-                            fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                            fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                            decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-                            decorationColor: t.color,
-                            fontFamily: t.fontFamily,
+                        child: Text.rich(
+                          buildAnnotationTextSpan(
+                            t,
+                            TextStyle(
+                              color: t.color,
+                              fontSize: t.size * size.height,
+                              fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
+                              fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
+                              decoration:
+                                  t.underline ? TextDecoration.underline : TextDecoration.none,
+                              decorationColor: t.color,
+                              fontFamily: t.fontFamily,
+                            ),
                           ),
                         ),
                       ),
