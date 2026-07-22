@@ -43,7 +43,13 @@ class ScanBinarizationService {
     if (gray.length != n || n == 0) {
       throw ArgumentError('gray length must equal width*height');
     }
-    final half = (window ~/ 2).clamp(1, math.max(width, height));
+    // Plain int arithmetic (avoid clamp/math.max here: their static return
+    // type is `num`, which the release compiler refuses to pass to the int
+    // parameters of _rectSum / use as list indices).
+    final int maxHalf = width > height ? width : height;
+    int half = window ~/ 2;
+    if (half < 1) half = 1;
+    if (half > maxHalf) half = maxHalf;
 
     // Integral images with a 1-pixel zero border: size (w+1) x (h+1).
     final iw = width + 1;
@@ -64,12 +70,18 @@ class ScanBinarizationService {
     }
 
     final out = List<int>.filled(n, 0);
+    final maxY = height - 1;
+    final maxX = width - 1;
     for (var y = 0; y < height; y++) {
-      final y0 = (y - half).clamp(0, height - 1);
-      final y1 = (y + half).clamp(0, height - 1);
+      var y0 = y - half;
+      if (y0 < 0) y0 = 0;
+      var y1 = y + half;
+      if (y1 > maxY) y1 = maxY;
       for (var x = 0; x < width; x++) {
-        final x0 = (x - half).clamp(0, width - 1);
-        final x1 = (x + half).clamp(0, width - 1);
+        var x0 = x - half;
+        if (x0 < 0) x0 = 0;
+        var x1 = x + half;
+        if (x1 > maxX) x1 = maxX;
 
         final count = (x1 - x0 + 1) * (y1 - y0 + 1);
         final s = _rectSum(sum, iw, x0, y0, x1, y1);
@@ -90,7 +102,8 @@ class ScanBinarizationService {
   int otsuThreshold(List<int> gray) {
     final hist = List<int>.filled(256, 0);
     for (final v in gray) {
-      hist[v.clamp(0, 255)]++;
+      final idx = v < 0 ? 0 : (v > 255 ? 255 : v);
+      hist[idx]++;
     }
     final total = gray.length;
     if (total == 0) return 127;

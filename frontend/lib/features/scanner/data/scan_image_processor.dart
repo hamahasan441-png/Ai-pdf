@@ -56,10 +56,13 @@ class ScanImageProcessor {
     final fullSize =
         Size(decoded.width.toDouble(), decoded.height.toDouble());
 
-    final longEdge = math.max(decoded.width, decoded.height);
+    final longEdge =
+        decoded.width > decoded.height ? decoded.width : decoded.height;
     final scale = longEdge > maxSample ? maxSample / longEdge : 1.0;
-    final sw = math.max(1, (decoded.width * scale).round());
-    final sh = math.max(1, (decoded.height * scale).round());
+    var sw = (decoded.width * scale).round();
+    var sh = (decoded.height * scale).round();
+    if (sw < 1) sw = 1;
+    if (sh < 1) sh = 1;
     final small = img.copyResize(decoded, width: sw, height: sh);
 
     // Grayscale grid.
@@ -134,8 +137,12 @@ class ScanImageProcessor {
   /// For each output pixel we map back to the source via the dest->src
   /// homography and bilinearly sample — the standard inverse-warp.
   img.Image _warp(img.Image src, DocumentCorners corners, Size outSize) {
-    final w = outSize.width.round().clamp(1, 100000);
-    final h = outSize.height.round().clamp(1, 100000);
+    var w = outSize.width.round();
+    var h = outSize.height.round();
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    if (w > 100000) w = 100000;
+    if (h > 100000) h = 100000;
     final out = img.Image(width: w, height: h);
     final hMat = _perspective.destToSrc(corners, Size(w.toDouble(), h.toDouble()));
 
@@ -230,10 +237,12 @@ class ScanImageProcessor {
         gray[y * w + x] = _luma(p.r, p.g, p.b);
       }
     }
-    // Window scaled to image size (~1/40 of the long edge, odd, >=15).
-    var window = (math.max(w, h) / 40).round();
+    // Window scaled to image size (~1/40 of the long edge, odd, 15..51).
+    final longEdge = w > h ? w : h;
+    var window = (longEdge / 40).round();
     if (window.isEven) window += 1;
-    window = window.clamp(15, 51);
+    if (window < 15) window = 15;
+    if (window > 51) window = 51;
     final bin = _binarizer.sauvola(gray, w, h, window: window);
 
     final out = img.Image(width: w, height: h);
@@ -248,17 +257,31 @@ class ScanImageProcessor {
 
   // --- helpers -------------------------------------------------------------
 
-  int _luma(num r, num g, num b) =>
-      (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0, 255);
+  /// Clamp an int to 0..255 without `clamp` (whose static return type is num).
+  int _byte(num v) {
+    final i = v.round();
+    if (i < 0) return 0;
+    if (i > 255) return 255;
+    return i;
+  }
+
+  int _luma(num r, num g, num b) => _byte(0.299 * r + 0.587 * g + 0.114 * b);
 
   /// Bilinear sample of [src] at fractional (fx, fy), clamped to edges.
   List<int> _bilinear(img.Image src, double fx, double fy) {
-    final x = fx.clamp(0.0, (src.width - 1).toDouble());
-    final y = fy.clamp(0.0, (src.height - 1).toDouble());
+    final maxX = src.width - 1;
+    final maxY = src.height - 1;
+    var x = fx;
+    if (x < 0) x = 0;
+    if (x > maxX) x = maxX.toDouble();
+    var y = fy;
+    if (y < 0) y = 0;
+    if (y > maxY) y = maxY.toDouble();
+
     final x0 = x.floor();
     final y0 = y.floor();
-    final x1 = math.min(x0 + 1, src.width - 1);
-    final y1 = math.min(y0 + 1, src.height - 1);
+    final x1 = x0 + 1 > maxX ? maxX : x0 + 1;
+    final y1 = y0 + 1 > maxY ? maxY : y0 + 1;
     final dx = x - x0;
     final dy = y - y0;
 
@@ -270,7 +293,7 @@ class ScanImageProcessor {
     int lerp(num a, num b, num c, num d) {
       final top = a + (b - a) * dx;
       final bot = c + (d - c) * dx;
-      return (top + (bot - top) * dy).round().clamp(0, 255);
+      return _byte(top + (bot - top) * dy);
     }
 
     return [
@@ -282,11 +305,10 @@ class ScanImageProcessor {
 
   int _stretch(int v, int lo, int hi) {
     if (hi <= lo) return v;
-    return (((v - lo) / (hi - lo)) * 255).round().clamp(0, 255);
+    return _byte(((v - lo) / (hi - lo)) * 255);
   }
 
-  int _contrast(int v, double factor) =>
-      (((v - 128) * factor) + 128).round().clamp(0, 255);
+  int _contrast(int v, double factor) => _byte(((v - 128) * factor) + 128);
 
   /// Approximate per-channel percentile value via a 256-bin histogram.
   int _percentile(img.Image image, int channel, double p) {
@@ -299,7 +321,7 @@ class ScanImageProcessor {
             : channel == 1
                 ? px.g.toInt()
                 : px.b.toInt();
-        hist[v.clamp(0, 255)]++;
+        hist[v < 0 ? 0 : (v > 255 ? 255 : v)]++;
       }
     }
     final total = image.width * image.height;
