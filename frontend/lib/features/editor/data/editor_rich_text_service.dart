@@ -55,19 +55,19 @@ class EditorRichTextService {
   List<TextRun>? toggleBold(TextAnnotation a, int start, int end) {
     final chars = _expand(a);
     final allBold = chars.sublist(start, end).every((c) => c.bold == true);
-    return applyStyle(a, start: start, end: end, bold: !allBold);
+    return applyStyle(a, start: start, end: end, bold: allBold ? null : true);
   }
 
   List<TextRun>? toggleItalic(TextAnnotation a, int start, int end) {
     final chars = _expand(a);
     final all = chars.sublist(start, end).every((c) => c.italic == true);
-    return applyStyle(a, start: start, end: end, italic: !all);
+    return applyStyle(a, start: start, end: end, italic: all ? null : true);
   }
 
   List<TextRun>? toggleUnderline(TextAnnotation a, int start, int end) {
     final chars = _expand(a);
     final all = chars.sublist(start, end).every((c) => c.underline == true);
-    return applyStyle(a, start: start, end: end, underline: !all);
+    return applyStyle(a, start: start, end: end, underline: all ? null : true);
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
