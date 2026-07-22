@@ -43,15 +43,22 @@ void main() {
   });
 
   group('ScanBinarizationService.otsuThreshold', () {
-    test('finds a threshold between two well-separated modes', () {
-      // Half the pixels at 40, half at 210.
+    test('finds a threshold that separates two well-separated modes', () {
+      // Half the pixels at 40, half at 210. With delta-function modes every
+      // threshold in [40, 209] yields the same between-class variance, so Otsu
+      // returns the first maximiser (40). Any such threshold cleanly separates
+      // the classes via `value > threshold`.
       final gray = <int>[
         ...List<int>.filled(100, 40),
         ...List<int>.filled(100, 210),
       ];
       final t = svc.otsuThreshold(gray);
-      expect(t, greaterThan(40));
+      expect(t, greaterThanOrEqualTo(40));
       expect(t, lessThan(210));
+      // Verify it splits the two modes correctly.
+      final out = svc.applyThreshold(gray, t);
+      expect(out.take(100).every((v) => v == 0), isTrue);
+      expect(out.skip(100).every((v) => v == 255), isTrue);
     });
 
     test('applyThreshold produces a clean split', () {
