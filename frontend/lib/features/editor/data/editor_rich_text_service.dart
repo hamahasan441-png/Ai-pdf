@@ -50,24 +50,57 @@ class EditorRichTextService {
     return _collapse(annotation.text, chars);
   }
 
-  /// Toggle [bold] for the selection range (if all chars are bold → un-bold,
-  /// otherwise → bold). Same for italic/underline.
+  /// Toggle [bold] for the selection range (if all chars are bold → clear bold,
+  /// otherwise → set bold). Same pattern for italic/underline.
   List<TextRun>? toggleBold(TextAnnotation a, int start, int end) {
+    if (start >= end || start < 0 || end > a.text.length) return a.runs;
     final chars = _expand(a);
     final allBold = chars.sublist(start, end).every((c) => c.bold == true);
-    return applyStyle(a, start: start, end: end, bold: allBold ? null : true);
+    for (var i = start; i < end; i++) {
+      chars[i] = _CharStyle(
+        bold: allBold ? null : true,
+        italic: chars[i].italic,
+        underline: chars[i].underline,
+        color: chars[i].color,
+        fontFamily: chars[i].fontFamily,
+        sizeScale: chars[i].sizeScale,
+      );
+    }
+    return _collapse(a.text, chars);
   }
 
   List<TextRun>? toggleItalic(TextAnnotation a, int start, int end) {
+    if (start >= end || start < 0 || end > a.text.length) return a.runs;
     final chars = _expand(a);
     final all = chars.sublist(start, end).every((c) => c.italic == true);
-    return applyStyle(a, start: start, end: end, italic: all ? null : true);
+    for (var i = start; i < end; i++) {
+      chars[i] = _CharStyle(
+        bold: chars[i].bold,
+        italic: all ? null : true,
+        underline: chars[i].underline,
+        color: chars[i].color,
+        fontFamily: chars[i].fontFamily,
+        sizeScale: chars[i].sizeScale,
+      );
+    }
+    return _collapse(a.text, chars);
   }
 
   List<TextRun>? toggleUnderline(TextAnnotation a, int start, int end) {
+    if (start >= end || start < 0 || end > a.text.length) return a.runs;
     final chars = _expand(a);
     final all = chars.sublist(start, end).every((c) => c.underline == true);
-    return applyStyle(a, start: start, end: end, underline: all ? null : true);
+    for (var i = start; i < end; i++) {
+      chars[i] = _CharStyle(
+        bold: chars[i].bold,
+        italic: chars[i].italic,
+        underline: all ? null : true,
+        color: chars[i].color,
+        fontFamily: chars[i].fontFamily,
+        sizeScale: chars[i].sizeScale,
+      );
+    }
+    return _collapse(a.text, chars);
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
