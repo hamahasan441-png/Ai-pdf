@@ -26,6 +26,12 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAddStamp;
   final VoidCallback onAddImage;
   final VoidCallback onOpen;
+  final VoidCallback? onSearch;
+  final VoidCallback? onRedact;
+  final VoidCallback? onOutline;
+  final VoidCallback? onChat;
+  final VoidCallback? onLayers;
+  final VoidCallback? onPageOps;
   final ValueChanged<Color> onColorChanged;
   final ValueChanged<double> onStrokeChanged;
   final ValueChanged<double> onTextSizeChanged;
@@ -55,6 +61,12 @@ class EditorToolbar extends StatelessWidget {
     required this.onAddStamp,
     required this.onAddImage,
     required this.onOpen,
+    this.onSearch,
+    this.onRedact,
+    this.onOutline,
+    this.onChat,
+    this.onLayers,
+    this.onPageOps,
     required this.onColorChanged,
     required this.onStrokeChanged,
     required this.onTextSizeChanged,
@@ -117,6 +129,18 @@ class EditorToolbar extends StatelessWidget {
                   _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout, cs),
                   _toolBtn(Icons.cleaning_services, l10n.toolEraser, EditTool.eraser, cs),
                   _actionBtn(Icons.rotate_right, l10n.rotate, onRotatePage, cs),
+                  if (onSearch != null)
+                    _actionBtn(Icons.search, 'Find', onSearch!, cs),
+                  if (onRedact != null)
+                    _actionBtn(Icons.remove_red_eye_outlined, 'Redact', onRedact!, cs),
+                  if (onOutline != null)
+                    _actionBtn(Icons.menu_book, 'Outline', onOutline!, cs),
+                  if (onLayers != null)
+                    _actionBtn(Icons.layers, 'Layers', onLayers!, cs),
+                  if (onChat != null)
+                    _actionBtn(Icons.auto_awesome, 'AI Chat', onChat!, cs),
+                  if (onPageOps != null)
+                    _actionBtn(Icons.pages, 'Pages', onPageOps!, cs),
                   _actionBtn(Icons.folder_open, l10n.toolOpen, onOpen, cs),
                 ],
               ),

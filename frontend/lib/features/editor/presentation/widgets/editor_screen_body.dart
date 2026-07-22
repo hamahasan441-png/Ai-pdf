@@ -16,6 +16,13 @@ class EditorScreenBody extends StatelessWidget {
   final Widget? inlineOverlay;
   final Widget? richTextToolbar;
   final Widget? thumbnailStrip;
+  final Widget? searchBar;
+  final Widget? redactionOverlay;
+  final Widget? outlinePanel;
+  final Widget? chatPanel;
+  final Widget? layerPanel;
+  final Widget? formReviewPanel;
+  final Widget? pageOpsDialog;
 
   const EditorScreenBody({
     super.key,
@@ -29,6 +36,13 @@ class EditorScreenBody extends StatelessWidget {
     this.inlineOverlay,
     this.richTextToolbar,
     this.thumbnailStrip,
+    this.searchBar,
+    this.redactionOverlay,
+    this.outlinePanel,
+    this.chatPanel,
+    this.layerPanel,
+    this.formReviewPanel,
+    this.pageOpsDialog,
   });
 
   @override
@@ -40,6 +54,7 @@ class EditorScreenBody extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         documentViewport,
+        if (redactionOverlay != null) redactionOverlay!,
         if (inlineOverlay != null) inlineOverlay!,
         EditorLoadingOverlay(
           loading: loading,
@@ -50,6 +65,17 @@ class EditorScreenBody extends StatelessWidget {
         if (thumbnailStrip != null)
           Positioned(left: 0, right: 0, bottom: 96, child: thumbnailStrip!),
         if (richTextToolbar != null) richTextToolbar!,
+        if (searchBar != null)
+          Positioned(left: 16, right: 16, top: 8, child: searchBar!),
+        if (outlinePanel != null)
+          Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
+        if (layerPanel != null)
+          Positioned(right: 0, top: 0, bottom: 0, child: layerPanel!),
+        if (chatPanel != null)
+          Positioned(right: 0, top: 0, bottom: 0, child: chatPanel!),
+        if (formReviewPanel != null)
+          Positioned(left: 0, right: 0, bottom: 96, child: formReviewPanel!),
+        if (pageOpsDialog != null) pageOpsDialog!,
       ],
     );
   }
