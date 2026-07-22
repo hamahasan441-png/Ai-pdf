@@ -1,3 +1,4 @@
+import 'dart:typed_data' show Float64List;
 import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter/widgets.dart' show Matrix4;
