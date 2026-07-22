@@ -11,11 +11,13 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import 'package:ai_pdf/features/editor/data/annotation_draw.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
+import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Off-screen export compositor for the editor.
 ///
@@ -39,6 +41,11 @@ class EditorExportService {
   }) async {
     final pdf = pw.Document();
     final fonts = EditorPdfFonts();
+    // Load bundled Unicode fonts (if present) so RTL text can be exported as
+    // searchable vector text instead of a rasterized image.
+    final uni = PdfUnicodeFonts();
+    await uni.load();
+    const rtlDetect = RtlDetectionService();
     var rendered = 0;
 
     for (var i = 0; i < pageCount; i++) {
@@ -47,6 +54,7 @@ class EditorExportService {
         doc: doc,
         pageCache: pageCache,
         layers: layers,
+        uni: uni,
       );
       if (composed == null) {
         await Future<void>.delayed(Duration.zero);
@@ -68,7 +76,7 @@ class EditorExportService {
           .where((s) => s.type == ShapeType.rect || s.type == ShapeType.whiteout)
           .toList();
       final texts = (layers[i]?.texts ?? const <TextAnnotation>[])
-          .where((t) => t.text.isNotEmpty && _isLatin1(t.text))
+          .where((t) => t.text.isNotEmpty && _canVectorize(t, uni))
           .toList();
 
       pdf.addPage(
@@ -86,28 +94,7 @@ class EditorExportService {
                 ),
                 for (final s in shapes) _buildPdfShape(s, pageW, pageH),
                 for (final t in texts)
-                  pw.Positioned(
-                    left: t.pos.dx * pageW,
-                    top: t.pos.dy * pageH,
-                    child: pw.SizedBox(
-                      width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
-                      child: pw.Text(
-                        t.text,
-                        textAlign: _pwAlign(t.textAlign),
-                        textDirection: t.textDirection == TextDirection.rtl
-                            ? pw.TextDirection.rtl
-                            : pw.TextDirection.ltr,
-                        style: pw.TextStyle(
-                          font: fonts.pick(t.fontFamily, t.bold, t.italic),
-                          fontSize: t.size * pageH,
-                          color: PdfColor.fromInt(t.color.value),
-                          decoration: t.underline
-                              ? pw.TextDecoration.underline
-                              : pw.TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildPdfText(t, pageW, pageH, fonts, uni, rtlDetect),
               ],
             ),
           ),
@@ -123,6 +110,57 @@ class EditorExportService {
     final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
     await File(outPath).writeAsBytes(await pdf.save());
     return outPath;
+  }
+
+  /// Whether [t] can be exported as real (searchable) vector text: Latin-1 is
+  /// always vectorizable (standard PDF fonts); other scripts require a bundled
+  /// Unicode font. Multi-run rich text is kept as raster (see [_richText]) so
+  /// the preview and export stay pixel-identical.
+  bool _canVectorize(TextAnnotation t, PdfUnicodeFonts uni) {
+    if (_richText(t)) return false;
+    return _isLatin1(t.text) || uni.pick(t) != null;
+  }
+
+  /// True when the annotation carries more than one style run.
+  bool _richText(TextAnnotation t) => (t.runs?.length ?? 0) > 1;
+
+  /// Build a positioned vector-text widget, choosing a standard PDF font for
+  /// Latin text and a bundled Unicode font for RTL scripts, with the correct
+  /// direction and alignment so it matches the on-screen preview.
+  pw.Widget _buildPdfText(
+    TextAnnotation t,
+    double pageW,
+    double pageH,
+    EditorPdfFonts fonts,
+    PdfUnicodeFonts uni,
+    RtlDetectionService rtlDetect,
+  ) {
+    final font = _isLatin1(t.text)
+        ? fonts.pick(t.fontFamily, t.bold, t.italic)
+        : (uni.pick(t) ?? fonts.pick(t.fontFamily, t.bold, t.italic));
+    final isRtl = t.textDirection == TextDirection.rtl ||
+        (t.textDirection == null && rtlDetect.isRtl(t.text));
+    // RTL text with no explicit alignment defaults to right-aligned.
+    final align = (t.textAlign == TextAlign.left && isRtl) ? TextAlign.right : t.textAlign;
+    return pw.Positioned(
+      left: t.pos.dx * pageW,
+      top: t.pos.dy * pageH,
+      child: pw.SizedBox(
+        width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
+        child: pw.Text(
+          t.text,
+          textAlign: _pwAlign(align),
+          textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+          style: pw.TextStyle(
+            font: font,
+            fontSize: t.size * pageH,
+            color: PdfColor.fromInt(t.color.value),
+            decoration:
+                t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
+          ),
+        ),
+      ),
+    );
   }
 
   /// Map the editor's [TextAlign] to the PDF widget library's equivalent so
@@ -236,6 +274,7 @@ class EditorExportService {
     required pdfx.PdfDocument? doc,
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
+    required PdfUnicodeFonts uni,
   }) async {
     Uint8List? baseBytes;
     if (doc != null) {
@@ -286,10 +325,11 @@ class EditorExportService {
         for (final st in layer.stamps) {
           _stampRenderer.paint(canvas, size, st);
         }
-        // Non-Latin text is rasterized with full RTL/BiDi handling so Arabic,
-        // Kurdish and Persian export in the correct visual order.
+        // Text that can't be exported as vector (non-Latin without a bundled
+        // Unicode font, or multi-run rich text) is rasterized with full
+        // RTL/BiDi handling so it still exports in the correct visual order.
         for (final t in layer.texts) {
-          if (!_isLatin1(t.text)) {
+          if (!_canVectorize(t, uni)) {
             _rtlText.paint(canvas, size, t);
           }
         }
