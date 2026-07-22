@@ -106,8 +106,6 @@ class AnnotationDraw {
     final base = TextStyle(
       color: t.color,
       fontSize: t.size * size.height,
-      // w700/w400 match the exported Helvetica-Bold/Helvetica weights so
-      // the preview and the PDF agree (WYSIWYG).
       fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
       fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
       decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
@@ -118,7 +116,20 @@ class AnnotationDraw {
       text: buildAnnotationTextSpan(t, base),
       textDirection: t.textDirection ?? TextDirection.ltr,
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
-    tp.paint(canvas, Offset(t.pos.dx * size.width, t.pos.dy * size.height));
+
+    final px = t.pos.dx * size.width;
+    final py = t.pos.dy * size.height;
+
+    if (t.rotation != 0) {
+      canvas.save();
+      canvas.translate(px + tp.width / 2, py + tp.height / 2);
+      canvas.rotate(-t.rotation);
+      canvas.translate(-tp.width / 2, -tp.height / 2);
+      tp.paint(canvas, Offset.zero);
+      canvas.restore();
+    } else {
+      tp.paint(canvas, Offset(px, py));
+    }
   }
 
   /// Paint an entire page layer (strokes, shapes, text) onto [canvas].

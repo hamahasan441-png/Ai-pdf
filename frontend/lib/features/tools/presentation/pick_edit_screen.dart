@@ -32,6 +32,7 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_rich_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_scan_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_initial_fields_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_signature_insert_service.dart';
@@ -65,6 +66,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_d
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
@@ -181,6 +183,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorSmartFillService _smartFill = const EditorSmartFillService();
   final EditorExistingTextService _existingText = const EditorExistingTextService();
   final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
+  final EditorRichTextService _richText = const EditorRichTextService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
   bool _showFields = false;
 
@@ -1183,6 +1186,58 @@ class _PickEditScreenState extends State<PickEditScreen> {
   // --- Inline text editing (P1) ---
   TextAnnotation? _inlineEditing; // annotation currently being edited inline
   bool _inlineEditTxnOpen = false; // true when editing EXISTING text (undoable)
+  TextSelection _inlineSelection = const TextSelection.collapsed(offset: 0);
+
+  /// Whether the inline editor has a non-collapsed text selection (range).
+  bool get _hasInlineSelection =>
+      _inlineEditing != null && !_inlineSelection.isCollapsed;
+
+  /// Apply bold toggle to the currently selected range in the inline editor.
+  void _toggleSelectionBold() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleBold(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleSelectionItalic() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleItalic(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleSelectionUnderline() {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    setState(() {
+      editing.runs = _richText.toggleUnderline(
+          editing, _inlineSelection.start, _inlineSelection.end);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Future<void> _pickSelectionColor() async {
+    final editing = _inlineEditing;
+    if (editing == null || _inlineSelection.isCollapsed) return;
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color);
+    if (picked == null || !mounted) return;
+    setState(() {
+      editing.runs = _richText.applyStyle(
+        editing,
+        start: _inlineSelection.start,
+        end: _inlineSelection.end,
+        color: picked,
+      );
+      _hasUnsavedChanges = true;
+    });
+  }
 
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
     // For NEW text boxes, use inline editing directly on the canvas.
@@ -1468,6 +1523,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                             canvasSize: Size(pageW, pageH),
                             onDone: _commitInlineEdit,
                             onTextChanged: _onInlineTextChanged,
+                            onSelectionChanged: (sel) =>
+                                setState(() => _inlineSelection = sel),
                           ),
                         ),
                       ],
@@ -1554,6 +1611,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
             onDeselectMulti: () => setState(() => _multi.clear()),
             resolveTypeIcon: _typeIcon,
           ),
+        ),
+        richTextToolbar: EditorRichTextToolbar(
+          hasFocus: _inlineEditing != null,
+          hasSelection: _hasInlineSelection,
+          onBold: _toggleSelectionBold,
+          onItalic: _toggleSelectionItalic,
+          onUnderline: _toggleSelectionUnderline,
+          onColor: _pickSelectionColor,
         ),
         toolbar: EditorToolbar(
           tool: _tool,
