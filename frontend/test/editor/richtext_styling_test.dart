@@ -28,9 +28,13 @@ void main() {
         false,
         runs: const [TextRun('ABC', bold: true), TextRun('DEF')],
       );
-      // All chars in 0..3 are bold → toggle should un-bold them.
+      // All chars in 0..3 are bold → toggle should un-bold them → plain mode.
       final runs = svc.toggleBold(a, 0, 3);
-      expect(runs, isNull); // all chars now have no overrides → plain mode
+      // After toggle: all 6 chars have null overrides → collapse returns null.
+      if (runs != null) {
+        fail('Expected null but got ${runs.length} runs: '
+            '${runs.map((r) => "(${r.text},bold:${r.bold},it:${r.italic})").join(", ")}');
+      }
     });
 
     test('toggleItalic applies italic to a range within existing runs', () {
