@@ -148,6 +148,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 12),
               _QuickAction(icon: Icons.edit_note, label: l10n.fillForm, color: const Color(0xFF6366D8), onTap: () => context.push('/ai-form')),
               const SizedBox(width: 12),
+              _QuickAction(icon: Icons.auto_fix_high, label: l10n.smartFormFiller, color: const Color(0xFFE67E22), onTap: () => context.push('/tools/smart-fill')),
+              const SizedBox(width: 12),
               _QuickAction(icon: Icons.draw, label: l10n.editor, color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
             ]),
           ),

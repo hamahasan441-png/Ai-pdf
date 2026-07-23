@@ -26,9 +26,7 @@ if (hasReleaseKeystore) {
 
 android {
     namespace = "com.aidocassistant.app"
-    // flutter_tts requires compileSdk 36. The build will fail without it.
-    // AGP 8.7.0 technically documents max of 35, but 36 works in practice
-    // (the same NDK/toolchain; it's just a platform API level number).
+    // flutter_tts ^4.2.0 requires compileSdk 36. Works with AGP 8.7.0.
     compileSdk = 36
     // Pinned: several plugins (ML Kit, pdfx, secure_storage, etc.) require
     // NDK 27; use the highest requested version (backward compatible).
