@@ -47,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _AppBarAction(
             icon: Icons.workspace_premium,
             gradient: AppColors.primaryGradient,
-            tooltip: 'Upgrade to Pro',
+            tooltip: l10n.upgradeToPro,
             onPressed: () => context.push('/paywall'),
           ),
           const SizedBox(width: 6),
@@ -122,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 4),
-            child: Text('Quick Actions', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            child: Text(l10n.quickActions, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           ),
         ),
         SliverToBoxAdapter(
