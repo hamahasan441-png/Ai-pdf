@@ -84,6 +84,20 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
     widget.onDone();
   }
 
+  /// Auto-detect text direction from content (first strong character).
+  TextDirection _detectDirection(String text) {
+    for (final cp in text.runes) {
+      if ((cp >= 0x0600 && cp <= 0x06FF) ||
+          (cp >= 0x0750 && cp <= 0x077F) ||
+          (cp >= 0x0590 && cp <= 0x05FF) ||
+          (cp >= 0xFB50 && cp <= 0xFDFF) ||
+          (cp >= 0xFE70 && cp <= 0xFEFF)) return TextDirection.rtl;
+      if ((cp >= 0x0041 && cp <= 0x005A) ||
+          (cp >= 0x0061 && cp <= 0x007A)) return TextDirection.ltr;
+    }
+    return TextDirection.ltr;
+  }
+
   /// The current selection — exposed so the parent can read it when applying
   /// a style toggle to the selected range.
   TextSelection get selection => _controller.selection;
@@ -108,7 +122,7 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
         height: t.lineHeight,
       ),
       textAlign: t.textAlign,
-      textDirection: t.textDirection,
+      textDirection: t.textDirection ?? _detectDirection(t.text),
       decoration: const InputDecoration(
         isDense: true,
         contentPadding: EdgeInsets.zero,

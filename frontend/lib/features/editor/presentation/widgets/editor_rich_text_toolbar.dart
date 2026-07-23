@@ -12,6 +12,10 @@ class EditorRichTextToolbar extends StatelessWidget {
   final VoidCallback onItalic;
   final VoidCallback onUnderline;
   final VoidCallback onColor;
+  final VoidCallback? onAlignLeft;
+  final VoidCallback? onAlignCenter;
+  final VoidCallback? onAlignRight;
+  final VoidCallback? onToggleRtl;
 
   const EditorRichTextToolbar({
     super.key,
@@ -21,11 +25,15 @@ class EditorRichTextToolbar extends StatelessWidget {
     required this.onItalic,
     required this.onUnderline,
     required this.onColor,
+    this.onAlignLeft,
+    this.onAlignCenter,
+    this.onAlignRight,
+    this.onToggleRtl,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!hasFocus || !hasSelection) return const SizedBox.shrink();
+    if (!hasFocus) return const SizedBox.shrink();
     return Positioned(
       bottom: 0,
       left: 0,
@@ -37,14 +45,24 @@ class EditorRichTextToolbar extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _btn(Icons.format_bold, 'Bold', onBold),
-                _btn(Icons.format_italic, 'Italic', onItalic),
-                _btn(Icons.format_underline, 'Underline', onUnderline),
-                _btn(Icons.format_color_text, 'Colour', onColor),
+                if (hasSelection) ...[
+                  _btn(Icons.format_bold, 'Bold', onBold),
+                  _btn(Icons.format_italic, 'Italic', onItalic),
+                  _btn(Icons.format_underline, 'Underline', onUnderline),
+                  _btn(Icons.format_color_text, 'Colour', onColor),
+                  _divider(),
+                ],
+                _btn(Icons.format_align_left, 'Left', onAlignLeft ?? () {}),
+                _btn(Icons.format_align_center, 'Center', onAlignCenter ?? () {}),
+                _btn(Icons.format_align_right, 'Right', onAlignRight ?? () {}),
+                if (onToggleRtl != null) ...[
+                  _divider(),
+                  _btn(Icons.format_textdirection_r_to_l, 'RTL', onToggleRtl!),
+                ],
               ],
             ),
           ),
@@ -52,6 +70,13 @@ class EditorRichTextToolbar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _divider() => Container(
+        width: 1,
+        height: 24,
+        color: Colors.grey.shade700,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+      );
 
   Widget _btn(IconData icon, String tooltip, VoidCallback onTap) {
     return IconButton(

@@ -333,8 +333,20 @@ class TextAnnotation extends EditorAnnotation {
 
   @override
   Rect get bounds {
-    final w = (text.length * size * 0.55).clamp(0.02, 1.0);
+    // Estimate width: non-Latin (Arabic/Hebrew/CJK) chars are wider than Latin.
+    final avgCharWidth = _hasWideChars(text) ? 0.7 : 0.55;
+    final w = (text.length * size * avgCharWidth).clamp(0.02, 1.0);
     return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), size * 1.3);
+  }
+
+  static bool _hasWideChars(String text) {
+    for (final cp in text.runes) {
+      if ((cp >= 0x0600 && cp <= 0x06FF) || // Arabic
+          (cp >= 0x0590 && cp <= 0x05FF) || // Hebrew
+          (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK
+          (cp >= 0xFB50 && cp <= 0xFDFF)) return true;
+    }
+    return false;
   }
 
   @override
