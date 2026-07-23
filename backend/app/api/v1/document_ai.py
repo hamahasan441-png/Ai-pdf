@@ -1,4 +1,4 @@
-"""Document AI endpoints — Chat with PDF, Summarize, Translate, Rewrite, Extract.
+"""Document AI endpoints — Chat with PDF, Summarize, Translate, Rewrite, Extract, Understand Form.
 
 These endpoints power the app's AI document intelligence features. Every
 endpoint is metered using per-plan quota tiers: Pro users are unlimited,
@@ -126,6 +126,40 @@ class FixOcrRequest(BaseModel):
 
 class FixOcrResponse(BaseModel):
     corrected_text: str
+    remaining: int = -1
+
+
+class UnderstandFormFieldInput(BaseModel):
+    """A single form field descriptor sent to the understand-form endpoint."""
+    label: str = Field(..., max_length=500,
+                       description="The field label as detected from the PDF")
+    detected_type: str = Field("text",
+                               description="Heuristic type hint: text|date|email|phone|number|checkbox|signature")
+    confidence: float = Field(1.0, ge=0.0, le=1.0,
+                              description="Heuristic confidence (0–1). Low-confidence fields benefit most from AI classification.")
+
+
+class UnderstandFormFieldResult(BaseModel):
+    """AI-enriched classification for one form field."""
+    label: str
+    semantic_type: str    # e.g. first_name, last_name, email, date_of_birth
+    profile_key: str      # key to look up in the user profile (matches profile ontology)
+    field_type: str       # text | date | email | phone | number | checkbox | signature | address | select
+    confidence: float     # AI confidence 0.0–1.0
+    reasoning: str = ""   # brief explanation (trimmed for token efficiency)
+
+
+class UnderstandFormRequest(BaseModel):
+    """Batch of uncertain form field labels to classify semantically."""
+    fields: list[UnderstandFormFieldInput] = Field(..., min_length=1, max_length=50,
+                                                   description="Fields to classify (max 50 per call)")
+    language: str = Field("auto", description="Document language hint (improves classification of non-English labels)")
+
+
+class UnderstandFormResponse(BaseModel):
+    """AI-classified field list ready for profile mapping."""
+    fields: list[UnderstandFormFieldResult]
+    language_detected: str = ""
     remaining: int = -1
 
 
@@ -406,10 +440,117 @@ async def fix_ocr(
     return FixOcrResponse(corrected_text=reply, remaining=remaining)
 
 
+@router.post("/understand-form", response_model=UnderstandFormResponse)
+async def understand_form(
+    req: UnderstandFormRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Semantically classify uncertain form field labels and map them to profile keys.
+
+    The on-device heuristic pipeline (OCR + ontology matching) handles the
+    majority of fields instantly and offline. When a field's heuristic
+    confidence is low, the client batches those uncertain labels here for AI
+    semantic classification — only the labels are sent, never the document.
+
+    The AI maps each label to a standardised ``profile_key`` (e.g. "Vorname" →
+    ``first_name``) so the caller can look up the matching value in the user's
+    encrypted local profile without any further prompting.
+
+    Costs one metered AI call regardless of the number of fields (cheap:
+    all labels fit in one prompt).
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    lang_hint = f" The form is in {req.language}." if req.language != "auto" else ""
+
+    fields_json = [
+        {"label": f.label, "detected_type": f.detected_type, "confidence": round(f.confidence, 2)}
+        for f in req.fields
+    ]
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a multilingual form field classification expert. "
+                "Given a list of form field descriptors, classify each one and map it to a "
+                "standardised profile key so the client can auto-fill it from the user's profile.\n\n"
+                "Return a single JSON object with:\n"
+                '  "language_detected": detected language of the labels (e.g. "German", "English"),\n'
+                '  "fields": array of objects, one per input field, each with:\n'
+                '    "label": the original label (unchanged),\n'
+                '    "semantic_type": short English label (snake_case), e.g. first_name, last_name,\n'
+                '      email, phone, date_of_birth, address, city, zip, country, employer,\n'
+                '      job_title, national_id, iban, signature, checkbox, unknown,\n'
+                '    "profile_key": the key to look up in the user profile (usually same as semantic_type),\n'
+                '    "field_type": one of: text, date, email, phone, number, checkbox, signature, address, select,\n'
+                '    "confidence": float 0.0–1.0 reflecting your certainty,\n'
+                '    "reasoning": one short sentence explaining the mapping.\n\n'
+                f"Base classification on the label text only.{lang_hint} "
+                "Respond with valid JSON only — no markdown, no explanation outside the JSON."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Classify these form fields:\n{fields_json}",
+        },
+    ]
+
+    result = await ai_provider.chat_completion_json(
+        messages=messages,
+        use_advanced=False,
+        max_tokens=2048,
+    )
+
+    # Parse and validate the response gracefully.
+    raw_fields = result.get("fields", []) if isinstance(result, dict) else []
+    language_detected = result.get("language_detected", "") if isinstance(result, dict) else ""
+    classified: list[UnderstandFormFieldResult] = []
+    for item in raw_fields:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label", "")
+        if not label:
+            continue
+        classified.append(
+            UnderstandFormFieldResult(
+                label=label,
+                semantic_type=str(item.get("semantic_type", "unknown"))[:100],
+                profile_key=str(item.get("profile_key", item.get("semantic_type", "unknown")))[:100],
+                field_type=str(item.get("field_type", "text"))[:50],
+                confidence=float(item.get("confidence", 0.5)),
+                reasoning=str(item.get("reasoning", ""))[:300],
+            )
+        )
+
+    # Fall back: for any input label the AI omitted, add an unknown entry.
+    returned_labels = {r.label for r in classified}
+    for field in req.fields:
+        if field.label not in returned_labels:
+            classified.append(
+                UnderstandFormFieldResult(
+                    label=field.label,
+                    semantic_type="unknown",
+                    profile_key="unknown",
+                    field_type=field.detected_type,
+                    confidence=0.0,
+                    reasoning="Not classified by AI",
+                )
+            )
+
+    return UnderstandFormResponse(
+        fields=classified,
+        language_detected=language_detected,
+        remaining=remaining,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 def _check_ai_configured():
     if not settings.AI_API_KEY:
         raise HTTPException(
