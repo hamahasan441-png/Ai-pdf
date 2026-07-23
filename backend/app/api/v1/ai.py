@@ -5,8 +5,10 @@ if logged in, else client IP). This is the growth engine: mainstream users get
 working AI out of the box, and the free daily cap creates a natural upgrade
 path to Pro (unlimited).
 
-Metering is centralised in ``app.services.ai.usage_limiter`` so this endpoint
-and the Document AI endpoints share one cap and one Pro-bypass rule.
+Metering uses per-plan quota tiers (free / basic / Pro) resolved from the
+``X-Entitlement-Token`` header. ``app.services.billing.quota_tiers`` and
+``app.services.ai.usage_limiter`` share one cap and one tier-bypass rule
+with the Document AI endpoints.
 """
 
 from typing import Optional
@@ -22,10 +24,10 @@ from app.models.user import User
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import (
     UNLIMITED,
-    check_and_increment,
+    check_and_increment_tiered,
     identity_for,
-    is_pro,
 )
+from app.services.billing.quota_tiers import get_quota
 
 router = APIRouter()
 
@@ -53,7 +55,12 @@ async def managed_chat(
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Managed chat completion. Unlimited for verified Pro; else metered."""
+    """Managed chat completion — tier-aware metering.
+
+    - Pro (monthly/yearly/lifetime) → unlimited.
+    - Basic → ``AI_BASIC_DAILY_LIMIT`` per day.
+    - Free (no/invalid token) → ``AI_FREE_DAILY_LIMIT`` per day.
+    """
     if not settings.AI_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -62,18 +69,18 @@ async def managed_chat(
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty")
 
-    # Verified Pro (via purchase token) bypasses the free daily limit.
-    pro = await is_pro(db, request.headers.get("X-Entitlement-Token"))
+    token = request.headers.get("X-Entitlement-Token")
+    _tier, limit = await get_quota(db, token)
     remaining = UNLIMITED
-    if not pro:
+    if limit is not None:
         identity = identity_for(user, request)
-        allowed, count = check_and_increment(identity)
+        allowed, count = check_and_increment_tiered(identity, limit)
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Daily free AI limit reached. Upgrade to Pro for unlimited AI.",
+                detail="Daily AI limit reached. Upgrade to Pro for unlimited AI.",
             )
-        remaining = max(0, settings.AI_FREE_DAILY_LIMIT - count)
+        remaining = max(0, limit - count)
 
     reply = await ai_provider.chat_completion(
         messages=[m.model_dump() for m in req.messages],

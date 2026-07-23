@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
+from app.services.ai.batch_processor import batch_processor
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/forms", tags=["Forms"])
@@ -171,4 +173,97 @@ async def fill_acroform(
         content=filled_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=filled.pdf"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch endpoint
+# ---------------------------------------------------------------------------
+
+
+class BatchFieldInput(BaseModel):
+    label: str
+    type: str = "text"
+
+
+class BatchDocumentInput(BaseModel):
+    name: str
+    fields: list[BatchFieldInput]
+
+
+class BatchFillRequest(BaseModel):
+    """Fill multiple forms with one profile in a single call.
+
+    ``documents`` is a list of form descriptors — each contains the form name
+    and the fields detected on it (by the on-device OCR pipeline). ``profile``
+    is the user's saved key→value store (encrypted on-device; the server only
+    sees plaintext for the duration of the request). ``field_mappings`` lets
+    the client send explicit ``{label: profile_key}`` overrides for ambiguous
+    fields.
+    """
+    documents: list[BatchDocumentInput]
+    profile: dict[str, str]
+    field_mappings: dict[str, str] = {}
+
+
+class BatchFillResultItem(BaseModel):
+    doc_index: int
+    doc_name: str
+    fields_detected: int
+    fields_filled: int
+    fields_uncertain: int
+    filled_values: dict
+    validation_errors: list
+
+
+class BatchFillResponse(BaseModel):
+    results: list[BatchFillResultItem]
+    total_forms: int
+    total_filled: int
+
+
+_MAX_BATCH_DOCS = 50  # Reasonable cap to avoid runaway CPU usage.
+
+
+@router.post("/batch", response_model=BatchFillResponse)
+async def batch_fill_forms(request: BatchFillRequest):
+    """Fill multiple forms with a single profile in one round-trip.
+
+    The server runs the same field-detection → profile-matching → validation
+    pipeline that single-form fill uses, but over N documents at once. The
+    response lists the filled values for each form so the client can issue
+    targeted ``/acroform/fill`` calls or apply overlay annotations.
+
+    This endpoint is NOT metered (no AI model is involved; it's pure matching
+    logic). It is capped at ``_MAX_BATCH_DOCS`` documents per call.
+    """
+    if len(request.documents) > _MAX_BATCH_DOCS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Batch size exceeds maximum ({_MAX_BATCH_DOCS} documents).",
+        )
+
+    docs = [{"name": d.name, "fields": [f.model_dump() for f in d.fields]} for d in request.documents]
+    raw_results = batch_processor.process_batch(
+        docs,
+        request.profile,
+        request.field_mappings or {},
+    )
+
+    results = [
+        BatchFillResultItem(
+            doc_index=r.doc_index,
+            doc_name=r.doc_name,
+            fields_detected=r.fields_detected,
+            fields_filled=r.fields_filled,
+            fields_uncertain=r.fields_uncertain,
+            filled_values=r.filled_values,
+            validation_errors=r.validation_errors,
+        )
+        for r in raw_results
+    ]
+    return BatchFillResponse(
+        results=results,
+        total_forms=len(results),
+        total_filled=sum(r.fields_filled for r in results),
     )
