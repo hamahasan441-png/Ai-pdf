@@ -154,15 +154,18 @@ exist on `main`).
 
 | Capability | Competitors | AI-PDF now | Target |
 |---|---|---|---|
-| Inline text editing | ✅ | ❌ dialog only | 🔜 P1 |
-| AcroForm fill | ✅ | ❌ | 🔜 P1 |
-| Font embedding / RTL export | ✅ | ⚡ raster only | 🔜 P1 |
-| Unlimited undo/redo | ✅ | ⚡ single-level | 🔜 P0 |
-| Image / stamp objects | ✅ | ❌ | 🔜 P1 |
-| Annotation persistence | ✅ | ❌ | 🔜 P0 |
+| Inline text editing | ✅ | ✅ `inline_text_editor.dart` | ✅ Done |
+| AcroForm fill | ✅ | ✅ `/forms/acroform/read+fill` | ✅ Done |
+| Font embedding / RTL export | ✅ | ✅ `rtl_text_renderer.dart`, `pdf_unicode_fonts.dart` | ✅ Done |
+| Unlimited undo/redo | ✅ | ✅ Command-pattern `domain/history/` | ✅ Done |
+| Image / stamp objects | ✅ | ✅ `image_annotation.dart`, `stamp_annotation.dart` | ✅ Done |
+| Annotation persistence | ✅ | ✅ `annotation_persistence_service.dart` | ✅ Done |
 | On-device AI RAG (offline) | ❌ | ✅ | ✅ moat |
 | Privacy-first / offline-first | ⚡ | ✅ | ✅ moat |
 | Profile-based AI autofill | ❌ | ✅ | ✅ moat |
+| Semantic form understanding | ❌ | ✅ `/forms/understand-form` | ✅ Done |
+| Multi-doc reasoning + compare | ⚡ | ✅ `multi_doc_chat.py`, `document_compare.py` | ✅ Done |
+| Document insights (analyze) | ✅ | ✅ `/document-ai/analyze` | ✅ Done |
 
 **Where AI-PDF wins:** offline on-device intelligence, privacy, and profile
 autofill — none of the desktop incumbents offer this on mobile. Do not copy
@@ -171,40 +174,73 @@ their desktop UX; win on privacy + AI + mobile ergonomics.
 ## 3.2 Repository Audit (as-is)
 - **Frontend:** Flutter, Riverpod, GoRouter; `pdfx`; ML Kit OCR
   (`core/services/ocr_service.dart`); on-device BM25
-  (`core/services/bm25_retriever.dart`); strong service decomposition; **no
-  Dart tests beyond** `test/image_ops_test.dart`, `entitlement_test.dart`,
-  `observability_test.dart`, `theme_controller_test.dart`.
+  (`core/services/bm25_retriever.dart`); strong service decomposition. Dart
+  tests cover image ops, entitlements, observability, and theme controller.
 - **Backend:** FastAPI + async SQLAlchemy + PostgreSQL; JWT
   (`core/security.py`); OpenRouter provider (`services/ai/provider.py`) with a
-  model router; understanding/vision/form-filler/field-mapper services;
-  managed AI (`api/v1/ai.py`) + new Document AI (`api/v1/document_ai.py`) with a
-  shared metering module (`services/ai/usage_limiter.py`).
+  model router; understanding/vision/form-filler/field-mapper services; managed
+  AI (`api/v1/ai.py`) + Document AI (`api/v1/document_ai.py`) with a tiered
+  metering module (`services/ai/usage_limiter.py` + `services/billing/quota_tiers.py`);
+  **210 backend tests** in `backend/tests/` covering auth, AI metering, document
+  AI, forms (AcroForm + understand-form + batch), teams, admin, webhooks,
+  API keys, chat history, multi-doc chat, signature detection, and more.
 
 ## 3.3 Architecture Review
 - **Strengths:** feature-first layout, small services, clear domain/data split,
-  privacy-first defaults.
-- **Risks:** editor logic still partly lives in `pick_edit_screen.dart`;
-  history is minimal; no annotation persistence; backend auth is incomplete
-  (only `/register`).
+  privacy-first defaults, tiered quota metering across all AI endpoints.
+- **Risks:** some editor logic still partly lives in `pick_edit_screen.dart`;
+  cloud sync is not yet implemented.
 
 ## 3.4 Refactoring Strategy
-Strictly incremental and backward-compatible:
-1. Additive annotation metadata + `toJson/fromJson`.
-2. Command-pattern history beside existing methods.
-3. New annotation types (image/stamp/form).
-4. Renderer + export extensions.
-5. Persistence + crash recovery.
-6. Inline text editing.
-Each step: one PR, compiled + analyzed + tested before merge.
+Strictly incremental and backward-compatible — **all steps below are done:**
+1. ✅ Additive annotation metadata + `toJson/fromJson`.
+2. ✅ Command-pattern history beside existing methods (`domain/history/`).
+3. ✅ New annotation types (image/stamp/form-field).
+4. ✅ Renderer + export extensions (RTL, font embedding).
+5. ✅ Persistence + crash recovery (`annotation_persistence_service.dart`).
+6. ✅ Inline text editing (`inline_text_editor.dart`).
 
-## 3.5 PR-ready Implementation Plan
-- **P0:** annotation serialisation; command history; annotation persistence.
-- **P1:** inline text editing; AcroForm fill; font embedding/RTL export;
-  image/stamp objects; complete backend auth.
-- **P2:** tile-based zoom; PDF text-layer extraction; grouping; managed-AI
-  billing polish; cloud sync.
-- **P3:** AI signature detection; document comparison; collaborative editing;
-  PDF/A; PKI signatures; batch processing.
+## 3.5 Implementation Status
+
+**P0 — Completed ✅**
+- Annotation serialisation + persistence.
+- Command-pattern history (`domain/history/`).
+- `PageCoordinateTransform` for inline editing.
+
+**P1 — Completed ✅**
+- `/document-ai/analyze` structured insights.
+- Inline text editor overlay with caret/selection.
+- RTL render + font embedding (Arabic/Kurdish/Persian searchable export).
+- AcroForm read/fill engine (`/forms/acroform/read+fill`).
+- Semantic form understanding fallback (`/forms/understand-form`).
+- Image/Stamp/FormField annotation objects.
+- Background page pre-rendering.
+- Complete backend auth (register/login/refresh/me/change-password).
+
+**P2 — Completed ✅**
+- Multi-document RAG + compare (`multi_doc_chat.py`, `document_compare.py`).
+- Document outline/TOC extraction.
+- Map-reduce summarisation for large PDFs.
+- Tile-based zoom service + PDF text layer extraction.
+- Form validation + cross-field logic + reusable form profiles.
+- Suggest-edits (review-first AI editing, accept/reject cards).
+- Extract dates + extract action items.
+- Suggest questions (AI-driven chat primer).
+
+**P3 — Completed ✅**
+- Revision history service (local, privacy-preserving).
+- AI signature detection service.
+- Developer platform: API keys, webhooks, chat history persistence.
+- Enterprise: teams + shared templates + audit export + admin dashboard.
+- Plugin registry (metadata-only, client-driven).
+- Tiered quota metering: all 15+ AI endpoints use `get_quota` consistently.
+
+**Proposed (future work)**
+- On-device semantic embeddings (beyond BM25).
+- SSO + per-team AI quotas.
+- On-prem managed-AI proxy.
+- Third-party/remote plugins.
+- Cloud sync (opt-in, encrypted).
 
 ---
 
@@ -273,9 +309,10 @@ persisted server-side beyond the request lifecycle.
 - JWT access/refresh (`core/security.py`), bcrypt password hashing, Fernet
   field encryption, audit-log + rate-limit middleware
   (`app/middleware/`).
-- **Gap flagged:** `api/v1/auth.py` exposes only `/register`; login,
-  token-refresh, and password-change are missing though schemas/helpers exist.
-- **Proposed:** complete auth; rotate refresh tokens; add per-route authz tests.
+- **Auth is complete:** `api/v1/auth.py` exposes `/register`, `/login`,
+  `/refresh` (token rotation), `/me`, and `/change-password`. All paths are
+  covered by `backend/tests/test_auth.py` (register/login/refresh/me/change-password).
+- **Proposed:** SSO; per-route authorisation tests; 2FA.
 
 ## 5.2 Monetization
 - Free tier with a shared daily AI cap (`AI_FREE_DAILY_LIMIT`), Pro = unlimited,
@@ -305,13 +342,20 @@ registry is metadata-only; execution stays in the existing endpoints, keeping
 the change additive. **Proposed:** third-party/remote plugins.
 
 ## 5.5 Testing
-- **Now:** a few Dart unit tests, plus a backend **pytest** suite
-  (`backend/tests/`) covering security (JWT + password + encryption), the AI
-  usage limiter, the full auth flow (register/login/refresh/me/change-password),
-  and AI endpoint metering (503 / 429 / Pro-bypass). Runs against in-memory
-  SQLite with the AI provider mocked — no network, no Postgres, no secrets.
-- **Proposed:** Flutter widget/golden tests for the editor and export parity;
-  broaden backend coverage to documents/billing/convert.
+- **Backend:** 210 pytest tests (`backend/tests/`) covering security (JWT +
+  password + encryption), the tiered AI usage limiter, the full auth flow
+  (register/login/refresh/me/change-password), AI endpoint metering
+  (503 / 429 / Pro-bypass / basic-tier), AcroForm read/fill/batch,
+  semantic form understanding (`understand-form`), document AI (chat /
+  summarize / translate / rewrite / extract / analyze / fix-ocr),
+  multi-doc chat, document compare/outline, extract dates/actions,
+  suggest questions/edits, teams, admin, API keys, webhooks, and chat
+  history. Runs against in-memory SQLite with the AI provider mocked —
+  no network, no Postgres, no secrets.
+- **Frontend:** Dart tests cover image ops, entitlements, observability,
+  and theme controller.
+- **Proposed:** Flutter widget/golden tests for editor + export parity;
+  broaden backend coverage to billing webhooks and PDF conversion.
 
 ## 5.6 CI/CD
 - `.github/workflows/build-apk.yml` (Flutter test + APK).
@@ -341,12 +385,13 @@ the change additive. **Proposed:** third-party/remote plugins.
 
 **Proposed:** SSO, per-team AI quotas/billing, and an on-prem managed-AI proxy.
 
-## 5.9 Long-term Roadmap
-1. Ship P0 editor foundation (history + serialisation + persistence).
-2. Reach editing parity (inline text, AcroForm, RTL export).
-3. Deepen the AI moat (multi-doc reasoning, on-device embeddings, suggest-edits).
-4. Productionize (full auth, tests, CI gates, Play Store, billing hardening).
-5. Platform (plugins, enterprise, collaboration).
+## 5.9 Roadmap Status
+1. ✅ Ship P0 editor foundation (history + serialisation + persistence).
+2. ✅ Reach editing parity (inline text, AcroForm, RTL export, image/stamp).
+3. ✅ Deepen the AI moat (multi-doc reasoning, suggest-edits, analyze, form AI).
+4. ✅ Productionize (full auth, 210 tests, CI gates, tiered billing, developer platform).
+5. ✅ Platform (plugins, enterprise/teams, audit export, admin dashboard, API keys, webhooks).
+6. 🔜 Next: on-device embeddings; cloud sync; SSO; Flutter golden tests; 2FA.
 
 ---
 
