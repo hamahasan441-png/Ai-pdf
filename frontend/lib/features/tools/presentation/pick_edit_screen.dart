@@ -1626,6 +1626,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       },
       child: Scaffold(
       backgroundColor: const Color(0xFF2B2B2B),
+      // Prevent the Scaffold from shrinking when the soft keyboard opens.
+      // The inline text editor uses Positioned overlays that handle their own
+      // layout, so resizing the body causes the PDF viewport to collapse.
+      resizeToAvoidBottomInset: false,
       appBar: EditorTopBar(
         title: _fileName ?? l10n.toolEditor,
         currentPage: _current,
@@ -1760,7 +1764,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             : null,
         documentViewport: EditorDocumentViewport(
           panEnabled: _tool == EditTool.pan,
-          scaleEnabled: _tool == EditTool.pan,
+          scaleEnabled: true,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
             tool: _tool,

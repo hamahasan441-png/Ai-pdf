@@ -32,92 +32,77 @@ class _HomeScreenState extends State<HomeScreen> {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 64,
         title: Row(children: [
           Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
-          const Text('Pdoczy'),
+          const Text('Pdoczy', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
         ]),
         actions: [
-          IconButton(
-            icon: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.workspace_premium, size: 20, color: Colors.white),
-            ),
+          _AppBarAction(
+            icon: Icons.workspace_premium,
+            gradient: AppColors.primaryGradient,
             tooltip: l10n.upgradeToPro,
             onPressed: () => context.push('/paywall'),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.key, size: 20),
-            ),
+          const SizedBox(width: 6),
+          _AppBarAction(
+            icon: Icons.key,
+            color: cs.surfaceContainerHighest,
             tooltip: 'AI settings & API key',
             onPressed: () => context.push('/settings'),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.history, size: 20),
-            ),
+          const SizedBox(width: 6),
+          _AppBarAction(
+            icon: Icons.history,
+            color: cs.surfaceContainerHighest,
             tooltip: 'Recent files',
             onPressed: () => context.push('/recent'),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.person_outlined, size: 20),
-            ),
+          const SizedBox(width: 6),
+          _AppBarAction(
+            icon: Icons.person_outlined,
+            color: cs.surfaceContainerHighest,
             tooltip: 'Profile',
             onPressed: () => context.push('/profile'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
         ],
       ),
       body: CustomScrollView(slivers: [
         // Hero banner
         SliverToBoxAdapter(
           child: Container(
-            margin: const EdgeInsets.all(16),
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+              gradient: AppColors.heroGradient,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 10))],
             ),
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(l10n.smartDocuments, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+                  Text(l10n.smartDocuments, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
                   const SizedBox(height: 6),
-                  Text(l10n.appTagline, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
-                  const SizedBox(height: 16),
+                  Text(l10n.appTagline, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14, height: 1.4)),
+                  const SizedBox(height: 20),
                   SizedBox(
-                    height: 40,
+                    height: 44,
                     child: ElevatedButton.icon(
                       onPressed: () => context.push('/tools'),
                       icon: const Icon(Icons.grid_view_rounded, size: 18),
-                      label: Text(l10n.openTools, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      label: Text(l10n.openTools, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: AppColors.primary,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -125,10 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 16),
               Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.auto_awesome, size: 32, color: Colors.white),
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                child: const Icon(Icons.auto_awesome, size: 36, color: Colors.white),
               ),
             ]),
           ),
@@ -136,22 +121,26 @@ class _HomeScreenState extends State<HomeScreen> {
         // Quick actions
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(children: [
-              _QuickAction(icon: Icons.grid_view_rounded, label: l10n.tools, color: AppColors.primary, onTap: () => context.push('/tools')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.folder_special, label: 'Library', color: const Color(0xFF5C6BC0), onTap: () => context.push('/library')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.document_scanner, label: 'Scan', color: const Color(0xFF2E9E7B), onTap: () => context.push('/tools/scan')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.psychology, label: l10n.askAi, color: const Color(0xFF7E7BD4), onTap: () => context.push('/ai')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.edit_note, label: l10n.fillForm, color: const Color(0xFF6366D8), onTap: () => context.push('/ai-form')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.auto_fix_high, label: l10n.smartFormFiller, color: const Color(0xFFE67E22), onTap: () => context.push('/tools/smart-fill')),
-              const SizedBox(width: 12),
-              _QuickAction(icon: Icons.draw, label: l10n.editor, color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
-            ]),
+            padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 4),
+            child: Text(l10n.quickActions, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 100,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: [
+                _QuickAction(icon: Icons.grid_view_rounded, label: l10n.tools, color: AppColors.primary, onTap: () => context.push('/tools')),
+                _QuickAction(icon: Icons.folder_special, label: l10n.library, color: const Color(0xFF5C6BC0), onTap: () => context.push('/library')),
+                _QuickAction(icon: Icons.document_scanner, label: l10n.scan, color: const Color(0xFF2E9E7B), onTap: () => context.push('/tools/scan')),
+                _QuickAction(icon: Icons.psychology, label: l10n.askAi, color: const Color(0xFF7E7BD4), onTap: () => context.push('/ai')),
+                _QuickAction(icon: Icons.edit_note, label: l10n.fillForm, color: const Color(0xFF6366D8), onTap: () => context.push('/ai-form')),
+                _QuickAction(icon: Icons.auto_fix_high, label: l10n.smartFormFiller, color: const Color(0xFFE67E22), onTap: () => context.push('/tools/smart-fill')),
+                _QuickAction(icon: Icons.draw, label: l10n.editor, color: AppColors.accent, onTap: () => context.push('/tools/pick-edit')),
+              ],
+            ),
           ),
         ),
         // Recent files (created / edited / saved on this device)
@@ -242,6 +231,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Circular/rounded app bar action button with optional gradient or solid color.
+class _AppBarAction extends StatelessWidget {
+  final IconData icon;
+  final Gradient? gradient;
+  final Color? color;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _AppBarAction({
+    required this.icon,
+    this.gradient,
+    this.color,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            gradient: gradient,
+            color: gradient == null ? color : null,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 22, color: gradient != null ? Colors.white : null),
+        ),
+      ),
+    );
+  }
+}
+
 /// Shown only when there are no recent files: a friendly "get started" panel.
 class _RecentEmptyHint extends StatelessWidget {
   final ColorScheme cs;
@@ -307,21 +333,40 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: PressableScale(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.15)),
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withOpacity(0.2)),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, color: color, size: 26),
-            const SizedBox(height: 6),
-            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ]),
         ),
       ),
