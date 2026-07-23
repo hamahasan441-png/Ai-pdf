@@ -508,9 +508,7 @@ async def understand_form(
     # Parse and validate the response gracefully.
     raw_fields = result.get("fields", []) if isinstance(result, dict) else []
     language_detected = result.get("language_detected", "") if isinstance(result, dict) else ""
-
     classified: list[UnderstandFormFieldResult] = []
-    input_labels = {f.label for f in req.fields}
     for item in raw_fields:
         if not isinstance(item, dict):
             continue
@@ -531,7 +529,7 @@ async def understand_form(
     # Fall back: for any input label the AI omitted, add an unknown entry.
     returned_labels = {r.label for r in classified}
     for field in req.fields:
-        if field.label not in returned_labels and field.label in input_labels:
+        if field.label not in returned_labels:
             classified.append(
                 UnderstandFormFieldResult(
                     label=field.label,
