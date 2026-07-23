@@ -48,6 +48,16 @@ def check_and_increment(key: str) -> tuple[bool, int]:
     return _get_backend().check_and_increment(key, settings.AI_FREE_DAILY_LIMIT, today)
 
 
+def check_and_increment_tiered(key: str, limit: int) -> tuple[bool, int]:
+    """Like ``check_and_increment`` but honours a caller-supplied per-tier limit.
+
+    Used by endpoints that resolve the entitlement token to a tier-specific
+    daily quota (free / basic / pro) via ``billing.quota_tiers.get_quota``.
+    """
+    today = date.today().isoformat()
+    return _get_backend().check_and_increment(key, limit, today)
+
+
 async def is_pro(db: AsyncSession, token: Optional[str]) -> bool:
     """True if the X-Entitlement-Token maps to an active verified purchase."""
     if not token:

@@ -25,6 +25,50 @@ async def test_summarize_success(client, mock_ai):
     assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
 
 
+async def test_summarize_large_doc_uses_map_reduce(client, monkeypatch, mock_ai):
+    """Documents > _MAP_REDUCE_THRESHOLD chars must go through map-reduce."""
+    from app.api.v1 import document_ai as dai_mod
+    from app.services.ai import map_reduce_summarizer as mr_mod
+
+    calls: list[str] = []
+
+    async def fake_map_reduce(text, *, chunk_size=3000, style="structured", language="auto"):
+        calls.append("map_reduce")
+        return "MAP_REDUCE_REPLY"
+
+    monkeypatch.setattr(mr_mod, "map_reduce_summarize", fake_map_reduce)
+    # Also make the module-level reference in document_ai point to the patched version.
+    monkeypatch.setattr(dai_mod, "map_reduce_summarize", fake_map_reduce)
+
+    big_text = "x" * (dai_mod._MAP_REDUCE_THRESHOLD + 1)
+    resp = await client.post(SUMMARIZE, json={"document_text": big_text, "style": "structured"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["summary"] == "MAP_REDUCE_REPLY"
+    assert "map_reduce" in calls
+
+
+async def test_summarize_short_doc_skips_map_reduce(client, monkeypatch, mock_ai):
+    """Documents <= _MAP_REDUCE_THRESHOLD chars use the direct AI path."""
+    from app.api.v1 import document_ai as dai_mod
+    from app.services.ai import map_reduce_summarizer as mr_mod
+
+    calls: list[str] = []
+
+    async def fake_map_reduce(*args, **kwargs):
+        calls.append("map_reduce")
+        return "SHOULD_NOT_BE_CALLED"
+
+    monkeypatch.setattr(mr_mod, "map_reduce_summarize", fake_map_reduce)
+    monkeypatch.setattr(dai_mod, "map_reduce_summarize", fake_map_reduce)
+
+    short_text = "x" * dai_mod._MAP_REDUCE_THRESHOLD  # exactly at threshold → direct path
+    resp = await client.post(SUMMARIZE, json={"document_text": short_text})
+    assert resp.status_code == 200
+    assert resp.json()["summary"] == "MOCK_REPLY"
+    assert calls == []  # map-reduce was NOT called
+
+
 async def test_translate_success(client, mock_ai):
     resp = await client.post(TRANSLATE, json={"text": "hello", "target_language": "Kurdish (Sorani)"})
     assert resp.status_code == 200
@@ -106,3 +150,28 @@ async def test_pro_entitlement_is_unlimited(client, session_maker, mock_ai, monk
     # Unlimited sentinel.
     assert first.json()["remaining"] == -1
     assert second.json()["remaining"] == -1
+
+
+async def test_basic_entitlement_uses_higher_limit(client, session_maker, mock_ai, monkeypatch):
+    """A 'basic' tier entitlement should give AI_BASIC_DAILY_LIMIT quota."""
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    monkeypatch.setattr(settings, "AI_BASIC_DAILY_LIMIT", 5)
+    async with session_maker() as s:
+        s.add(
+            Entitlement(
+                purchase_token="basic-token-abc",
+                product_id="pro_monthly",  # product_id doesn't control tier; tier field does
+                tier="basic",
+                valid=True,
+            )
+        )
+        await s.commit()
+
+    headers = {"X-Entitlement-Token": "basic-token-abc"}
+    # Should succeed up to AI_BASIC_DAILY_LIMIT (5), not hit free limit (1).
+    first = await client.post(SUMMARIZE, json={"document_text": "a"}, headers=headers)
+    second = await client.post(SUMMARIZE, json={"document_text": "b"}, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # Still counting — not unlimited.
+    assert first.json()["remaining"] != -1

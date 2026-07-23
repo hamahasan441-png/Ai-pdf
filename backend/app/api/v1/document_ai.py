@@ -1,9 +1,10 @@
 """Document AI endpoints — Chat with PDF, Summarize, Translate, Rewrite, Extract.
 
 These endpoints power the app's AI document intelligence features. Every
-endpoint is metered exactly like the managed chat endpoint: verified-Pro users
-(active purchase token) are unlimited, everyone else shares the same free daily
-cap via ``app.services.ai.usage_limiter``.
+endpoint is metered using per-plan quota tiers: Pro users are unlimited,
+"basic" tier users get a higher daily cap, and free users share the default
+cap — all via ``app.services.ai.usage_limiter`` and
+``app.services.billing.quota_tiers``.
 """
 
 import logging
@@ -17,13 +18,18 @@ from app.api.deps.auth import get_optional_user
 from app.core.config import settings
 from app.db.database import get_db
 from app.models.user import User
+from app.services.ai.map_reduce_summarizer import map_reduce_summarize
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import (
     UNLIMITED,
-    check_and_increment,
+    check_and_increment_tiered,
     identity_for,
-    is_pro,
 )
+from app.services.billing.quota_tiers import get_quota
+
+# Character threshold above which we switch to map-reduce summarization so the
+# full document is covered rather than truncated.
+_MAP_REDUCE_THRESHOLD = 12_000
 
 logger = logging.getLogger(__name__)
 
@@ -174,28 +180,41 @@ async def summarize_document(
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate a structured summary of a document."""
+    """Generate a structured summary of a document.
+
+    For long documents (> ``_MAP_REDUCE_THRESHOLD`` characters) the service
+    uses a map-reduce approach: it summarizes each chunk independently and
+    then combines those partial summaries into a single coherent result.  This
+    prevents the "lost middle" problem of naive context-window truncation.
+    """
     _check_ai_configured()
     remaining = await _meter(request, user, db)
 
-    style_instruction = {
-        "structured": "Provide a structured summary: 1) Document type, 2) Key points (bullets), 3) Important entities, 4) Action items.",
-        "brief": "Provide a 2-3 sentence summary capturing the essential information.",
-        "bullet": "Provide a bullet-point summary with one key fact per bullet.",
-    }.get(req.style, "Summarize clearly and concisely.")
+    if len(req.document_text) > _MAP_REDUCE_THRESHOLD:
+        # Long document — use map-reduce so no content is silently dropped.
+        reply = await map_reduce_summarize(
+            req.document_text,
+            style=req.style,
+            language=req.language,
+        )
+    else:
+        style_instruction = {
+            "structured": "Provide a structured summary: 1) Document type, 2) Key points (bullets), 3) Important entities, 4) Action items.",
+            "brief": "Provide a 2-3 sentence summary capturing the essential information.",
+            "bullet": "Provide a bullet-point summary with one key fact per bullet.",
+        }.get(req.style, "Summarize clearly and concisely.")
 
-    lang_hint = f" Respond in {req.language}." if req.language != "auto" else ""
+        lang_hint = f" Respond in {req.language}." if req.language != "auto" else ""
 
-    messages = [
-        {"role": "system", "content": f"You are an expert document summarizer.{lang_hint}"},
-        {"role": "user", "content": f"{style_instruction}\n\nDocument:\n{req.document_text[:12000]}"},
-    ]
-
-    reply = await ai_provider.chat_completion(
-        messages=messages,
-        temperature=0.2,
-        max_tokens=2048,
-    )
+        messages = [
+            {"role": "system", "content": f"You are an expert document summarizer.{lang_hint}"},
+            {"role": "user", "content": f"{style_instruction}\n\nDocument:\n{req.document_text}"},
+        ]
+        reply = await ai_provider.chat_completion(
+            messages=messages,
+            temperature=0.2,
+            max_tokens=2048,
+        )
     return SummarizeResponse(summary=reply, remaining=remaining)
 
 
@@ -404,20 +423,25 @@ async def _meter(
     user: Optional[User],
     db: AsyncSession,
 ) -> int:
-    """Enforce the shared free-tier cap and return the remaining quota.
+    """Enforce the per-plan daily cap and return the remaining quota.
 
-    Verified-Pro users bypass the cap (returns ``UNLIMITED``). Everyone else is
-    counted against the daily limit; raises HTTP 429 once exhausted. Call this
-    BEFORE spending an AI request so over-limit callers don't incur cost.
+    Tier resolution:
+    - Pro (monthly/yearly/lifetime) → unlimited (returns ``UNLIMITED``).
+    - Basic → ``AI_BASIC_DAILY_LIMIT`` per day.
+    - Free (no/invalid token) → ``AI_FREE_DAILY_LIMIT`` per day.
+
+    Raises HTTP 429 once the daily limit is exhausted. Call this BEFORE
+    spending an AI request so over-limit callers don't incur cost.
     """
-    pro = await is_pro(db, request.headers.get("X-Entitlement-Token"))
-    if pro:
+    token = request.headers.get("X-Entitlement-Token")
+    _tier, limit = await get_quota(db, token)
+    if limit is None:
         return UNLIMITED
     identity = identity_for(user, request)
-    allowed, count = check_and_increment(identity)
+    allowed, count = check_and_increment_tiered(identity, limit)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily free AI limit reached. Upgrade to Pro for unlimited AI.",
+            detail="Daily AI limit reached. Upgrade to Pro for unlimited AI.",
         )
-    return max(0, settings.AI_FREE_DAILY_LIMIT - count)
+    return max(0, limit - count)
