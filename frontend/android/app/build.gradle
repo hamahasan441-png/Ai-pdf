@@ -26,11 +26,8 @@ if (hasReleaseKeystore) {
 
 android {
     namespace = "com.aidocassistant.app"
-    // Pinned to 35: AGP 8.7.0 (this project's AGP, matching Flutter 3.29's
-    // default) officially supports a maximum compileSdk of 35. compileSdk 36
-    // needs AGP 8.9.1+ and would fail the release build. 35 also matches
-    // targetSdk and Flutter 3.29's default compileSdk.
-    compileSdk = 35
+    // flutter_tts ^4.2.0 requires compileSdk 36. Works with AGP 8.7.0.
+    compileSdk = 36
     // Pinned: several plugins (ML Kit, pdfx, secure_storage, etc.) require
     // NDK 27; use the highest requested version (backward compatible).
     ndkVersion = "27.0.12077973"
