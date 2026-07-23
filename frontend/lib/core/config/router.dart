@@ -22,6 +22,7 @@ import '../../features/tools/presentation/read_aloud_screen.dart';
 import '../../features/tools/presentation/convert_screen.dart';
 import '../../features/tools/presentation/import_pdf_screen.dart';
 import '../../features/scanner/presentation/scanner_screen.dart';
+import '../../features/library/presentation/library_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
@@ -46,6 +47,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/merge', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.merge)),
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
       GoRoute(path: '/tools/scan', builder: (_, __) => const ScannerScreen()),
+      GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
       GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
       GoRoute(path: '/tools/smart-fill', builder: (_, __) => const SmartFillScreen()),
       GoRoute(path: '/tools/organize', builder: (_, __) => const OrganizePagesScreen()),
