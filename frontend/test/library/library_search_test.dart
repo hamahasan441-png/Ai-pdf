@@ -91,10 +91,8 @@ void main() {
             sortOrder: LibrarySortOrder.ascending),
       );
       // Pinned first regardless, then ascending size.
+      // After pinned (Notes 500): Scan 1000, Photo 2000, Contract 5000.
       expect(r[0].name, 'Notes.pdf'); // pinned (500)
-      expect(r[1].name, 'Contract.pdf'); // 5000? No — ascending: Photo 2000 < Contract 5000
-      // Actually: after pinned (Notes 500), rest sorted asc by size:
-      // Photo 2000, Scan 1000, Contract 5000
       expect(r[1].name, 'Scan_receipt.pdf'); // 1000
       expect(r[2].name, 'Photo.jpg'); // 2000
       expect(r[3].name, 'Contract.pdf'); // 5000
