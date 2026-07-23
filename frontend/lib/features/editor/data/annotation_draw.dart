@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Shared, resolution-independent drawing used by BOTH the on-screen painter
 /// and the off-screen export compositor, so the exported PDF looks exactly
@@ -13,6 +14,10 @@ import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 /// thickness whether drawn on a phone screen or a 1800px export page.
 class AnnotationDraw {
   static const double _refHeight = 1000.0;
+
+  /// Detects base text direction from content for text annotations that have
+  /// no explicit [TextAnnotation.textDirection] override.
+  static const RtlDetectionService _rtlDetect = RtlDetectionService();
 
   static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
     if (pts.length < 2) return;
@@ -114,7 +119,13 @@ class AnnotationDraw {
     );
     final tp = TextPainter(
       text: buildAnnotationTextSpan(t, base),
-      textDirection: t.textDirection ?? TextDirection.ltr,
+      // When the annotation has no explicit direction (the common case), infer
+      // the base direction from the text itself (first-strong rule) so that
+      // Arabic/Kurdish/Persian/Hebrew lines lay out and align right-to-left
+      // instead of being forced LTR. Mirrors the vector-export path
+      // (editor_export_service / rtl_text_renderer), which already does this.
+      textDirection: t.textDirection ??
+          (_rtlDetect.isRtl(t.text) ? TextDirection.rtl : TextDirection.ltr),
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
 
     final px = t.pos.dx * size.width;
