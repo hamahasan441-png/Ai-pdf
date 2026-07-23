@@ -19,10 +19,10 @@ from app.models.user import User
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import (
     UNLIMITED,
-    check_and_increment,
+    check_and_increment_tiered,
     identity_for,
-    is_pro,
 )
+from app.services.billing.quota_tiers import get_quota
 
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
 
@@ -92,14 +92,15 @@ async def extract_outline(
         raise HTTPException(status_code=503, detail="AI not configured")
 
     # Meter (AI mode only)
-    pro = await is_pro(db, request.headers.get("X-Entitlement-Token") if request else None)
+    token = request.headers.get("X-Entitlement-Token") if request else None
+    _tier, limit = await get_quota(db, token)
     remaining = UNLIMITED
-    if not pro:
+    if limit is not None:
         identity = identity_for(user, request) if request else "anon"
-        allowed, count = check_and_increment(identity)
+        allowed, count = check_and_increment_tiered(identity, limit)
         if not allowed:
             raise HTTPException(status_code=429, detail="Daily limit reached")
-        remaining = max(0, settings.AI_FREE_DAILY_LIMIT - count)
+        remaining = max(0, limit - count)
 
     messages = [
         {

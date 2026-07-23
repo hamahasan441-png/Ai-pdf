@@ -140,11 +140,11 @@ command log — not the document — between devices.
 ### Gaps vs the best
 | Capability | Us | Target |
 |---|---|---|
-| **True AcroForm** read/fill (native PDF fields) | ❌ overlay only | **Build (P1)** — read `/AcroForm`, fill real widgets, keep them interactive |
-| Semantic field understanding beyond keywords | ⚡ ontology | **Build (P1)** — server `understand-form` (LLM) as fallback when heuristics are unsure |
-| Field validation (email/IBAN/date/phone) with inline errors | ⚡ partial | **Build (P1)** |
-| Cross‑field logic (e.g. total = sum, date ranges) | ❌ | **Build (P2)** |
-| Save/reuse "form profiles" per document type | ❌ | **Build (P2)** |
+| **True AcroForm** read/fill (native PDF fields) | ✅ `/forms/acroform/read+fill` | ✅ Done |
+| Semantic field understanding beyond keywords | ✅ `/forms/understand-form` | ✅ Done |
+| Field validation (email/IBAN/date/phone) with inline errors | ✅ `field_validator.py` | ✅ Done |
+| Cross‑field logic (e.g. total = sum, date ranges) | ✅ `cross_field_logic_service.dart` | ✅ Done |
+| Save/reuse "form profiles" per document type | ✅ `form_profile_service.dart` | ✅ Done |
 
 ### Deep design
 1. **AcroForm engine (P1).** Backend `pypdf`/`PyMuPDF` can enumerate real form
@@ -205,28 +205,47 @@ cloud‑upload assistants — a real, marketable difference.
 
 ---
 
-## Consolidated roadmap (PR‑sized, sequenced)
+## Consolidated roadmap — implementation status
 
-**P0 — foundation (must, low‑risk)**
-1. Wire Command‑pattern undo/redo into the editor screen.
-2. Annotation serialization + autosave/crash‑recovery.
-3. `PageCoordinateTransform` (unblocks inline editing).
+**P0 — foundation ✅ Done**
+1. ✅ Wire Command‑pattern undo/redo into the editor screen (`domain/history/`).
+2. ✅ Annotation serialization + autosave/crash‑recovery (`annotation_persistence_service.dart`).
+3. ✅ `PageCoordinateTransform` (unblocks inline editing).
 
-**P1 — competitive parity + our AI edge**
-4. `/document-ai/analyze` structured insights (**this branch**).
-5. Inline text editor overlay (caret/selection).
-6. RTL render + font embedding (Arabic/Kurdish/Persian searchable export).
-7. AcroForm read/fill engine + `understand-form` semantic fallback.
-8. Image/Stamp/Form‑field objects; background page pre‑render.
-9. Export golden tests (lock fidelity).
+**P1 — competitive parity + our AI edge ✅ Done**
+4. ✅ `/document-ai/analyze` structured insights.
+5. ✅ Inline text editor overlay with caret/selection (`inline_text_editor.dart`).
+6. ✅ RTL render + font embedding (`rtl_text_renderer.dart`, `pdf_unicode_fonts.dart`).
+7. ✅ AcroForm read/fill engine (`/forms/acroform/read+fill`) + `understand-form` semantic fallback.
+8. ✅ Image/Stamp/FormField objects (`image_annotation.dart`, `stamp_annotation.dart`);
+   background page pre-render (`background_page_renderer.dart`).
+9. ✅ Export fidelity checker (`export_fidelity_checker.dart`).
 
-**P2 — differentiation**
-10. Multi‑document RAG + compare; mind‑map/outline; map‑reduce summaries.
-11. Tile‑based zoom (`pdfrx`) + PDF text layer.
-12. Form validation + cross‑field logic + reusable form profiles.
+**P2 — differentiation ✅ Done**
+10. ✅ Multi-document RAG + compare (`multi_doc_chat.py`, `document_compare.py`);
+    document outline (`document_outline.py`); map-reduce summaries (`map_reduce_summarizer.py`).
+11. ✅ Tile-based zoom service (`tile_zoom_service.dart`) + PDF text layer
+    (`text_layer_extraction_service.dart`, `text_layer.py`).
+12. ✅ Form validation (`field_validation_service.dart`) + cross-field logic
+    (`cross_field_logic_service.dart`) + reusable form profiles (`form_profile_service.dart`).
 
-**P3 — future**
-13. On‑device embeddings; local revision history; privacy‑preserving sync.
+**P3 — advanced ✅ Done**
+13. ✅ Local revision history (`revision_history_service.dart`).
+14. ✅ AI signature detection (`services/ai/signature_detector.py`).
+15. ✅ Developer platform (API keys, webhooks, chat history, health dashboard).
+16. ✅ Enterprise (teams, shared templates, audit export, admin usage dashboard).
+17. ✅ Tiered quota metering on ALL AI endpoints (free/basic/pro) — consistent
+    across `document_ai.py`, `extract_dates.py`, `extract_actions.py`,
+    `suggest_questions.py`, `suggest_edits.py`, `multi_doc_chat.py`,
+    `document_compare.py`, `document_outline.py`, `forms.py`.
+
+**Future / Proposed**
+- On-device semantic embeddings (beyond BM25).
+- SSO + per-team AI quotas.
+- On-prem managed-AI proxy.
+- Third-party/remote plugin registry.
+- Cloud document sync (opt-in, encrypted).
+- Flutter golden tests for export fidelity.
 
 ---
 

@@ -25,10 +25,10 @@ from app.models.user import User
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import (
     UNLIMITED,
-    check_and_increment,
+    check_and_increment_tiered,
     identity_for,
-    is_pro,
 )
+from app.services.billing.quota_tiers import get_quota
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +75,15 @@ async def suggest_edits(
         raise HTTPException(status_code=503, detail="AI service not configured. Set AI_API_KEY.")
 
     # Meter before spending an AI request (Pro bypasses the cap).
-    pro = await is_pro(db, request.headers.get("X-Entitlement-Token"))
+    token = request.headers.get("X-Entitlement-Token")
+    _tier, limit = await get_quota(db, token)
     remaining = UNLIMITED
-    if not pro:
+    if limit is not None:
         identity = identity_for(user, request)
-        allowed, count = check_and_increment(identity)
+        allowed, count = check_and_increment_tiered(identity, limit)
         if not allowed:
             raise HTTPException(status_code=429, detail="Daily free AI limit reached.")
-        remaining = max(0, settings.AI_FREE_DAILY_LIMIT - count)
+        remaining = max(0, limit - count)
 
     focus = req.focus.strip().lower()
     focus_hint = (

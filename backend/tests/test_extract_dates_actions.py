@@ -1,6 +1,7 @@
 """Integration tests for the extract-dates and extract-actions endpoints."""
 
 from app.core.config import settings
+from app.models.entitlement import Entitlement
 
 EXTRACT_DATES = "/api/v1/document-ai/extract-dates"
 EXTRACT_ACTIONS = "/api/v1/document-ai/extract-actions"
@@ -44,6 +45,37 @@ async def test_extract_dates_validates_empty_text(client, mock_ai):
     assert resp.status_code == 200
 
 
+async def test_extract_dates_basic_tier_uses_higher_limit(client, session_maker, mock_ai, monkeypatch):
+    """A basic-tier token should use AI_BASIC_DAILY_LIMIT, not the free limit."""
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    monkeypatch.setattr(settings, "AI_BASIC_DAILY_LIMIT", 5)
+    async with session_maker() as s:
+        s.add(Entitlement(purchase_token="basic-token", product_id="basic", tier="basic", valid=True))
+        await s.commit()
+
+    headers = {"X-Entitlement-Token": "basic-token"}
+    # With free limit=1, a free user would be blocked on 2nd call; basic should not be.
+    first = await client.post(EXTRACT_DATES, json={"document_text": "Due Jan 1"}, headers=headers)
+    second = await client.post(EXTRACT_DATES, json={"document_text": "Due Feb 1"}, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["remaining"] == 4  # 5 - 1
+
+
+async def test_extract_dates_pro_is_unlimited(client, session_maker, mock_ai, monkeypatch):
+    """Pro (lifetime) token must bypass the daily cap entirely."""
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    async with session_maker() as s:
+        s.add(Entitlement(purchase_token="pro-dates", product_id="pro_lifetime", tier="lifetime", valid=True))
+        await s.commit()
+
+    headers = {"X-Entitlement-Token": "pro-dates"}
+    for _ in range(3):
+        resp = await client.post(EXTRACT_DATES, json={"document_text": "a"}, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["remaining"] == -1
+
+
 # ── Extract Actions ──────────────────────────────────────────────────────────
 
 
@@ -78,3 +110,18 @@ async def test_extract_actions_validates_max_length(client, mock_ai):
     long_text = "x" * 30001
     resp = await client.post(EXTRACT_ACTIONS, json={"document_text": long_text})
     assert resp.status_code == 422  # Validation error
+
+
+async def test_extract_actions_pro_is_unlimited(client, session_maker, mock_ai, monkeypatch):
+    """Pro token must bypass the daily cap for extract-actions too."""
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    async with session_maker() as s:
+        s.add(Entitlement(purchase_token="pro-actions", product_id="pro_lifetime", tier="lifetime", valid=True))
+        await s.commit()
+
+    headers = {"X-Entitlement-Token": "pro-actions"}
+    first = await client.post(EXTRACT_ACTIONS, json={"document_text": "a"}, headers=headers)
+    second = await client.post(EXTRACT_ACTIONS, json={"document_text": "b"}, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["remaining"] == -1
