@@ -1,21 +1,35 @@
-"""PDF form (AcroForm) endpoints: read native fields + fill them.
+"""PDF form (AcroForm) endpoints: read native fields + fill them + AI understanding.
 
 These enable the client to work with REAL interactive PDF form widgets (not just
 OCR-detected overlays) — the capability Adobe/Foxit/UPDF have. Pure PyMuPDF
-parsing + filling, no AI, so they are NOT metered.
+parsing + filling for AcroForms (not metered). An AI-powered ``understand-form``
+endpoint handles semantic fallback for flat/scanned PDFs where heuristics are unsure.
 
 The heavy import (`fitz`/PyMuPDF) is lazy so the app still boots if the
 dependency is missing (endpoint returns a clean 503).
 """
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
+from app.api.deps.auth import get_optional_user
+from app.core.config import settings
+from app.db.database import get_db
+from app.models.user import User
 from app.services.ai.batch_processor import batch_processor
+from app.services.ai.provider import ai_provider
+from app.services.ai.usage_limiter import (
+    UNLIMITED,
+    check_and_increment_tiered,
+    identity_for,
+)
+from app.services.billing.quota_tiers import get_quota
 
 logger = logging.getLogger(__name__)
 
@@ -267,3 +281,167 @@ async def batch_fill_forms(request: BatchFillRequest):
         total_forms=len(results),
         total_filled=sum(r.fields_filled for r in results),
     )
+
+
+# ---------------------------------------------------------------------------
+# AI semantic form understanding (Pillar 3 — hybrid detection fallback)
+# ---------------------------------------------------------------------------
+
+class UnderstandFormFieldInput(BaseModel):
+    """A single field label/text as detected by OCR heuristics."""
+    label: str = Field(..., max_length=500, description="OCR-detected field label text")
+    type_hint: str = Field("unknown", description="Heuristic type guess: text|checkbox|date|signature|unknown")
+    confidence: float = Field(0.0, ge=0.0, le=1.0, description="Heuristic confidence score (0–1)")
+
+
+class UnderstandFormRequest(BaseModel):
+    """Batch of uncertain form fields sent to AI for semantic classification.
+
+    The client sends ONLY fields whose heuristic confidence is below a threshold
+    (e.g. < 0.6), keeping the payload small. The AI returns a best-guess semantic
+    type and the most likely user-profile key for each.
+    """
+    fields: list[UnderstandFormFieldInput] = Field(..., min_length=1, max_length=50)
+    document_context: str = Field(
+        "",
+        max_length=2000,
+        description="A short description or title of the document for context",
+    )
+    language: str = Field("auto", description="Document language hint, or 'auto'")
+
+
+class UnderstandFormFieldResult(BaseModel):
+    label: str
+    semantic_type: str = Field(
+        ...,
+        description=(
+            "Canonical field type: name|first_name|last_name|email|phone|address|"
+            "city|country|postal_code|date_of_birth|date|signature|checkbox|"
+            "id_number|organization|job_title|iban|amount|other"
+        ),
+    )
+    profile_key: str = Field(
+        "",
+        description="Recommended user-profile key to map this field to (e.g. 'full_name', 'email')",
+    )
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
+    reason: str = Field("", description="Short explanation of the classification")
+
+
+class UnderstandFormResponse(BaseModel):
+    fields: list[UnderstandFormFieldResult]
+    remaining: int = -1
+
+
+@router.post("/understand-form", response_model=UnderstandFormResponse)
+async def understand_form(
+    req: UnderstandFormRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI semantic fallback for ambiguous form-field classification.
+
+    When on-device heuristics are unsure about a field's type or the right
+    profile mapping (confidence < threshold), the client sends those fields here
+    for AI-powered semantic understanding. Only the labels (not the document) are
+    sent, preserving the privacy-first design.
+
+    The AI returns a canonical ``semantic_type``, a recommended ``profile_key``,
+    a confidence score, and a short reason for each field.
+
+    Metered via the tiered quota system (free / basic / Pro).
+    """
+    if not settings.AI_API_KEY:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    # Tiered metering — Pro is unlimited.
+    token = request.headers.get("X-Entitlement-Token")
+    _tier, limit = await get_quota(db, token)
+    remaining = UNLIMITED
+    if limit is not None:
+        identity = identity_for(user, request)
+        allowed, count = check_and_increment_tiered(identity, limit)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Daily limit reached")
+        remaining = max(0, limit - count)
+
+    lang_hint = f" The document language is {req.language}." if req.language != "auto" else ""
+    ctx_hint = f" Document context: {req.document_context}." if req.document_context else ""
+
+    fields_payload = [
+        {"label": f.label, "type_hint": f.type_hint, "confidence": f.confidence}
+        for f in req.fields
+    ]
+
+    import json
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a form-field semantic classifier. Given a list of form field "
+                "labels (from OCR), classify each one with:\n"
+                "- semantic_type: one of name|first_name|last_name|email|phone|address|"
+                "city|country|postal_code|date_of_birth|date|signature|checkbox|"
+                "id_number|organization|job_title|iban|amount|other\n"
+                "- profile_key: the most likely user-profile key (e.g. full_name, email, "
+                "phone, address, city, country, postal_code, date_of_birth, id_number, "
+                "organization, job_title, iban) or empty string if none applies\n"
+                "- confidence: 0.0–1.0 how sure you are\n"
+                "- reason: 1-sentence explanation\n\n"
+                f"Respond ONLY with valid JSON: "
+                '{"fields": [{"label": "...", "semantic_type": "...", "profile_key": "...", '
+                '"confidence": 0.9, "reason": "..."}]}'
+                f"{lang_hint}{ctx_hint}"
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Fields to classify:\n{json.dumps(fields_payload, ensure_ascii=False)}",
+        },
+    ]
+
+    result = await ai_provider.chat_completion_json(
+        messages=messages, use_advanced=False, max_tokens=2048
+    )
+
+    raw_fields = result.get("fields", []) if isinstance(result, dict) else []
+    # Validate and sanitise each result; drop malformed entries.
+    output: list[UnderstandFormFieldResult] = []
+    label_set = {f.label for f in req.fields}
+    for item in raw_fields:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", ""))
+        if label not in label_set:
+            continue  # model hallucinated a label — drop it
+        try:
+            conf = float(item.get("confidence", 0.0))
+            conf = max(0.0, min(1.0, conf))
+        except (TypeError, ValueError):
+            conf = 0.0
+        output.append(
+            UnderstandFormFieldResult(
+                label=label,
+                semantic_type=str(item.get("semantic_type", "other")) or "other",
+                profile_key=str(item.get("profile_key", "")),
+                confidence=conf,
+                reason=str(item.get("reason", "")),
+            )
+        )
+
+    # For any requested field the model didn't return, add a low-confidence "other".
+    returned_labels = {r.label for r in output}
+    for f in req.fields:
+        if f.label not in returned_labels:
+            output.append(
+                UnderstandFormFieldResult(
+                    label=f.label,
+                    semantic_type="other",
+                    profile_key="",
+                    confidence=0.0,
+                    reason="Model did not return a classification for this field.",
+                )
+            )
+
+    return UnderstandFormResponse(fields=output, remaining=remaining)

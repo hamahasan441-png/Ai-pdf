@@ -1,11 +1,14 @@
-"""Tests for the AcroForm read + fill endpoints."""
+"""Tests for the AcroForm read + fill endpoints + understand-form AI endpoint."""
 
 import json
 
 import pytest
+from app.core.config import settings
+from app.models.entitlement import Entitlement
 
 READ = "/api/v1/forms/acroform/read"
 FILL = "/api/v1/forms/acroform/fill"
+UNDERSTAND = "/api/v1/forms/understand-form"
 
 
 def _blank_pdf() -> bytes:
@@ -177,3 +180,148 @@ async def test_batch_validation_errors_returned(client):
     result = resp.json()["results"][0]
     assert result["validation_errors"] != []
 
+
+# ---------------------------------------------------------------------------
+# understand-form endpoint tests
+# ---------------------------------------------------------------------------
+
+
+async def test_understand_form_503_when_not_configured(client, monkeypatch):
+    monkeypatch.setattr(settings, "AI_API_KEY", "")
+    payload = {"fields": [{"label": "Email", "type_hint": "text", "confidence": 0.3}]}
+    resp = await client.post(UNDERSTAND, json=payload)
+    assert resp.status_code == 503
+
+
+async def test_understand_form_success(client, mock_ai, monkeypatch):
+    """AI returns field classifications; mock returns {"mock": True, "field": "value"}.
+
+    Because the mock JSON doesn't contain a "fields" key, the endpoint returns an
+    empty list from the model result and falls back to returning low-confidence
+    "other" entries for every requested label — verifying the fallback path.
+    """
+    payload = {
+        "fields": [
+            {"label": "Email-Adresse", "type_hint": "text", "confidence": 0.3},
+            {"label": "Geburtsdatum", "type_hint": "date", "confidence": 0.4},
+        ],
+        "document_context": "German government form",
+        "language": "de",
+    }
+    resp = await client.post(UNDERSTAND, json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "fields" in body
+    assert len(body["fields"]) == 2  # fallback fills in for both
+    labels = {f["label"] for f in body["fields"]}
+    assert "Email-Adresse" in labels
+    assert "Geburtsdatum" in labels
+    # Fallback: confidence=0.0 and semantic_type="other"
+    for f in body["fields"]:
+        assert f["semantic_type"] == "other"
+        assert f["confidence"] == 0.0
+
+
+async def test_understand_form_with_valid_ai_response(client, monkeypatch, mock_ai):
+    """Simulate a realistic AI JSON response and verify parsing."""
+    from app.services.ai import provider as provider_mod
+
+    async def fake_json(*args, **kwargs):
+        return {
+            "fields": [
+                {
+                    "label": "Email",
+                    "semantic_type": "email",
+                    "profile_key": "email",
+                    "confidence": 0.95,
+                    "reason": "Standard email field",
+                },
+                {
+                    "label": "Name",
+                    "semantic_type": "full_name",
+                    "profile_key": "full_name",
+                    "confidence": 0.9,
+                    "reason": "Full name field",
+                },
+            ]
+        }
+
+    monkeypatch.setattr(provider_mod.ai_provider, "chat_completion_json", fake_json)
+    monkeypatch.setattr(settings, "AI_API_KEY", "test-key")
+
+    payload = {
+        "fields": [
+            {"label": "Email", "type_hint": "text", "confidence": 0.3},
+            {"label": "Name", "type_hint": "text", "confidence": 0.4},
+        ]
+    }
+    resp = await client.post(UNDERSTAND, json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    result_map = {f["label"]: f for f in body["fields"]}
+    assert result_map["Email"]["semantic_type"] == "email"
+    assert result_map["Email"]["profile_key"] == "email"
+    assert result_map["Email"]["confidence"] == 0.95
+    assert result_map["Name"]["semantic_type"] == "full_name"
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
+
+
+async def test_understand_form_429_when_limit_exceeded(client, mock_ai, monkeypatch):
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    payload = {"fields": [{"label": "Telefon", "type_hint": "text", "confidence": 0.2}]}
+    first = await client.post(UNDERSTAND, json=payload)
+    assert first.status_code == 200
+    second = await client.post(UNDERSTAND, json=payload)
+    assert second.status_code == 429
+
+
+async def test_understand_form_pro_is_unlimited(client, session_maker, mock_ai, monkeypatch):
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    async with session_maker() as s:
+        s.add(Entitlement(purchase_token="pro-understand", product_id="pro_lifetime", tier="lifetime", valid=True))
+        await s.commit()
+
+    headers = {"X-Entitlement-Token": "pro-understand"}
+    payload = {"fields": [{"label": "City", "type_hint": "text", "confidence": 0.3}]}
+    for _ in range(3):
+        resp = await client.post(UNDERSTAND, json=payload, headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["remaining"] == -1
+
+
+async def test_understand_form_rejects_empty_fields(client, mock_ai):
+    """Empty fields list should be rejected by pydantic (min_length=1)."""
+    resp = await client.post(UNDERSTAND, json={"fields": []})
+    assert resp.status_code == 422
+
+
+async def test_understand_form_rejects_oversized_fields(client, mock_ai):
+    """More than 50 fields should be rejected by pydantic (max_length=50)."""
+    payload = {
+        "fields": [{"label": f"field{i}", "type_hint": "text", "confidence": 0.1} for i in range(51)]
+    }
+    resp = await client.post(UNDERSTAND, json=payload)
+    assert resp.status_code == 422
+
+
+async def test_understand_form_drops_hallucinated_labels(client, monkeypatch, mock_ai):
+    """Labels returned by the model that were NOT in the request are dropped."""
+    from app.services.ai import provider as provider_mod
+
+    async def fake_json(*args, **kwargs):
+        return {
+            "fields": [
+                {"label": "RealField", "semantic_type": "email", "profile_key": "email", "confidence": 0.9, "reason": "ok"},
+                {"label": "HALLUCINATED", "semantic_type": "phone", "profile_key": "phone", "confidence": 0.8, "reason": "bad"},
+            ]
+        }
+
+    monkeypatch.setattr(provider_mod.ai_provider, "chat_completion_json", fake_json)
+    monkeypatch.setattr(settings, "AI_API_KEY", "test-key")
+
+    payload = {"fields": [{"label": "RealField", "type_hint": "text", "confidence": 0.3}]}
+    resp = await client.post(UNDERSTAND, json=payload)
+    assert resp.status_code == 200
+    labels = [f["label"] for f in resp.json()["fields"]]
+    assert "HALLUCINATED" not in labels
+    assert "RealField" in labels
