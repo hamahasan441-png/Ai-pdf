@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
+from app.services.ai.batch_processor import batch_processor
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/forms", tags=["Forms"])
@@ -177,8 +179,6 @@ async def fill_acroform(
 # ---------------------------------------------------------------------------
 # Batch endpoint
 # ---------------------------------------------------------------------------
-
-from app.services.ai.batch_processor import batch_processor  # noqa: E402
 
 
 class BatchFieldInput(BaseModel):

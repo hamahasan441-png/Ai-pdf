@@ -160,7 +160,10 @@ async def test_basic_entitlement_uses_higher_limit(client, session_maker, mock_a
         s.add(
             Entitlement(
                 purchase_token="basic-token-abc",
-                product_id="pro_monthly",  # product_id doesn't control tier; tier field does
+                product_id="pro_monthly",
+                # tier is the quota-tier key; product_id is the Play Store SKU.
+                # Using an existing valid SKU to satisfy the Entitlement schema;
+                # it is the tier field that drives quota resolution.
                 tier="basic",
                 valid=True,
             )
