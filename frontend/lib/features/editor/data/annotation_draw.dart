@@ -14,6 +14,29 @@ import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 class AnnotationDraw {
   static const double _refHeight = 1000.0;
 
+  /// First-strong-character RTL detection (avoids importing RtlDetectionService
+  /// to keep AnnotationDraw zero-dependency on other services).
+  static bool _isRtlText(String text) {
+    for (final cp in text.runes) {
+      // Arabic family (incl. Kurdish/Persian)
+      if ((cp >= 0x0600 && cp <= 0x06FF) ||
+          (cp >= 0x0750 && cp <= 0x077F) ||
+          (cp >= 0x08A0 && cp <= 0x08FF) ||
+          (cp >= 0xFB50 && cp <= 0xFDFF) ||
+          (cp >= 0xFE70 && cp <= 0xFEFF)) return true;
+      // Hebrew
+      if ((cp >= 0x0590 && cp <= 0x05FF) ||
+          (cp >= 0xFB1D && cp <= 0xFB4F)) return true;
+      // Strong LTR (Latin/Greek/Cyrillic)
+      if ((cp >= 0x0041 && cp <= 0x005A) ||
+          (cp >= 0x0061 && cp <= 0x007A) ||
+          (cp >= 0x00C0 && cp <= 0x024F) ||
+          (cp >= 0x0370 && cp <= 0x03FF) ||
+          (cp >= 0x0400 && cp <= 0x04FF)) return false;
+    }
+    return false;
+  }
+
   static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
     if (pts.length < 2) return;
     final k = size.height / _refHeight;
@@ -114,7 +137,9 @@ class AnnotationDraw {
     );
     final tp = TextPainter(
       text: buildAnnotationTextSpan(t, base),
-      textDirection: t.textDirection ?? TextDirection.ltr,
+      // Auto-detect text direction from content when no explicit override.
+      textDirection: t.textDirection ??
+          (_isRtlText(t.text) ? TextDirection.rtl : TextDirection.ltr),
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
 
     final px = t.pos.dx * size.width;
