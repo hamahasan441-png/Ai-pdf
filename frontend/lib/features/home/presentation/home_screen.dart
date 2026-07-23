@@ -140,6 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(children: [
               _QuickAction(icon: Icons.grid_view_rounded, label: l10n.tools, color: AppColors.primary, onTap: () => context.push('/tools')),
               const SizedBox(width: 12),
+              _QuickAction(icon: Icons.folder_special, label: 'Library', color: const Color(0xFF5C6BC0), onTap: () => context.push('/library')),
+              const SizedBox(width: 12),
               _QuickAction(icon: Icons.document_scanner, label: 'Scan', color: const Color(0xFF2E9E7B), onTap: () => context.push('/tools/scan')),
               const SizedBox(width: 12),
               _QuickAction(icon: Icons.psychology, label: l10n.askAi, color: const Color(0xFF7E7BD4), onTap: () => context.push('/ai')),
