@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Shared, resolution-independent drawing used by BOTH the on-screen painter
 /// and the off-screen export compositor, so the exported PDF looks exactly
@@ -14,28 +15,9 @@ import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 class AnnotationDraw {
   static const double _refHeight = 1000.0;
 
-  /// First-strong-character RTL detection (avoids importing RtlDetectionService
-  /// to keep AnnotationDraw zero-dependency on other services).
-  static bool _isRtlText(String text) {
-    for (final cp in text.runes) {
-      // Arabic family (incl. Kurdish/Persian)
-      if ((cp >= 0x0600 && cp <= 0x06FF) ||
-          (cp >= 0x0750 && cp <= 0x077F) ||
-          (cp >= 0x08A0 && cp <= 0x08FF) ||
-          (cp >= 0xFB50 && cp <= 0xFDFF) ||
-          (cp >= 0xFE70 && cp <= 0xFEFF)) return true;
-      // Hebrew
-      if ((cp >= 0x0590 && cp <= 0x05FF) ||
-          (cp >= 0xFB1D && cp <= 0xFB4F)) return true;
-      // Strong LTR (Latin/Greek/Cyrillic)
-      if ((cp >= 0x0041 && cp <= 0x005A) ||
-          (cp >= 0x0061 && cp <= 0x007A) ||
-          (cp >= 0x00C0 && cp <= 0x024F) ||
-          (cp >= 0x0370 && cp <= 0x03FF) ||
-          (cp >= 0x0400 && cp <= 0x04FF)) return false;
-    }
-    return false;
-  }
+  /// Detects base text direction from content for text annotations that have
+  /// no explicit [TextAnnotation.textDirection] override.
+  static const RtlDetectionService _rtlDetect = RtlDetectionService();
 
   static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
     if (pts.length < 2) return;
@@ -137,9 +119,13 @@ class AnnotationDraw {
     );
     final tp = TextPainter(
       text: buildAnnotationTextSpan(t, base),
-      // Auto-detect text direction from content when no explicit override.
+      // When the annotation has no explicit direction (the common case), infer
+      // the base direction from the text itself (first-strong rule) so that
+      // Arabic/Kurdish/Persian/Hebrew lines lay out and align right-to-left
+      // instead of being forced LTR. Mirrors the vector-export path
+      // (editor_export_service / rtl_text_renderer), which already does this.
       textDirection: t.textDirection ??
-          (_isRtlText(t.text) ? TextDirection.rtl : TextDirection.ltr),
+          (_rtlDetect.isRtl(t.text) ? TextDirection.rtl : TextDirection.ltr),
     )..layout(maxWidth: size.width * (1 - t.pos.dx));
 
     final px = t.pos.dx * size.width;
