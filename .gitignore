@@ -14,3 +14,7 @@ frontend/.dart_tool/
 frontend/android/key.properties
 **/*.jks
 **/*.keystore
+
+
+# Unicode font files (large binaries, downloaded via download_fonts.sh)
+frontend/assets/fonts/*.ttf

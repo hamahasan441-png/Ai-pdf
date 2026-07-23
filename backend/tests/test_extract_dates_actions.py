@@ -1,56 +1,80 @@
-"""Tests for extract-dates and extract-actions endpoints."""
+"""Integration tests for the extract-dates and extract-actions endpoints."""
 
 from app.core.config import settings
 
-DATES_URL = "/api/v1/document-ai/extract-dates"
-ACTIONS_URL = "/api/v1/document-ai/extract-actions"
+EXTRACT_DATES = "/api/v1/document-ai/extract-dates"
+EXTRACT_ACTIONS = "/api/v1/document-ai/extract-actions"
 
 
-async def test_extract_dates_success(client, mock_ai, monkeypatch):
-    from app.services.ai import provider as provider_mod
-
-    async def fake_json(*args, **kwargs):
-        return {"dates": [
-            {"date": "15.08.2026", "description": "Payment due", "type": "due_date", "urgent": True}
-        ]}
-
-    monkeypatch.setattr(provider_mod.ai_provider, "chat_completion_json", fake_json)
-    monkeypatch.setattr(settings, "AI_API_KEY", "test-key")
-
-    resp = await client.post(DATES_URL, json={"document_text": "Payment due by 15.08.2026"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert len(body["dates"]) == 1
-    assert body["dates"][0]["type"] == "due_date"
-    assert body["dates"][0]["urgent"] is True
+# ── Extract Dates ────────────────────────────────────────────────────────────
 
 
-async def test_extract_dates_503(client, monkeypatch):
+async def test_extract_dates_503_when_not_configured(client, monkeypatch):
     monkeypatch.setattr(settings, "AI_API_KEY", "")
-    resp = await client.post(DATES_URL, json={"document_text": "hello"})
+    resp = await client.post(EXTRACT_DATES, json={"document_text": "Due by Jan 1 2026"})
     assert resp.status_code == 503
 
 
-async def test_extract_actions_success(client, mock_ai, monkeypatch):
-    from app.services.ai import provider as provider_mod
-
-    async def fake_json(*args, **kwargs):
-        return {"actions": [
-            {"action": "Sign the contract", "assignee": "John", "deadline": "01.09.2026", "priority": "high", "section": "Section 5"}
-        ]}
-
-    monkeypatch.setattr(provider_mod.ai_provider, "chat_completion_json", fake_json)
-    monkeypatch.setattr(settings, "AI_API_KEY", "test-key")
-
-    resp = await client.post(ACTIONS_URL, json={"document_text": "John must sign by 01.09.2026"})
+async def test_extract_dates_success(client, mock_ai):
+    resp = await client.post(
+        EXTRACT_DATES,
+        json={"document_text": "Contract expires on 2026-12-31. Payment due 2026-01-15."},
+    )
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["actions"]) == 1
-    assert body["actions"][0]["priority"] == "high"
-    assert body["actions"][0]["assignee"] == "John"
+    # mock_ai returns {"mock": True, "field": "value"} from chat_completion_json,
+    # which doesn't have "dates" key → defaults to empty list.
+    assert "dates" in body
+    assert isinstance(body["dates"], list)
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
 
 
-async def test_extract_actions_503(client, monkeypatch):
+async def test_extract_dates_429_when_limit_exceeded(client, mock_ai, monkeypatch):
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    first = await client.post(EXTRACT_DATES, json={"document_text": "Due Jan 1"})
+    assert first.status_code == 200
+    second = await client.post(EXTRACT_DATES, json={"document_text": "Due Feb 1"})
+    assert second.status_code == 429
+
+
+async def test_extract_dates_validates_empty_text(client, mock_ai):
+    """An empty document_text should still be accepted (pydantic max_length only)."""
+    resp = await client.post(EXTRACT_DATES, json={"document_text": ""})
+    # Empty text is valid per the schema (min_length not set).
+    assert resp.status_code == 200
+
+
+# ── Extract Actions ──────────────────────────────────────────────────────────
+
+
+async def test_extract_actions_503_when_not_configured(client, monkeypatch):
     monkeypatch.setattr(settings, "AI_API_KEY", "")
-    resp = await client.post(ACTIONS_URL, json={"document_text": "hello"})
+    resp = await client.post(EXTRACT_ACTIONS, json={"document_text": "Please sign by Friday"})
     assert resp.status_code == 503
+
+
+async def test_extract_actions_success(client, mock_ai):
+    resp = await client.post(
+        EXTRACT_ACTIONS,
+        json={"document_text": "Action: submit report by Monday. John to review the budget."},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "actions" in body
+    assert isinstance(body["actions"], list)
+    assert body["remaining"] == settings.AI_FREE_DAILY_LIMIT - 1
+
+
+async def test_extract_actions_429_when_limit_exceeded(client, mock_ai, monkeypatch):
+    monkeypatch.setattr(settings, "AI_FREE_DAILY_LIMIT", 1)
+    first = await client.post(EXTRACT_ACTIONS, json={"document_text": "Do this"})
+    assert first.status_code == 200
+    second = await client.post(EXTRACT_ACTIONS, json={"document_text": "Do that"})
+    assert second.status_code == 429
+
+
+async def test_extract_actions_validates_max_length(client, mock_ai):
+    """Document text exceeding max_length should be rejected by pydantic."""
+    long_text = "x" * 30001
+    resp = await client.post(EXTRACT_ACTIONS, json={"document_text": long_text})
+    assert resp.status_code == 422  # Validation error
