@@ -18,7 +18,6 @@ Conflict resolution: last-write-wins (updated_at), version increments. Client ke
 locally via revision_history_service.dart, so both versions preserved even if last-write-wins.
 """
 
-import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 

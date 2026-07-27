@@ -16,7 +16,6 @@ in production this would be a background task / Redis queue.
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
 

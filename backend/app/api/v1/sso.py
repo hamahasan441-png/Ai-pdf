@@ -25,12 +25,10 @@ This is additive and testable without network.
 """
 
 import secrets
-import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 import jwt as pyjwt  # PyJWT (not python-jose) already in deps
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -116,16 +116,10 @@ async def login(
     # E5.2 — Check if 2FA enabled
     if user.totp_enabled:
         # The simple /login endpoint does not accept TOTP; client should use
-        # /login/2fa or include codes via LoginRequest extension.
-        # For backward compat, if request has extra fields (via model_extra), check them.
-        totp_code = getattr(request, "totp_code", None) or getattr(request, "recovery_code", None)
-        # Pydantic v2 will drop unknown fields unless extra='allow', so we also check
-        # if the raw request was actually _Login2FARequest (handled separately).
-        # Here we just require 2FA if enabled and no code supplied via this path.
-        # Raise specific error so client knows to prompt.
-        # To support both paths, we try to read totp_code from request if present as dict (monkeypatch tests)
-        # Actually we will handle 2FA in a dedicated endpoint below to avoid breaking existing flow.
-        raise AuthenticationError("2FA required — provide totp_code or recovery_code via /auth/login/2fa")
+        # /login/2fa. Raise specific error so client knows to prompt for second factor.
+        raise AuthenticationError(
+            "2FA required — provide totp_code or recovery_code via /auth/login/2fa"
+        )
 
     return _issue_tokens(user)
 
