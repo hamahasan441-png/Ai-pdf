@@ -1,4 +1,4 @@
-"""Per-plan AI quota tiers (Part 8.1 — Production Hardening).
+"""Per-plan AI quota tiers (Part 8.1 — Production Hardening + E8.1 per-team quota).
 
 Instead of a single binary (free = 15/day, Pro = unlimited), this introduces a
 tiered quota system where each subscription plan gets its own daily AI limit:
@@ -8,6 +8,12 @@ tiered quota system where each subscription plan gets its own daily AI limit:
 - **monthly**  → unlimited
 - **yearly**   → unlimited
 - **lifetime** → unlimited
+
+E8.1 — Per-team quota: a team can define ``ai_daily_quota`` which is shared
+among its members when they act in team context (X-Team-Id header). The
+quota resolution order is:
+1. If team_id provided and team has ai_daily_quota -> that limit
+2. Else entitlement tier quota (free/basic/unlimited)
 
 The ``quota_for`` function resolves the entitlement tier to a concrete daily
 limit (or ``None`` for unlimited). The usage limiter can then pass this limit
@@ -20,6 +26,7 @@ control.
 
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 from sqlalchemy import select
@@ -66,6 +73,44 @@ async def get_quota(db: AsyncSession, token: Optional[str]) -> tuple[str, Option
         return "free", settings.AI_FREE_DAILY_LIMIT
     except Exception:  # noqa: BLE001 - DB issues must not break AI
         return "free", settings.AI_FREE_DAILY_LIMIT
+
+
+async def get_team_quota(db: AsyncSession, team_id: Optional[uuid.UUID]) -> Optional[int]:
+    """Resolve a team to its daily quota (E8.1).
+
+    Returns None if team has no quota configured (use user tier).
+    Returns int if team has ai_daily_quota set.
+    """
+    if not team_id:
+        return None
+    try:
+        from app.models.team import Team  # local import to avoid cycle
+
+        team = (await db.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
+        if team and team.ai_daily_quota is not None:
+            return team.ai_daily_quota
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def get_quota_with_team(
+    db: AsyncSession,
+    token: Optional[str],
+    team_id: Optional[uuid.UUID] = None,
+) -> tuple[str, Optional[int], str]:
+    """Combined quota resolution: team quota overrides user tier when present.
+
+    Returns (tier, limit, source) where source is "team", "entitlement", or "free".
+    """
+    if team_id:
+        team_limit = await get_team_quota(db, team_id)
+        if team_limit is not None:
+            return "team", team_limit, "team"
+
+    tier, limit = await get_quota(db, token)
+    source = "entitlement" if token else "free"
+    return tier, limit, source
 
 
 def validate_receipt_fields(product_id: str, purchase_token: str) -> list[str]:

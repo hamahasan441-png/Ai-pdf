@@ -13,8 +13,10 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -44,7 +46,11 @@ class TeamRole(str):
 
 
 class Team(Base):
-    """A group of users who share templates and (later) quotas/billing."""
+    """A group of users who share templates and (later) quotas/billing.
+
+    E8.1 — Per-team AI quota: optional daily limit that overrides the per-user
+    tier when acting in team context (X-Team-Id header). None = use user tier.
+    """
 
     __tablename__ = "teams"
 
@@ -55,6 +61,10 @@ class Team(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    # E8.1 — Daily AI quota for the whole team pool (None = unlimited or use user tier, depending on enforcement).
+    ai_daily_quota: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # E8.2 — Optional SSO requirement flag (enterprise)
+    sso_required: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

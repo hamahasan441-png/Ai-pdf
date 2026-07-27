@@ -1,6 +1,7 @@
-"""Pydantic schemas for team / enterprise endpoints (Part 5.8)."""
+"""Pydantic schemas for team / enterprise endpoints (Part 5.8 + E8.1 per-team quota + E8.2 SSO)."""
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -17,7 +18,20 @@ class TeamResponse(BaseModel):
     owner_id: str
     role: str  # the requesting user's role in this team
     member_count: int
+    ai_daily_quota: Optional[int] = None
+    sso_required: bool = False
     created_at: datetime
+
+
+class TeamQuotaUpdateRequest(BaseModel):
+    ai_daily_quota: Optional[int] = Field(
+        default=None, description="Daily AI quota for whole team (None = unlimited / use user tier). 0 is invalid, must be >=1."
+    )
+    sso_required: Optional[bool] = None
+
+    def validate_quota(self) -> None:
+        if self.ai_daily_quota is not None and self.ai_daily_quota < 1:
+            raise ValueError("ai_daily_quota must be >=1 or None")
 
 
 # --- Members -------------------------------------------------------------
@@ -41,6 +55,8 @@ class TeamDetailResponse(BaseModel):
     owner_id: str
     role: str
     members: list[MemberResponse]
+    ai_daily_quota: Optional[int] = None
+    sso_required: bool = False
     created_at: datetime
 
 
