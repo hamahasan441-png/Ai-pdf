@@ -221,6 +221,14 @@ async def add_member(
     if existing is not None:
         raise ValidationError("User is already a member of this team")
 
+    # E5.3 / E8.2 — SSO enforcement: if team requires SSO, target must be verified (SSO)
+    team_obj = await team_service.get_team(db, team_id)
+    if team_obj and team_obj.sso_required:
+        if not target.is_verified:
+            raise AuthorizationError(
+                "This team requires SSO — user must have logged in via Google/Apple/OIDC at least once (is_verified)"
+            )
+
     member = TeamMember(team_id=team_id, user_id=target.id, role=role)
     db.add(member)
     await db.flush()
