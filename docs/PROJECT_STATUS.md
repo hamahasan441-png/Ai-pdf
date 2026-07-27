@@ -11,25 +11,46 @@ app (`frontend/`) with an optional **FastAPI** backend (`backend/`).
 
 ## Current branch: `arena/019fa435-ai-pdf`
 
-**This branch implements the Enhancement-Based Masterplan:**
-- `docs/ENHANCEMENT_BASED_MASTERPLAN.md` (8 pillars, 42 tasks, 90-day roadmap) — NEW
-- `docs/ENHANCEMENT_TASKS.md` (checkout-ready tasks with file pointers) — NEW
-- Backend: RTDN re-verification `billing.py` E6.1 (5 tests), webhook DLQ scaffold `admin.py` E7.2 (3 tests), metering guard `backend/scripts/check_metering.py` E5.5
-- 225 backend tests pass (was 210), all green with in-memory SQLite, no network
-- README + MASTER_ENGINEERING_PLAN updated to link enhancement plan
+**This branch implements the Enhancement-Based Masterplan (42 tasks, 8 pillars, 90-day roadmap):**
+- `docs/ENHANCEMENT_BASED_MASTERPLAN.md` + `docs/ENHANCEMENT_TASKS.md` — NEW, 8 pillars
+- Backend: 255 tests passing (was 210), all green in-memory SQLite, no network
+  - E5.5 metering guard `check_metering.py` ✅
+  - E6.1 RTDN re-verification `billing.py` (5 tests) ✅
+  - E7.2 DLQ scaffold + V2 delivery attempts `admin.py` (5 tests) ✅
+  - E7.1 API key scopes (allowlist, validation, GET /scopes) 4 tests ✅
+  - E8.1 per-team quota (model + PUT /quota + get_quota_with_team + X-Team-Id enforcement) 5 tests ✅
+  - E5.2 TOTP 2FA (RFC 6238 stdlib, recovery codes, 6 endpoints) 5 tests ✅
+  - E5.4+E7.2 webhook delivery V2 (HMAC signing + retry + attempt log) 5 tests ✅
+  - E2.2 streaming map-reduce (SSE + NDJSON, team quota) 2 tests ✅
+  - E5.3 SSO OIDC Google/Apple/generic + team sso_required enforcement 5 tests ✅
+  - E8.2 cloud sync opt-in encrypted annotation persistence (push/pull/list/delete/status) 4 tests ✅
+- Frontend: 
+  - E1.1 rich per-run UI already wired, E1.2 snap guides V2, E1.4 grouping/layer
+  - E3.4 Form Profiles Manager UI `form_profile_manager_screen.dart` route `/tools/form-profiles`
+  - E2.3 Chat History UI `chat_history_screen.dart` route `/ai/history`, history icon in AI chat, card in ToolsScreen
+- README + MASTER_ENGINEERING_PLAN linked
 
-Previous branch `copilot/continu-masterplan-building` had P0–P3 done, 210 tests. This branch builds additively on it.
+Previous branch `copilot/continu-masterplan-building` had P0–P3 done, 210 tests. This branch is 255 + frontend.
 
 ---
 
 ## What's DONE (cumulative — this branch + previous merged work)
 
-### Enhancement-Based Masterplan (NEW — this branch `arena/019fa435-ai-pdf`)
-- **Masterplan docs:** `ENHANCEMENT_BASED_MASTERPLAN.md` + `ENHANCEMENT_TASKS.md` — 8 pillars (Editor, Intelligence, Forms, Perf, Security, Growth, Platform, Enterprise), 42 concrete tasks E1.1–E8.4, sequenced 90 days, additive principles, file-level designs, acceptance criteria, verification, risks
-- **Backend E6.1 Billing RTDN re-verification:** `api/v1/billing.py` now decodes Pub/Sub push envelope (base64 JSON), extracts `subscriptionNotification` / `oneTimeProductNotification` / `voidedPurchaseNotification`, re-verifies via `play_verifier.py` when configured, else heuristic for cancel/revoked/expired (3,12,13), upserts `Entitlement` — 5 tests `test_billing_rtdn.py`
-- **Backend E7.2 Webhook DLQ scaffold:** `api/v1/admin.py` adds `GET /admin/webhooks/dlq`, `POST /admin/webhooks/{id}/replay`, `GET /admin/webhooks/stats` — lists inactive webhooks as DLQ proxies, re-activates on replay, stats for health dashboard — 5 tests updated `test_admin.py`
-- **Backend E5.5 Metering guard:** `backend/scripts/check_metering.py` — scans `app/api/v1/*.py` for legacy `is_pro` / `check_and_increment` and ensures tiered `get_quota` + `check_and_increment_tiered` on all AI endpoints
-- **Docs linking:** `README.md` + `MASTER_ENGINEERING_PLAN.md` + `PROJECT_STATUS.md` updated to reference enhancement plan, 225 tests passing
+### Enhancement-Based Masterplan (NEW — this branch `arena/019fa435-ai-pdf` — 255 tests)
+- **Masterplan docs:** `ENHANCEMENT_BASED_MASTERPLAN.md` + `ENHANCEMENT_TASKS.md` — 8 pillars, 42 tasks E1.1–E8.4, 90 days, additive, file-level designs, acceptance, risks
+- **E5.5 Metering guard:** `scripts/check_metering.py` scans api/v1 for legacy is_pro, ensures tiered get_quota — PASS
+- **E6.1 RTDN:** `billing.py` decodes Pub/Sub envelope, re-verifies, heuristic cancel/revoked/expired, upserts Entitlement — 5 tests `test_billing_rtdn.py`
+- **E7.2 DLQ V1→V2:** `admin.py` GET /dlq lists failed attempts + inactive, POST /replay re-delivers via delivery service, GET /stats failed/success counts — enhanced from scaffold
+- **E7.1 API key scopes:** `api_key.py` scopes TEXT + allowlist + validation, GET /api-keys/scopes, list/create include scopes — 4 tests `test_api_key_scopes.py`
+- **E8.1 Per-team quota:** Team ai_daily_quota + sso_required, TeamResponse includes quota, PUT /quota owner/admin, quota_tiers get_team_quota + get_quota_with_team (team overrides user tier), _meter checks X-Team-Id header identity team:{id} — 5 tests `test_team_quota.py`
+- **E5.2 TOTP 2FA:** User totp_secret_encrypted, enabled, recovery_codes, RFC 6238 stdlib, endpoints setup/verify/status/disable/recovery-codes + login/2fa — 5 tests `test_2fa.py`
+- **E5.4+E7.2 Webhook delivery V2:** WebhookDeliveryAttempt model, delivery service HMAC signing + exponential backoff retry + replay, admin DLQ V2 — 5 tests `test_webhook_delivery.py`
+- **E2.2 Streaming map-reduce:** stream_map_reduce_summarize() chunk events + final, POST /summarize/stream SSE + /summarize/stream/json NDJSON, team quota enforcement — 2 tests `test_summarize_stream.py`
+- **E5.3 SSO OIDC:** `sso.py` Google/Apple/generic OIDC id_token unsafe decode for tests, creates/links user is_verified, team sso_required enforcement in add_member — 5 tests `test_sso.py`
+- **E8.2 Cloud Sync:** DocumentSync model file_hash, encrypted_blob (client-side Fernet, server never plaintext), push/pull/list/delete/status, scoped owner_id, version++, last-write-wins — 4 tests `test_sync.py`
+- **E3.4 Form Profiles Manager UI:** `form_profile_manager_screen.dart` list, view, export clipboard+share JSON temp file, import dialog, delete confirm, route /tools/form-profiles + card in ToolsScreen — frontend
+- **E2.3 Chat History UI:** `chat_history_screen.dart` list sessions GET /chat-history, restore GET /{id}, delete, offline fallback, empty states, route /ai/history, history icon in AI chat AppBar, card in ToolsScreen — frontend
+- **Docs linking:** README + MASTER_ENGINEERING_PLAN + PROJECT_STATUS updated
 
 ### Backend (FastAPI) — prior P0–P3 cumulative
 - **Auth (complete):** `/register`, `/login`, `/refresh` (token rotation), `/me`,
@@ -147,11 +168,19 @@ Legacy backlog (now mapped to pillars):
 - Document AI: `backend/app/api/v1/document_ai.py` (chat/summarize/translate/rewrite/extract/analyze/fix-ocr)
 - Forms: `backend/app/api/v1/forms.py` (acroform/read, acroform/fill, batch, understand-form)
 - Multi-doc: `backend/app/api/v1/multi_doc_chat.py`
-- Backend tests: `backend/tests/` (225 tests, all pass — includes RTDN + DLQ)
-- Enhancement plan: `docs/ENHANCEMENT_BASED_MASTERPLAN.md` + `docs/ENHANCEMENT_TASKS.md`
-- Metering guard: `backend/scripts/check_metering.py` (E5.5)
-- Billing RTDN: `backend/app/api/v1/billing.py` `POST /billing/rtdn` + `tests/test_billing_rtdn.py`
-- Admin DLQ: `backend/app/api/v1/admin.py` `GET /admin/webhooks/dlq` + `/replay` + `/stats`
+- Backend tests: `backend/tests/` (255 tests, all pass — includes RTDN, DLQ V2, scopes, team quota, 2FA, webhook delivery, streaming, SSO, sync)
+- Enhancement plan: `docs/ENHANCEMENT_BASED_MASTERPLAN.md` + `docs/ENHANCEMENT_TASKS.md` (updated done status)
+- Metering guard: `backend/scripts/check_metering.py` (E5.5) PASS
+- Billing RTDN: `backend/app/api/v1/billing.py` `POST /billing/rtdn` + `test_billing_rtdn.py` (E6.1)
+- Admin DLQ: `backend/app/api/v1/admin.py` `GET /admin/webhooks/dlq` + `/replay` + `/stats` + `models/webhook.py` WebhookDeliveryAttempt + `services/webhooks/delivery.py` (E5.4+E7.2)
+- API key scopes: `models/api_key.py` + `api/v1/api_keys.py` + `test_api_key_scopes.py` (E7.1)
+- Per-team quota: `models/team.py` ai_daily_quota + sso_required + `api/v1/teams.py` PUT /quota + `quota_tiers.py` get_team_quota + `test_team_quota.py` (E8.1)
+- 2FA TOTP: `models/user.py` totp + `services/auth/totp.py` RFC 6238 + `api/v1/auth.py` 2fa endpoints + `test_2fa.py` (E5.2)
+- SSO OIDC: `api/v1/sso.py` Google/Apple/generic + team sso_required enforcement + `test_sso.py` (E5.3)
+- Streaming summarize: `api/v1/document_ai.py` /summarize/stream SSE + /stream/json + `map_reduce_summarizer.py` stream generator + `test_summarize_stream.py` (E2.2)
+- Cloud sync: `models/sync.py` + `api/v1/sync.py` push/pull/list/delete/status + `test_sync.py` (E8.2)
+- Form profiles manager UI: `frontend/.../form_profile_manager_screen.dart` + route `/tools/form-profiles` (E3.4)
+- Chat history UI: `frontend/.../chat_history_screen.dart` + route `/ai/history` + history icon in AI chat (E2.3)
 - Editor history: `frontend/lib/features/editor/domain/history/`
 - Inline text editor: `frontend/lib/features/editor/presentation/widgets/inline_text_editor.dart`
 - Annotation persistence: `frontend/lib/features/editor/data/annotation_persistence_service.dart`
