@@ -166,12 +166,30 @@ Script checks:
 
 ---
 
-## Quick Wins for This Branch (No Flutter Toolchain)
+## Done — This Branch `arena/019fa435-ai-pdf` (246 tests passing)
 
-- [x] `docs/ENHANCEMENT_BASED_MASTERPLAN.md`
+### Backend — shipped and tested ✅
+- [x] `docs/ENHANCEMENT_BASED_MASTERPLAN.md` (8 pillars, 42 tasks, 90-day roadmap)
 - [x] `docs/ENHANCEMENT_TASKS.md` (this file)
-- [ ] `backend/scripts/check_metering.py` guard
-- [ ] `backend/app/api/v1/billing_rtdn.py` scaffold + router inclusion
-- [ ] `backend/tests/test_billing_rtdn.py` scaffold
-- [ ] `backend/app/api/v1/admin.py` extend DLQ placeholder
-- [ ] Link masterplan in `README.md` + `docs/MASTER_ENGINEERING_PLAN.md` Next section
+- [x] `backend/scripts/check_metering.py` guard E5.5 — scans api/v1 for legacy metering, PASS
+- [x] `backend/app/api/v1/billing.py` RTDN re-verification E6.1 — Pub/Sub envelope decode, re-verify via play_verifier, heuristic for cancel/revoked/expired, upserts Entitlement — 5 tests `test_billing_rtdn.py`
+- [x] `backend/app/api/v1/admin.py` DLQ scaffold V1 + V2 E7.2 — inactive + failed attempts, replay via delivery service, stats with failed/success counts
+- [x] Link masterplan in `README.md` + `docs/MASTER_ENGINEERING_PLAN.md` + `PROJECT_STATUS.md`
+- [x] `backend/app/models/api_key.py` + `api/v1/api_keys.py` scopes E7.1 — API_KEY_SCOPES allowlist, DEFAULT_SCOPES, validation, GET /api-keys/scopes, list/create include scopes — 4 tests `test_api_key_scopes.py`
+- [x] `backend/app/models/team.py` + `api/v1/teams.py` + `quota_tiers.py` per-team quota E8.1 — ai_daily_quota Integer nullable + sso_required bool, TeamResponse includes quota, PUT /teams/{id}/quota owner/admin only, get_team_quota + get_quota_with_team (team quota overrides user tier), _meter checks X-Team-Id header and uses team:{id} identity — 5 tests `test_team_quota.py`
+- [x] `backend/app/models/user.py` + `api/v1/auth.py` + `services/auth/totp.py` 2FA TOTP E5.2 — totp_secret_encrypted, enabled, recovery_codes, RFC 6238 stdlib (base32, HMAC-SHA1, ±1 window, recovery codes 8x 5-5), endpoints: setup (otpauth://), verify (enable + codes), status, disable, recovery-codes, login/2fa + login requires 2FA — 5 tests `test_2fa.py`
+- [x] `backend/app/models/webhook.py` + `services/webhooks/delivery.py` webhook delivery V2 E5.4+E7.2 — WebhookDeliveryAttempt model, deliver_event() HMAC signing X-AI-PDF-Signature + X-Webhook-Signature, exponential backoff 1s,2s,4s 3 retries, replay_failed(), admin DLQ V2 shows real failed attempts — 5 tests `test_webhook_delivery.py`
+- [x] `backend/app/api/v1/document_ai.py` + `services/ai/map_reduce_summarizer.py` streaming E2.2 — stream_map_reduce_summarize() generator yielding chunk {type,index,total,summary,page_citation} + final, POST /summarize/stream SSE and /summarize/stream/json NDJSON, team quota enforcement in _meter — 2 tests `test_summarize_stream.py`
+- **Tests:** 246 passing (was 210) — see `backend/tests/`; all in-memory SQLite, mocked AI, no network
+
+### Frontend — shipped (needs flutter analyze) ✅
+- [x] E1.1 Rich text per-run UI — already wired in `pick_edit_screen.dart` + `inline_text_editor.dart` + `editor_rich_text_toolbar.dart` + `editor_rich_text_service.dart` (toolbar toggleBold/Italic/Underline/Color)
+- [x] E1.2 Snap guides V2 — already in `selection_service.dart` snapSelected + _snapToObjects object-to-object priority + page guides
+- [x] E1.4 Grouping + layer reorder — `annotation_group_service.dart` + `annotation_serialization.dart` zIndex persistence + `editor_layer_panel.dart` reorder
+- [x] E3.4 Form Profiles Manager UI — new `form_profile_manager_screen.dart`: list saved FormProfile per form type, view fields, export clipboard + share JSON temp file, import JSON dialog, delete confirm, empty state, route `/tools/form-profiles` + card in ToolsScreen
+- [ ] E3.2 Validation UI — show inline errors red border, focus next invalid, block Place (still TODO frontend)
+- [ ] E4.1 Progressive open, E4.4 Auto-backup hardening — TODO (needs Flutter toolchain)
+- [ ] E6.2 Paywall A/B onboarding — TODO
+
+### Remaining backlog (organized in masterplan)
+See Phase 1–4 sections above. Highest ROI next: E3.2 validation UI, E2.3 chat history UI, E4.1 progressive open, E5.1 encrypted recent drift, E6.2 paywall A/B, E2.1 hybrid embeddings.
