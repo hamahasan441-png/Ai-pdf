@@ -28,11 +28,13 @@ from app.api.v1.text_layer import router as text_layer_router
 from app.api.v1.webhooks import router as webhooks_router
 
 from app.api.v1.sso import router as sso_router
+from app.api.v1.sync import router as sync_router
 
 api_router = APIRouter()
 
 api_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(sso_router, tags=["SSO"])
+api_router.include_router(sync_router, tags=["Sync"])
 api_router.include_router(profile_router, prefix="/profile", tags=["Profile"])
 api_router.include_router(documents_router, prefix="/documents", tags=["Documents"])
 api_router.include_router(ai_router, prefix="/ai", tags=["Managed AI"])

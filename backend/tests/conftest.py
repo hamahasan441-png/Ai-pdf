@@ -34,6 +34,7 @@ from app.models import user as _user  # noqa: F401
 from app.models import api_key as _api_key  # noqa: F401
 from app.models import webhook as _webhook  # noqa: F401
 from app.models import chat_history as _chat_history  # noqa: F401
+from app.models import sync as _sync  # noqa: F401 E8.2
 
 
 @pytest_asyncio.fixture
