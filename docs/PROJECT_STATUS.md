@@ -9,16 +9,29 @@ app (`frontend/`) with an optional **FastAPI** backend (`backend/`).
 
 ---
 
-## Current branch: `copilot/continu-masterplan-building`
+## Current branch: `arena/019fa435-ai-pdf`
 
-All P0–P3 items from the masterplan are **implemented and tested**.
-210 backend tests pass. The branch is ready for PR review and merge.
+**This branch implements the Enhancement-Based Masterplan:**
+- `docs/ENHANCEMENT_BASED_MASTERPLAN.md` (8 pillars, 42 tasks, 90-day roadmap) — NEW
+- `docs/ENHANCEMENT_TASKS.md` (checkout-ready tasks with file pointers) — NEW
+- Backend: RTDN re-verification `billing.py` E6.1 (5 tests), webhook DLQ scaffold `admin.py` E7.2 (3 tests), metering guard `backend/scripts/check_metering.py` E5.5
+- 225 backend tests pass (was 210), all green with in-memory SQLite, no network
+- README + MASTER_ENGINEERING_PLAN updated to link enhancement plan
+
+Previous branch `copilot/continu-masterplan-building` had P0–P3 done, 210 tests. This branch builds additively on it.
 
 ---
 
 ## What's DONE (cumulative — this branch + previous merged work)
 
-### Backend (FastAPI)
+### Enhancement-Based Masterplan (NEW — this branch `arena/019fa435-ai-pdf`)
+- **Masterplan docs:** `ENHANCEMENT_BASED_MASTERPLAN.md` + `ENHANCEMENT_TASKS.md` — 8 pillars (Editor, Intelligence, Forms, Perf, Security, Growth, Platform, Enterprise), 42 concrete tasks E1.1–E8.4, sequenced 90 days, additive principles, file-level designs, acceptance criteria, verification, risks
+- **Backend E6.1 Billing RTDN re-verification:** `api/v1/billing.py` now decodes Pub/Sub push envelope (base64 JSON), extracts `subscriptionNotification` / `oneTimeProductNotification` / `voidedPurchaseNotification`, re-verifies via `play_verifier.py` when configured, else heuristic for cancel/revoked/expired (3,12,13), upserts `Entitlement` — 5 tests `test_billing_rtdn.py`
+- **Backend E7.2 Webhook DLQ scaffold:** `api/v1/admin.py` adds `GET /admin/webhooks/dlq`, `POST /admin/webhooks/{id}/replay`, `GET /admin/webhooks/stats` — lists inactive webhooks as DLQ proxies, re-activates on replay, stats for health dashboard — 5 tests updated `test_admin.py`
+- **Backend E5.5 Metering guard:** `backend/scripts/check_metering.py` — scans `app/api/v1/*.py` for legacy `is_pro` / `check_and_increment` and ensures tiered `get_quota` + `check_and_increment_tiered` on all AI endpoints
+- **Docs linking:** `README.md` + `MASTER_ENGINEERING_PLAN.md` + `PROJECT_STATUS.md` updated to reference enhancement plan, 225 tests passing
+
+### Backend (FastAPI) — prior P0–P3 cumulative
 - **Auth (complete):** `/register`, `/login`, `/refresh` (token rotation), `/me`,
   `/change-password` — all paths covered by `test_auth.py`.
 - **Document AI (tiered metering):** `chat`, `summarize`, `translate`, `rewrite`,
@@ -103,14 +116,27 @@ All P0–P3 items from the masterplan are **implemented and tested**.
 
 ---
 
-## Suggested next tasks (backlog)
+## Suggested next tasks (backlog — now organized in ENHANCEMENT_BASED_MASTERPLAN.md)
 
-- **SSO** + per-team AI quotas (enterprise tier).
-- **On-device embeddings** for better recall than BM25.
-- **Cloud sync** of documents (opt-in, encrypted).
-- **Third-party/remote plugins** registry extension.
-- **2FA** + per-route authorisation tests.
-- **billing webhook** re-verification on renewal/cancel/refund.
+**Phase 1 (Weeks 1-3) — quick wins:**
+- E1.1 Rich text per-run UI + E1.2 snap guides V2 + E1.4 grouping/layer reorder
+- E3.2 validation UI + E3.4 profiles manager + E3.5 fill-from-anything preview
+- E4.4 auto-backup hardening
+
+**Phase 2 (Weeks 4-6):** E2.2 streaming summarize, E2.3 chat history UI, E4.1 progressive open, E4.2 low-RAM
+
+**Phase 3 (Weeks 7-9):** E5.1 encrypted recent + drift, E6.2 paywall A/B, E7.1 API key scopes (E5.4 + E6.1 + E7.2 already done this branch)
+
+**Phase 4 (Weeks 10-12):** E2.1 hybrid embeddings optional download, E5.2 2FA, E5.3 SSO, E8.1 per-team quotas, E8.2 cloud sync opt-in
+
+**Future P5:** E1.7 true redaction, E1.5 golden tests CI, E2.7 vision forms, E8.3 command-log collab
+
+Detailed file pointers + acceptance in `docs/ENHANCEMENT_TASKS.md`.
+
+Legacy backlog (now mapped to pillars):
+- SSO → E5.3, per-team AI quotas → E8.1, on-device embeddings → E2.1
+- Cloud sync → E8.2, third-party plugins → E7.3, 2FA → E5.2
+- billing webhook re-verification → E6.1 ✅ DONE this branch
 
 ---
 
@@ -121,7 +147,11 @@ All P0–P3 items from the masterplan are **implemented and tested**.
 - Document AI: `backend/app/api/v1/document_ai.py` (chat/summarize/translate/rewrite/extract/analyze/fix-ocr)
 - Forms: `backend/app/api/v1/forms.py` (acroform/read, acroform/fill, batch, understand-form)
 - Multi-doc: `backend/app/api/v1/multi_doc_chat.py`
-- Backend tests: `backend/tests/` (210 tests, all pass)
+- Backend tests: `backend/tests/` (225 tests, all pass — includes RTDN + DLQ)
+- Enhancement plan: `docs/ENHANCEMENT_BASED_MASTERPLAN.md` + `docs/ENHANCEMENT_TASKS.md`
+- Metering guard: `backend/scripts/check_metering.py` (E5.5)
+- Billing RTDN: `backend/app/api/v1/billing.py` `POST /billing/rtdn` + `tests/test_billing_rtdn.py`
+- Admin DLQ: `backend/app/api/v1/admin.py` `GET /admin/webhooks/dlq` + `/replay` + `/stats`
 - Editor history: `frontend/lib/features/editor/domain/history/`
 - Inline text editor: `frontend/lib/features/editor/presentation/widgets/inline_text_editor.dart`
 - Annotation persistence: `frontend/lib/features/editor/data/annotation_persistence_service.dart`

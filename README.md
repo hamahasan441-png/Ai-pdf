@@ -168,9 +168,40 @@ The backend provides managed AI (no user key needed), server-side billing verifi
 
 ---
 
+## Documentation & Masterplans
+
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** — full architecture, editor internals, contribution guide, local setup
+- **[ENHANCEMENT_BASED_MASTERPLAN.md](docs/ENHANCEMENT_BASED_MASTERPLAN.md)** — **NEW** 90-day enhancement plan (8 pillars, 42 tasks, additive, privacy-first, verification-gated)
+- **[ENHANCEMENT_TASKS.md](docs/ENHANCEMENT_TASKS.md)** — checkout-ready task list with file pointers & acceptance criteria
+- **[MASTER_ENGINEERING_PLAN.md](docs/MASTER_ENGINEERING_PLAN.md)** — completed P0–P3 + roadmap status
+- **[EDITOR_AND_INTELLIGENCE_MASTERPLAN.md](docs/EDITOR_AND_INTELLIGENCE_MASTERPLAN.md)** — deep editor/AI pillar design
+- **[CTO_REVIEW.md](docs/CTO_REVIEW.md)** — billion-dollar CTO review & why Flutter-native wins over native rewrite
+- **[PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** — what ships, what needs you (backend deploy, Play Console, AdMob)
+
+### Enhancement-Based Principles
+> Build on what ships, additively, verifiably. Every enhancement is a small PR <400 lines, with test, migrating existing contracts (PageLayer, stable id, AnnotationDraw single render path, tiered get_quota metering). See `docs/ENHANCEMENT_BASED_MASTERPLAN.md` Pillar 1–8 for concrete designs.
+
+---
+
 ## Development
 
 See **[DEVELOPMENT.md](DEVELOPMENT.md)** for full architecture, editor internals, contribution guide, and local setup.
+
+### Quick Verification
+
+```bash
+# Backend (no Postgres/Redis needed, in-memory SQLite, mocked AI)
+cd backend
+pytest -q   # 225 tests (includes new RTDN billing + admin DLQ)
+
+# Metering guard — ensures no legacy is_pro binary usage
+python backend/scripts/check_metering.py
+
+# Frontend (needs Flutter)
+cd frontend
+flutter analyze
+flutter test
+```
 
 ---
 
