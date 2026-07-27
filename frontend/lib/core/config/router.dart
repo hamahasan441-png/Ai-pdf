@@ -26,6 +26,7 @@ import '../../features/library/presentation/library_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
+import '../../features/tools/presentation/form_profile_manager_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -37,6 +38,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Monetization: Pro paywall (subscriptions + lifetime via Play Billing)
       GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+
+      // E3.4 Form Profiles Manager — reusable per-form-type field value sets
+      GoRoute(path: '/tools/form-profiles', builder: (_, __) => const FormProfileManagerScreen()),
 
       // Tools hub
       GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
