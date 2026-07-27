@@ -26,6 +26,7 @@ import '../../features/library/presentation/library_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/ai/presentation/chat_history_screen.dart';
+import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
 import '../../features/tools/presentation/form_profile_manager_screen.dart';
 
@@ -42,6 +43,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // E3.4 Form Profiles Manager — reusable per-form-type field value sets
       GoRoute(path: '/tools/form-profiles', builder: (_, __) => const FormProfileManagerScreen()),
+
+      // E6.2 Onboarding + Paywall A/B
+      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
 
       // Tools hub
       GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
