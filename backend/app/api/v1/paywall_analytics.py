@@ -16,10 +16,10 @@ Security:
 Design matches paywall_ab_service.dart client: trackExposure() calls /exposure, trackConversion(plan) calls /conversion.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
