@@ -166,7 +166,7 @@ Script checks:
 
 ---
 
-## Done — This Branch `arena/019fa435-ai-pdf` (246 tests passing)
+## Done — This Branch `arena/019fa435-ai-pdf` (255 tests passing + 3 frontend E3.2/E4.1/E5.1)
 
 ### Backend — shipped and tested ✅
 - [x] `docs/ENHANCEMENT_BASED_MASTERPLAN.md` (8 pillars, 42 tasks, 90-day roadmap)
@@ -180,16 +180,19 @@ Script checks:
 - [x] `backend/app/models/user.py` + `api/v1/auth.py` + `services/auth/totp.py` 2FA TOTP E5.2 — totp_secret_encrypted, enabled, recovery_codes, RFC 6238 stdlib (base32, HMAC-SHA1, ±1 window, recovery codes 8x 5-5), endpoints: setup (otpauth://), verify (enable + codes), status, disable, recovery-codes, login/2fa + login requires 2FA — 5 tests `test_2fa.py`
 - [x] `backend/app/models/webhook.py` + `services/webhooks/delivery.py` webhook delivery V2 E5.4+E7.2 — WebhookDeliveryAttempt model, deliver_event() HMAC signing X-AI-PDF-Signature + X-Webhook-Signature, exponential backoff 1s,2s,4s 3 retries, replay_failed(), admin DLQ V2 shows real failed attempts — 5 tests `test_webhook_delivery.py`
 - [x] `backend/app/api/v1/document_ai.py` + `services/ai/map_reduce_summarizer.py` streaming E2.2 — stream_map_reduce_summarize() generator yielding chunk {type,index,total,summary,page_citation} + final, POST /summarize/stream SSE and /summarize/stream/json NDJSON, team quota enforcement in _meter — 2 tests `test_summarize_stream.py`
-- **Tests:** 246 passing (was 210) — see `backend/tests/`; all in-memory SQLite, mocked AI, no network
+- **Tests:** 255 passing (was 210) — see `backend/tests/`; all in-memory SQLite, mocked AI, no network (E5.3 SSO 5 tests + E8.2 sync 4 tests added)
 
 ### Frontend — shipped (needs flutter analyze) ✅
 - [x] E1.1 Rich text per-run UI — already wired in `pick_edit_screen.dart` + `inline_text_editor.dart` + `editor_rich_text_toolbar.dart` + `editor_rich_text_service.dart` (toolbar toggleBold/Italic/Underline/Color)
 - [x] E1.2 Snap guides V2 — already in `selection_service.dart` snapSelected + _snapToObjects object-to-object priority + page guides
 - [x] E1.4 Grouping + layer reorder — `annotation_group_service.dart` + `annotation_serialization.dart` zIndex persistence + `editor_layer_panel.dart` reorder
 - [x] E3.4 Form Profiles Manager UI — new `form_profile_manager_screen.dart`: list saved FormProfile per form type, view fields, export clipboard + share JSON temp file, import JSON dialog, delete confirm, empty state, route `/tools/form-profiles` + card in ToolsScreen
-- [ ] E3.2 Validation UI — show inline errors red border, focus next invalid, block Place (still TODO frontend)
-- [ ] E4.1 Progressive open, E4.4 Auto-backup hardening — TODO (needs Flutter toolchain)
+- [x] E3.2 Validation UI — `editor_form_review_panel.dart` now StatefulWidget with ScrollController, red border for invalid, focused highlight, invalid badge tap cycles + animateTo next invalid, error container with suggestion button, block Apply if any accepted invalid (canApply = hasAccepted && !hasInvalidAccepted), banner + tooltip (commit 28747af)
+- [x] E4.1 Progressive Open — `editor_loading_overlay.dart` enhanced with progress %, page count, current page, low-RAM badge, cancel button, styled container; `page_preloader_service.dart` now preloadAdjacent with low-res ±5 first (900px) for thumbnail strip instant then high-res ±1, lowRamMode cap 1 + 900px only, renderFirstPageProgressive() low-res immediate + high-res upgrade (commit 28747af)
+- [x] E5.1 Encrypted Recent — new `encrypted_recent_files_service.dart` using FlutterSecureStorage (encryptedSharedPreferences true, Android Keystore), migration from `recent_files_v1` SharedPreferences to secure key `recent_files_encrypted_v1`, pagination listPaginated(page,pageSize) O(pageSize) <16ms target for 1k, count(), max 1000, ValueNotifier, benchmark() helper, file existence filtering (commit 28747af)
+- [x] E2.3 Chat History UI — `chat_history_screen.dart` list sessions GET /chat-history, restore, delete, offline fallback, empty states, route /ai/history, history icon in AI chat AppBar, card in ToolsScreen (commit b824242)
+- [ ] E4.4 Auto-backup hardening — TODO (needs Flutter toolchain)
 - [ ] E6.2 Paywall A/B onboarding — TODO
 
 ### Remaining backlog (organized in masterplan)
-See Phase 1–4 sections above. Highest ROI next: E3.2 validation UI, E2.3 chat history UI, E4.1 progressive open, E5.1 encrypted recent drift, E6.2 paywall A/B, E2.1 hybrid embeddings.
+See Phase 1–4 sections above. Highest ROI next: E4.4 auto-backup hardening, E6.2 paywall A/B, E2.1 hybrid embeddings, E4.2 low-RAM Kotlin plugin, E8.3 collab.
