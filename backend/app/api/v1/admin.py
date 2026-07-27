@@ -140,11 +140,8 @@ async def usage_dashboard(db: AsyncSession = Depends(get_db)):
 
 
 # ---- Webhook DLQ (E7.2) ----------------------------------------------------
-# Minimal scaffold: lists inactive webhooks as DLQ candidates and allows admin
-# to replay/enable. Full delivery attempt log (Redis/DB) is a follow-up:
-# - Add WebhookDeliveryAttempt model (webhook_id, event_type, payload, status, attempts)
-# - Store attempts in Redis list capped 100 per webhook
-# - This endpoint then reads from that store.
+# V2 with real delivery attempts: lists failed attempts from WebhookDeliveryAttempt,
+# plus inactive webhooks as fallback. Replay actually re-delivers via delivery service.
 
 @router.get(
     "/admin/webhooks/dlq",
@@ -153,33 +150,65 @@ async def usage_dashboard(db: AsyncSession = Depends(get_db)):
     tags=["Admin"],
 )
 async def webhook_dlq(db: AsyncSession = Depends(get_db)):
-    """List webhook deliveries that are currently dead-lettered.
+    """List webhook deliveries that are currently dead-lettered (E7.2 V2).
 
-    V1 scaffold: returns inactive webhooks as DLQ proxies. The full
-    delivery-attempt log (E7.2) will replace the in-memory placeholder with
-    a persistent store once `WebhookDeliveryAttempt` is added.
+    Returns failed delivery attempts (success=False) plus inactive webhooks.
     """
-    # For now: inactive webhooks are considered DLQ; in future, query attempt log
-    inactive = (
-        await db.execute(select(Webhook).where(Webhook.active.is_(False)).order_by(Webhook.created_at.desc()).limit(100))
+    from app.models.webhook import WebhookDeliveryAttempt
+
+    # Recent failed attempts
+    failed = (
+        await db.execute(
+            select(WebhookDeliveryAttempt)
+            .where(WebhookDeliveryAttempt.success.is_(False))
+            .order_by(WebhookDeliveryAttempt.created_at.desc())
+            .limit(100)
+        )
     ).scalars().all()
 
-    items = [
-        WebhookDLQItem(
-            id=str(w.id),
-            url=w.url,
-            events=w.event_list,
-            active=w.active,
-            created_at=w.created_at,
-            reason="inactive_or_delivery_failed",
+    # Also include inactive webhooks as DLQ proxies
+    inactive = (
+        await db.execute(
+            select(Webhook).where(Webhook.active.is_(False)).order_by(Webhook.created_at.desc()).limit(20)
         )
-        for w in inactive
-    ]
+    ).scalars().all()
+
+    items: list[WebhookDLQItem] = []
+
+    for attempt in failed:
+        # Fetch webhook for url
+        wh = (await db.execute(select(Webhook).where(Webhook.id == attempt.webhook_id))).scalar_one_or_none()
+        if wh:
+            items.append(
+                WebhookDLQItem(
+                    id=str(wh.id),
+                    url=wh.url,
+                    events=wh.event_list,
+                    active=wh.active,
+                    created_at=attempt.created_at,
+                    reason=f"delivery_failed: {attempt.event_type} status={attempt.status_code} error={attempt.error or ''}"[:500],
+                )
+            )
+
+    # Add inactive webhooks not already in failed list
+    existing_ids = {i.id for i in items}
+    for w in inactive:
+        if str(w.id) not in existing_ids:
+            items.append(
+                WebhookDLQItem(
+                    id=str(w.id),
+                    url=w.url,
+                    events=w.event_list,
+                    active=w.active,
+                    created_at=w.created_at,
+                    reason="inactive_or_delivery_failed",
+                )
+            )
 
     return WebhookDLQResponse(
         dlq_count=len(items),
-        items=items,
-        note="V1 scaffold: inactive webhooks listed as DLQ. Full delivery attempt log is a follow-up (see ENHANCEMENT_BASED_MASTERPLAN.md E7.2).",
+        items=items[:100],
+        note="V2: real failed delivery attempts from WebhookDeliveryAttempt + inactive webhooks. Replay uses delivery service with HMAC + retry.",
     )
 
 
@@ -190,11 +219,10 @@ async def webhook_dlq(db: AsyncSession = Depends(get_db)):
     tags=["Admin"],
 )
 async def webhook_replay(webhook_id: str, db: AsyncSession = Depends(get_db)):
-    """Replay / re-enable a DLQ webhook.
+    """Replay / re-enable a DLQ webhook (E7.2 V2).
 
-    V1: re-activates the webhook (sets active=True) so future events resume.
-    V2: will actually re-deliver the last failed payload with HMAC signing +
-    exponential backoff (see E5.4 + E7.2).
+    Re-activates the webhook and attempts to re-deliver its last failed payload
+    using the delivery service (HMAC signing + exponential backoff).
     """
     from uuid import UUID
 
@@ -210,10 +238,36 @@ async def webhook_replay(webhook_id: str, db: AsyncSession = Depends(get_db)):
     webhook.active = True
     await db.flush()
 
+    # Try real replay via delivery service
+    try:
+        from app.services.webhooks.delivery import replay_failed
+
+        attempt = await replay_failed(uid, db)
+        if attempt:
+            if attempt.success:
+                return WebhookReplayResponse(
+                    id=str(webhook.id),
+                    status="delivered",
+                    message=f"Replay succeeded status={attempt.status_code}",
+                )
+            else:
+                return WebhookReplayResponse(
+                    id=str(webhook.id),
+                    status="failed",
+                    message=f"Replay failed status={attempt.status_code} error={attempt.error}",
+                )
+    except Exception as e:  # noqa: BLE001
+        # Fall back to just re-activate
+        return WebhookReplayResponse(
+            id=str(webhook.id),
+            status="requeued",
+            message=f"Webhook re-activated but replay exception: {e}. Will retry on next event.",
+        )
+
     return WebhookReplayResponse(
         id=str(webhook.id),
         status="requeued",
-        message="Webhook re-activated. Full payload replay will be implemented with delivery log (E7.2 V2).",
+        message="Webhook re-activated. No prior failed attempt found to replay; will deliver on next event.",
     )
 
 
@@ -223,15 +277,21 @@ async def webhook_replay(webhook_id: str, db: AsyncSession = Depends(get_db)):
     tags=["Admin"],
 )
 async def webhook_stats(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    """Lightweight stats for the health dashboard (E7.2 + E5.4)."""
+    """Lightweight stats for the health dashboard (E7.2 + E5.4 V2)."""
+    from app.models.webhook import WebhookDeliveryAttempt
+
     total = await _count(db, Webhook)
     active = int((await db.execute(select(func.count()).select_from(Webhook).where(Webhook.active.is_(True)))).scalar_one() or 0)
     inactive = total - active
+    failed_attempts = int((await db.execute(select(func.count()).select_from(WebhookDeliveryAttempt).where(WebhookDeliveryAttempt.success.is_(False)))).scalar_one() or 0)
+    success_attempts = int((await db.execute(select(func.count()).select_from(WebhookDeliveryAttempt).where(WebhookDeliveryAttempt.success.is_(True)))).scalar_one() or 0)
     return {
         "total_webhooks": total,
         "active_webhooks": active,
         "inactive_or_dlq": inactive,
-        "delivery_model": "scaffold_v1 — delivery log pending (see ENHANCEMENT_BASED_MASTERPLAN.md)",
+        "failed_delivery_attempts": failed_attempts,
+        "successful_delivery_attempts": success_attempts,
+        "delivery_model": "v2 with HMAC signing + exponential backoff retry + DLQ (see ENHANCEMENT_BASED_MASTERPLAN.md E5.4/E7.2)",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
