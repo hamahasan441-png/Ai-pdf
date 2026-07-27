@@ -1,4 +1,4 @@
-"""Webhook subscription model (Part 7.2 — Developer Platform).
+"""Webhook subscription model (Part 7.2 — Developer Platform + E5.4 signing + E7.2 DLQ).
 
 Enterprise users register HTTPS endpoints to receive push notifications when
 events happen (AI completions, document indexing, team changes). Each
@@ -11,6 +11,7 @@ Security:
 - Subscriptions are scoped to the owning user (``owner_id``).
 - Disabled subscriptions (``active=False``) are kept for audit but stop
   receiving deliveries.
+- E5.4 — Delivery with retry + HMAC, E7.2 — DLQ via WebhookDeliveryAttempt
 """
 
 import hashlib
@@ -19,7 +20,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -74,3 +75,32 @@ class Webhook(Base):
 
     def subscribes_to(self, event_type: str) -> bool:
         return event_type in self.event_list and self.active
+
+
+class WebhookDeliveryAttempt(Base):
+    """Delivery attempt log for DLQ + retry visibility (E7.2).
+
+    Each attempt records the webhook, event type, payload (truncated), HTTP
+    status, and whether it succeeded. The latest attempts are used by
+    GET /admin/webhooks/dlq to show failures.
+    """
+
+    __tablename__ = "webhook_delivery_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    webhook_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("webhooks.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Truncated payload for debugging (not full sensitive data)
+    payload_snippet: Mapped[str] = mapped_column(Text, default="")
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+

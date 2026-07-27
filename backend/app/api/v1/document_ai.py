@@ -17,15 +17,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps.auth import get_optional_user
 from app.core.config import settings
 from app.db.database import get_db
+from fastapi.responses import StreamingResponse
+
 from app.models.user import User
-from app.services.ai.map_reduce_summarizer import map_reduce_summarize
+from app.services.ai.map_reduce_summarizer import (
+    map_reduce_summarize,
+    stream_map_reduce_summarize,
+)
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import (
     UNLIMITED,
     check_and_increment_tiered,
     identity_for,
 )
-from app.services.billing.quota_tiers import get_quota
+
+from app.services.billing.quota_tiers import get_quota, get_quota_with_team
 
 # Character threshold above which we switch to map-reduce summarization so the
 # full document is covered rather than truncated.
@@ -250,6 +256,66 @@ async def summarize_document(
             max_tokens=2048,
         )
     return SummarizeResponse(summary=reply, remaining=remaining)
+
+
+@router.post("/summarize/stream")
+async def summarize_document_stream(
+    req: SummarizeRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Streaming map-reduce summarization — E2.2 (ENHANCEMENT_BASED_MASTERPLAN).
+
+    Returns Server-Sent Events (SSE) with per-chunk summaries then final:
+    - event: chunk -> {"type":"chunk","index":1,"total":5,"summary":"...","page_citation":{}}
+    - event: final -> {"type":"final","summary":"...","chunks":5,"cited":[1,2,3,4,5]}
+
+    First chunk streams in <10s (vs waiting for full reduce), enabling progressive UI.
+    Uses same metering as /summarize (one quota unit per stream).
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    async def event_generator():
+        import json
+
+        # Include remaining in first comment
+        yield f": remaining={remaining}\n\n"
+        async for chunk in stream_map_reduce_summarize(
+            req.document_text, style=req.style, language=req.language
+        ):
+            data = json.dumps(chunk, ensure_ascii=False)
+            yield f"data: {data}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/summarize/stream/json")
+async def summarize_document_stream_json(
+    req: SummarizeRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """JSON-lines variant of streaming for clients that don't support SSE.
+
+    Returns newline-delimited JSON: each line is a chunk event, final line is [DONE].
+    """
+    _check_ai_configured()
+    remaining = await _meter(request, user, db)
+
+    async def json_generator():
+        import json
+
+        async for chunk in stream_map_reduce_summarize(
+            req.document_text, style=req.style, language=req.language
+        ):
+            yield json.dumps(chunk, ensure_ascii=False) + "\n"
+        yield json.dumps({"type": "done", "remaining": remaining}) + "\n"
+
+    return StreamingResponse(json_generator(), media_type="application/x-ndjson")
 
 
 @router.post("/translate", response_model=TranslateResponse)
@@ -566,7 +632,11 @@ async def _meter(
 ) -> int:
     """Enforce the per-plan daily cap and return the remaining quota.
 
+    E8.1: If X-Team-Id header present and team has ai_daily_quota, that quota
+    is enforced via a team-scoped counter (team:{id}:{date}) — shared pool.
+
     Tier resolution:
+    - Team quota (if header + team has quota) → team limit
     - Pro (monthly/yearly/lifetime) → unlimited (returns ``UNLIMITED``).
     - Basic → ``AI_BASIC_DAILY_LIMIT`` per day.
     - Free (no/invalid token) → ``AI_FREE_DAILY_LIMIT`` per day.
@@ -575,14 +645,44 @@ async def _meter(
     spending an AI request so over-limit callers don't incur cost.
     """
     token = request.headers.get("X-Entitlement-Token")
-    _tier, limit = await get_quota(db, token)
+    team_id_header = request.headers.get("X-Team-Id")
+
+    tier = "free"
+    limit = None
+    source = "free"
+
+    if team_id_header:
+        try:
+            import uuid
+
+            team_uuid = uuid.UUID(team_id_header)
+            tier, limit, source = await get_quota_with_team(db, token, team_uuid)
+        except Exception:
+            # Invalid team id header — fall back to normal quota
+            tier, limit = await get_quota(db, token)
+            source = "entitlement" if token else "free"
+    else:
+        tier, limit = await get_quota(db, token)
+        source = "entitlement" if token else "free"
+
     if limit is None:
         return UNLIMITED
-    identity = identity_for(user, request)
+
+    # Identity: team-scoped counter if team quota, else user/ip
+    if source == "team" and team_id_header:
+        identity = f"team:{team_id_header}"
+    else:
+        identity = identity_for(user, request)
+
     allowed, count = check_and_increment_tiered(identity, limit)
     if not allowed:
+        detail = (
+            f"Team daily AI limit reached ({limit})."
+            if source == "team"
+            else "Daily AI limit reached. Upgrade to Pro for unlimited AI."
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily AI limit reached. Upgrade to Pro for unlimited AI.",
+            detail=detail,
         )
     return max(0, limit - count)

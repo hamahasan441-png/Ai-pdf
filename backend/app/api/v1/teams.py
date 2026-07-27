@@ -32,6 +32,7 @@ from app.schemas.team import (
     MemberResponse,
     TeamCreateRequest,
     TeamDetailResponse,
+    TeamQuotaUpdateRequest,
     TeamResponse,
     TemplateCreateRequest,
     TemplateResponse,
@@ -66,6 +67,8 @@ async def create_team(
         owner_id=str(team.owner_id),
         role=TeamRole.OWNER,
         member_count=1,
+        ai_daily_quota=team.ai_daily_quota,
+        sso_required=team.sso_required,
         created_at=team.created_at,
     )
 
@@ -92,6 +95,8 @@ async def list_teams(
                 owner_id=str(team.owner_id),
                 role=m.role,
                 member_count=await team_service.member_count(db, team.id),
+                ai_daily_quota=team.ai_daily_quota,
+                sso_required=team.sso_required,
                 created_at=team.created_at,
             )
         )
@@ -135,6 +140,57 @@ async def get_team_detail(
         owner_id=str(team.owner_id),
         role=membership.role,
         members=member_models,
+        ai_daily_quota=team.ai_daily_quota,
+        sso_required=team.sso_required,
+        created_at=team.created_at,
+    )
+
+
+@router.put("/{team_id}/quota", response_model=TeamResponse)
+async def update_team_quota(
+    team_id: uuid.UUID,
+    request: TeamQuotaUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update per-team AI quota and SSO flag (owner/admin only) — E8.1 / E8.2."""
+    await team_service.require_manager(db, team_id, user.id)
+    team = await team_service.get_team(db, team_id)
+    if team is None:
+        raise NotFoundError("Team")
+
+    if request.ai_daily_quota is not None:
+        if request.ai_daily_quota < 1:
+            raise ValidationError("ai_daily_quota must be >=1 or None")
+        team.ai_daily_quota = request.ai_daily_quota
+    # Allow explicit nullification: when client sends {"ai_daily_quota": null}
+    # Pydantic will set None, but we need to distinguish between omitted and null.
+    # For simplicity, we treat omitted as no change, and we add a separate query param
+    # to clear via model_fields_set check.
+    if "ai_daily_quota" in request.model_fields_set and request.ai_daily_quota is None:
+        # If explicitly set to None, clear quota
+        team.ai_daily_quota = None
+
+    if request.sso_required is not None:
+        team.sso_required = request.sso_required
+
+    await db.flush()
+    await team_service.record_audit(
+        db,
+        team_id=team_id,
+        actor_id=user.id,
+        action="team.quota.update",
+        detail=f"quota={team.ai_daily_quota} sso={team.sso_required}",
+    )
+
+    return TeamResponse(
+        id=str(team.id),
+        name=team.name,
+        owner_id=str(team.owner_id),
+        role=(await team_service.get_membership(db, team_id, user.id)).role,
+        member_count=await team_service.member_count(db, team.id),
+        ai_daily_quota=team.ai_daily_quota,
+        sso_required=team.sso_required,
         created_at=team.created_at,
     )
 
@@ -164,6 +220,14 @@ async def add_member(
     existing = await team_service.get_membership(db, team_id, target.id)
     if existing is not None:
         raise ValidationError("User is already a member of this team")
+
+    # E5.3 / E8.2 — SSO enforcement: if team requires SSO, target must be verified (SSO)
+    team_obj = await team_service.get_team(db, team_id)
+    if team_obj and team_obj.sso_required:
+        if not target.is_verified:
+            raise AuthorizationError(
+                "This team requires SSO — user must have logged in via Google/Apple/OIDC at least once (is_verified)"
+            )
 
     member = TeamMember(team_id=team_id, user_id=target.id, role=role)
     db.add(member)

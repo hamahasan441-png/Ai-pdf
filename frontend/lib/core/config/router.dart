@@ -25,7 +25,10 @@ import '../../features/scanner/presentation/scanner_screen.dart';
 import '../../features/library/presentation/library_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
+import '../../features/ai/presentation/chat_history_screen.dart';
+import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
+import '../../features/tools/presentation/form_profile_manager_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -37,6 +40,12 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Monetization: Pro paywall (subscriptions + lifetime via Play Billing)
       GoRoute(path: '/paywall', builder: (_, __) => const PaywallScreen()),
+
+      // E3.4 Form Profiles Manager — reusable per-form-type field value sets
+      GoRoute(path: '/tools/form-profiles', builder: (_, __) => const FormProfileManagerScreen()),
+
+      // E6.2 Onboarding + Paywall A/B
+      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
 
       // Tools hub
       GoRoute(path: '/tools', builder: (_, __) => const ToolsScreen()),
@@ -70,6 +79,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // On-device AI (direct OpenRouter, no backend)
       GoRoute(path: '/ai', builder: (_, __) => const AiChatScreen(mode: AiChatMode.understand)),
       GoRoute(path: '/ai-form', builder: (_, __) => const AiChatScreen(mode: AiChatMode.fillForm)),
+      // E2.3 Chat History — persisted sessions with restore
+      GoRoute(path: '/ai/history', builder: (_, __) => const ChatHistoryScreen()),
 
       // Dedicated AI settings (key / model / endpoint)
       GoRoute(path: '/settings', builder: (_, __) => const AiSettingsScreen()),

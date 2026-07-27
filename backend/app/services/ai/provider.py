@@ -5,6 +5,8 @@ OpenRouter: https://openrouter.ai
 - OpenAI-compatible API at https://openrouter.ai/api/v1
 - Many free models available (Gemini Flash, Llama, Qwen, Mistral)
 - Docs: https://openrouter.ai/docs
+
+E2.7 Vision + E5.3 SSO: adds model_override for vision models
 """
 
 import json
@@ -28,6 +30,7 @@ class AIProvider:
     - JSON mode for structured outputs
     - Advanced model selection for complex tasks
     - HTTP-Referer header for OpenRouter identification
+    - Vision model support via model_override (E2.7)
     """
 
     def __init__(self):
@@ -49,26 +52,19 @@ class AIProvider:
 
     async def chat_completion(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.3,
         max_tokens: int = 4096,
         response_format: Optional[dict] = None,
         use_advanced: bool = False,
+        model_override: Optional[str] = None,
     ) -> str:
-        """Send a chat completion request with automatic model fallback.
-
-        Args:
-            messages: Chat messages
-            temperature: Response randomness (0=deterministic, 1=creative)
-            max_tokens: Max response length
-            response_format: Optional {"type": "json_object"} for JSON mode
-            use_advanced: Use the advanced model for complex tasks
-
-        Returns:
-            Response text content
-        """
-        model = self.model_advanced if use_advanced else self.model
-        models_to_try = [model] + [m for m in self.fallback_models if m != model]
+        """Send a chat completion request with automatic model fallback."""
+        if model_override:
+            models_to_try = [model_override] + [m for m in self.fallback_models if m != model_override]
+        else:
+            model = self.model_advanced if use_advanced else self.model
+            models_to_try = [model] + [m for m in self.fallback_models if m != model]
 
         last_error = None
         for try_model in models_to_try:
@@ -87,7 +83,7 @@ class AIProvider:
     async def _call_api(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float,
         max_tokens: int,
         response_format: Optional[dict],
@@ -118,18 +114,19 @@ class AIProvider:
 
     async def chat_completion_json(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.1,
         max_tokens: int = 4096,
         use_advanced: bool = False,
+        model_override: Optional[str] = None,
     ) -> dict:
         """Send a chat completion and parse response as JSON."""
-        # Add JSON instruction to system message for models that don't support response_format
         json_messages = list(messages)
         if json_messages and json_messages[0]["role"] == "system":
             json_messages[0] = {
                 "role": "system",
-                "content": json_messages[0]["content"] + "\n\nIMPORTANT: You MUST respond ONLY with valid JSON. No markdown, no explanation, just JSON.",
+                "content": json_messages[0]["content"]
+                + "\n\nIMPORTANT: You MUST respond ONLY with valid JSON. No markdown, no explanation, just JSON.",
             }
 
         response_text = await self.chat_completion(
@@ -138,18 +135,17 @@ class AIProvider:
             max_tokens=max_tokens,
             response_format={"type": "json_object"},
             use_advanced=use_advanced,
+            model_override=model_override,
         )
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:
-            # Try to extract JSON from response (some models wrap in markdown)
             json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
             if json_match:
                 try:
                     return json.loads(json_match.group(1))
                 except json.JSONDecodeError:
                     pass
-            # Try raw JSON extraction
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
                 try:

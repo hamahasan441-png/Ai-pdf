@@ -112,6 +112,46 @@ async def _summarize_single(text: str, style: str, language: str) -> str:
     )
 
 
+async def stream_map_reduce_summarize(
+    text: str,
+    chunk_size: int = 3000,
+    style: str = "structured",
+    language: str = "auto",
+):
+    """Generator that yields SSE events for streaming map-reduce summarization.
+
+    Yields dicts: {"type": "chunk", "index": int, "total": int, "summary": str}
+    and finally {"type": "final", "summary": str, "chunks": int}
+
+    This implements E2.2 streaming (see ENHANCEMENT_BASED_MASTERPLAN.md).
+    """
+    chunks = _split_text(text, chunk_size)
+
+    if len(chunks) <= 1:
+        final = await _summarize_single(text, style, language)
+        yield {"type": "final", "summary": final, "chunks": 1, "cited": []}
+        return
+
+    chunk_summaries = []
+    for i, chunk in enumerate(chunks):
+        summary = await _summarize_chunk(chunk, i + 1, len(chunks), language)
+        chunk_summaries.append(summary)
+        # Yield each chunk summary as soon as it's ready (first chunk <10s)
+        yield {
+            "type": "chunk",
+            "index": i + 1,
+            "total": len(chunks),
+            "summary": summary,
+            "page_citation": {"chunk": i + 1, "chars": f"{i*chunk_size}-{(i+1)*chunk_size}"},
+        }
+
+    combined = "\n\n".join(
+        f"[Section {i+1}/{len(chunk_summaries)}]\n{s}" for i, s in enumerate(chunk_summaries)
+    )
+    final = await _reduce_summaries(combined, style, language)
+    yield {"type": "final", "summary": final, "chunks": len(chunks), "cited": list(range(1, len(chunks) + 1))}
+
+
 def _split_text(text: str, chunk_size: int) -> list[str]:
     """Split text into chunks, preferring sentence boundaries."""
     if len(text) <= chunk_size:
