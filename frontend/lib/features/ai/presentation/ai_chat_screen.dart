@@ -654,6 +654,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
       appBar: AppBar(
         title: Text(_isForm ? l10n.fillFormWithAi : l10n.understandWithAi),
         actions: [
+          // E2.3 Chat History — persisted sessions
+          IconButton(
+            tooltip: 'Chat History',
+            icon: const Icon(Icons.history),
+            onPressed: () => context.push('/ai/history'),
+          ),
           if (_messages.isNotEmpty && !_busy)
             IconButton(
               tooltip: l10n.newChat,
