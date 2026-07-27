@@ -1,15 +1,7 @@
 import 'package:flutter/material.dart';
-
 import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
 
-/// Bottom sheet / panel showing AI-proposed field values for review (Phase 33 + E3.2).
-///
-/// E3.2 Validation UI enhancements:
-/// - Red border for invalid fields (validationError != null)
-/// - Focus next invalid button + scroll
-/// - Block Place (Apply) if any accepted field is invalid — shows tooltip + snackbar
-/// - Validation badge (green check or red X with error text + suggestion), confidence indicator
-/// - Accept/reject + bulk actions
+/// Review panel with E3.2 validation UI: red border, focus next invalid, block Apply if invalid accepted.
 class EditorFormReviewPanel extends StatefulWidget {
   final EditorFormReviewState reviewState;
   final ValueChanged<String> onAccept;
@@ -40,7 +32,7 @@ class EditorFormReviewPanel extends StatefulWidget {
 
 class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
   final ScrollController _scrollCtrl = ScrollController();
-  int _focusedInvalidIndex = -1;
+  int _focusedInvalidPos = -1;
 
   @override
   void dispose() {
@@ -48,16 +40,19 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
     super.dispose();
   }
 
+  List<int> _invalidIndices() {
+    final list = <int>[];
+    for (var i = 0; i < widget.reviewState.fields.length; i++) {
+      if (!widget.reviewState.fields[i].isValid) list.add(i);
+    }
+    return list;
+  }
+
   void _focusNextInvalid() {
-    final invalid = [
-      for (var i = 0; i < widget.reviewState.fields.length; i++)
-        if (!widget.reviewState.fields[i].isValid) i
-    ];
+    final invalid = _invalidIndices();
     if (invalid.isEmpty) return;
-    // Cycle through invalids
-    _focusedInvalidIndex = (_focusedInvalidIndex + 1) % invalid.length;
-    final target = invalid[_focusedInvalidIndex];
-    // Scroll to target (approx 90px per row + 6 separator)
+    _focusedInvalidPos = (_focusedInvalidPos + 1) % invalid.length;
+    final target = invalid[_focusedInvalidPos];
     final offset = target * 90.0;
     if (_scrollCtrl.hasClients) {
       _scrollCtrl.animateTo(
@@ -72,9 +67,12 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final hasInvalidAccepted =
-        widget.reviewState.fields.any((f) => f.isAccepted && !f.isValid);
+    final hasInvalidAccepted = widget.reviewState.fields.any((f) => f.isAccepted && !f.isValid);
     final canApply = widget.reviewState.hasAccepted && !hasInvalidAccepted;
+    final invalidIndices = _invalidIndices();
+    final focusedFieldIndex = invalidIndices.isEmpty || _focusedInvalidPos < 0
+        ? -1
+        : invalidIndices[_focusedInvalidPos % invalidIndices.length];
 
     return Material(
       elevation: 8,
@@ -96,9 +94,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
               itemBuilder: (_, i) => _fieldRow(
                 widget.reviewState.fields[i],
                 cs,
-                isFocused:
-                    i == (_focusedInvalidIndex >= 0 ? [for (var j = 0; j < widget.reviewState.fields.length; j++) if (!widget.reviewState.fields[j].isValid) j][_focusedInvalidIndex % ((widget.reviewState.fields.where((f) => !f.isValid).length).clamp(1, 1000))] : -1) &&
-                        !widget.reviewState.fields[i].isValid,
+                isFocused: i == focusedFieldIndex,
               ),
             ),
           ),
@@ -119,11 +115,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
           Expanded(
             child: Text(
               'Review AI Fill (${widget.reviewState.accepted}/${widget.reviewState.total} accepted)',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: cs.onSurface,
-                fontSize: 14,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface, fontSize: 14),
             ),
           ),
           if (widget.reviewState.invalidCount > 0) ...[
@@ -138,19 +130,11 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.error_outline,
-                        size: 12,
-                        color: hasInvalidAccepted
-                            ? cs.onError
-                            : cs.onErrorContainer),
+                    Icon(Icons.error_outline, size: 12, color: hasInvalidAccepted ? cs.onError : cs.onErrorContainer),
                     const SizedBox(width: 4),
                     Text(
-                      '${widget.reviewState.invalidCount} invalid • tap to focus next',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: hasInvalidAccepted
-                              ? cs.onError
-                              : cs.onErrorContainer),
+                      '${widget.reviewState.invalidCount} invalid • tap next',
+                      style: TextStyle(fontSize: 10, color: hasInvalidAccepted ? cs.onError : cs.onErrorContainer),
                     ),
                   ],
                 ),
@@ -168,14 +152,9 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
     );
   }
 
-  Widget _fieldRow(ProposedFieldValue field, ColorScheme cs,
-      {bool isFocused = false}) {
+  Widget _fieldRow(ProposedFieldValue field, ColorScheme cs, {bool isFocused = false}) {
     final isInvalid = !field.isValid;
-    final borderColor = isInvalid
-        ? cs.error
-        : field.isAccepted
-            ? const Color(0xFF4CAF50).withOpacity(0.6)
-            : cs.outlineVariant.withOpacity(0.5);
+    final borderColor = isInvalid ? cs.error : field.isAccepted ? const Color(0xFF4CAF50).withOpacity(0.6) : cs.outlineVariant.withOpacity(0.5);
     final bgColor = isFocused
         ? cs.errorContainer.withOpacity(0.3)
         : field.isAccepted
@@ -192,8 +171,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: borderColor, width: isInvalid || isFocused ? 1.2 : 0.8),
+        border: Border.all(color: borderColor, width: isInvalid || isFocused ? 1.2 : 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,71 +179,28 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  field.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: isInvalid ? cs.error : cs.onSurfaceVariant,
-                  ),
-                ),
+                child: Text(field.label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: isInvalid ? cs.error : cs.onSurfaceVariant)),
               ),
-              _confidenceDot(field.confidence, cs),
-              if (isInvalid) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.error, size: 14, color: cs.error),
-              ],
+              _confidenceDot(field.confidence),
+              if (isInvalid) ...[const SizedBox(width: 6), Icon(Icons.error, size: 14, color: cs.error)],
             ],
           ),
           const SizedBox(height: 4),
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  field.proposedValue,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isInvalid ? cs.error : cs.onSurface,
-                    fontWeight: isInvalid ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(field.proposedValue, style: TextStyle(fontSize: 14, color: isInvalid ? cs.error : cs.onSurface, fontWeight: isInvalid ? FontWeight.w600 : FontWeight.normal))),
               if (field.isPending) ...[
-                IconButton(
-                  icon: const Icon(Icons.check, size: 18),
-                  color: Colors.green,
-                  tooltip: 'Accept',
-                  onPressed: () => widget.onAccept(field.fieldId),
-                  constraints:
-                      const BoxConstraints(minWidth: 28, minHeight: 28),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  color: Colors.red,
-                  tooltip: 'Reject',
-                  onPressed: () => widget.onReject(field.fieldId),
-                  constraints:
-                      const BoxConstraints(minWidth: 28, minHeight: 28),
-                ),
+                IconButton(icon: const Icon(Icons.check, size: 18), color: Colors.green, tooltip: 'Accept', onPressed: () => widget.onAccept(field.fieldId), constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
+                IconButton(icon: const Icon(Icons.close, size: 18), color: Colors.red, tooltip: 'Reject', onPressed: () => widget.onReject(field.fieldId), constraints: const BoxConstraints(minWidth: 28, minHeight: 28)),
               ] else
-                Icon(
-                  field.isAccepted ? Icons.check_circle : Icons.cancel,
-                  size: 18,
-                  color: field.isAccepted
-                      ? (isInvalid ? cs.error : Colors.green)
-                      : Colors.red,
-                ),
+                Icon(field.isAccepted ? Icons.check_circle : Icons.cancel, size: 18, color: field.isAccepted ? (isInvalid ? cs.error : Colors.green) : Colors.red),
             ],
           ),
           if (field.validationError != null) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: cs.errorContainer.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: cs.error.withOpacity(0.4)),
-              ),
+              decoration: BoxDecoration(color: cs.errorContainer.withOpacity(0.7), borderRadius: BorderRadius.circular(6), border: Border.all(color: cs.error.withOpacity(0.4))),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -275,40 +210,15 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          field.validationError!,
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onErrorContainer,
-                              fontWeight: FontWeight.w600),
-                        ),
+                        Text(field.validationError!, style: TextStyle(fontSize: 11, color: cs.onErrorContainer, fontWeight: FontWeight.w600)),
                         if (field.validationSuggestion != null) ...[
                           const SizedBox(height: 4),
                           GestureDetector(
-                            onTap: () => widget.onUseSuggestion?.call(
-                                field.fieldId, field.validationSuggestion!),
+                            onTap: () => widget.onUseSuggestion?.call(field.fieldId, field.validationSuggestion!),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: cs.primary.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.lightbulb,
-                                      size: 12, color: cs.primary),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Use "${field.validationSuggestion}"',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: cs.primary,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: cs.primary.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.lightbulb, size: 12, color: cs.primary), const SizedBox(width: 4), Text('Use \"${field.validationSuggestion}\"', style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600))]),
                             ),
                           ),
                         ],
@@ -324,17 +234,9 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
     );
   }
 
-  Widget _confidenceDot(double confidence, ColorScheme cs) {
-    final color = confidence >= 0.8
-        ? Colors.green
-        : confidence >= 0.5
-            ? Colors.orange
-            : Colors.red;
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-    );
+  Widget _confidenceDot(double confidence) {
+    final color = confidence >= 0.8 ? Colors.green : confidence >= 0.5 ? Colors.orange : Colors.red;
+    return Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: color));
   }
 
   Widget _footer(ColorScheme cs, bool canApply, bool hasInvalidAccepted) {
@@ -347,57 +249,18 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: cs.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.block, size: 14, color: cs.onErrorContainer),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Fix invalid fields before placing. Tap invalid badge to focus next.',
-                      style: TextStyle(
-                          fontSize: 11, color: cs.onErrorContainer),
-                    ),
-                  ),
-                ],
-              ),
+              decoration: BoxDecoration(color: cs.errorContainer, borderRadius: BorderRadius.circular(8)),
+              child: Row(children: [Icon(Icons.block, size: 14, color: cs.onErrorContainer), const SizedBox(width: 6), Expanded(child: Text('Fix invalid fields before placing. Tap invalid badge to focus next.', style: TextStyle(fontSize: 11, color: cs.onErrorContainer)))]),
             ),
           Row(
             children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.done_all, size: 16),
-                label:
-                    const Text('Accept valid', style: TextStyle(fontSize: 12)),
-                onPressed: widget.reviewState.pending > 0
-                    ? widget.onAcceptAllValid
-                    : null,
-              ),
+              OutlinedButton.icon(icon: const Icon(Icons.done_all, size: 16), label: const Text('Accept valid', style: TextStyle(fontSize: 12)), onPressed: widget.reviewState.pending > 0 ? widget.onAcceptAllValid : null),
               const SizedBox(width: 8),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.remove_done, size: 16),
-                label:
-                    const Text('Reject rest', style: TextStyle(fontSize: 12)),
-                onPressed: widget.reviewState.pending > 0
-                    ? widget.onRejectAllPending
-                    : null,
-              ),
+              OutlinedButton.icon(icon: const Icon(Icons.remove_done, size: 16), label: const Text('Reject rest', style: TextStyle(fontSize: 12)), onPressed: widget.reviewState.pending > 0 ? widget.onRejectAllPending : null),
               const Spacer(),
               Tooltip(
-                message: canApply
-                    ? 'Place accepted values on document'
-                    : 'Fix invalid accepted fields first',
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.check, size: 16),
-                  label: Text('Apply (${widget.reviewState.accepted})',
-                      style: const TextStyle(fontSize: 12)),
-                  onPressed: canApply ? widget.onApply : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: canApply ? null : cs.outlineVariant,
-                  ),
-                ),
+                message: canApply ? 'Place accepted values' : 'Fix invalid accepted first',
+                child: FilledButton.icon(icon: const Icon(Icons.check, size: 16), label: Text('Apply (${widget.reviewState.accepted})', style: const TextStyle(fontSize: 12)), onPressed: canApply ? widget.onApply : null, style: FilledButton.styleFrom(backgroundColor: canApply ? null : cs.outlineVariant)),
               ),
             ],
           ),
