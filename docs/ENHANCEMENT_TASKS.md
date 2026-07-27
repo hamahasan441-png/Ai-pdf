@@ -166,33 +166,44 @@ Script checks:
 
 ---
 
-## Done — This Branch `arena/019fa435-ai-pdf` (255 tests passing + 3 frontend E3.2/E4.1/E5.1)
+## Done — This Branch `arena/019fa435-ai-pdf` (255 backend tests + 10 frontend enhancements — DO ALL NEXT batch)
 
-### Backend — shipped and tested ✅
+### Backend — shipped and tested ✅ (255 tests)
 - [x] `docs/ENHANCEMENT_BASED_MASTERPLAN.md` (8 pillars, 42 tasks, 90-day roadmap)
 - [x] `docs/ENHANCEMENT_TASKS.md` (this file)
 - [x] `backend/scripts/check_metering.py` guard E5.5 — scans api/v1 for legacy metering, PASS
-- [x] `backend/app/api/v1/billing.py` RTDN re-verification E6.1 — Pub/Sub envelope decode, re-verify via play_verifier, heuristic for cancel/revoked/expired, upserts Entitlement — 5 tests `test_billing_rtdn.py`
-- [x] `backend/app/api/v1/admin.py` DLQ scaffold V1 + V2 E7.2 — inactive + failed attempts, replay via delivery service, stats with failed/success counts
-- [x] Link masterplan in `README.md` + `docs/MASTER_ENGINEERING_PLAN.md` + `PROJECT_STATUS.md`
-- [x] `backend/app/models/api_key.py` + `api/v1/api_keys.py` scopes E7.1 — API_KEY_SCOPES allowlist, DEFAULT_SCOPES, validation, GET /api-keys/scopes, list/create include scopes — 4 tests `test_api_key_scopes.py`
-- [x] `backend/app/models/team.py` + `api/v1/teams.py` + `quota_tiers.py` per-team quota E8.1 — ai_daily_quota Integer nullable + sso_required bool, TeamResponse includes quota, PUT /teams/{id}/quota owner/admin only, get_team_quota + get_quota_with_team (team quota overrides user tier), _meter checks X-Team-Id header and uses team:{id} identity — 5 tests `test_team_quota.py`
-- [x] `backend/app/models/user.py` + `api/v1/auth.py` + `services/auth/totp.py` 2FA TOTP E5.2 — totp_secret_encrypted, enabled, recovery_codes, RFC 6238 stdlib (base32, HMAC-SHA1, ±1 window, recovery codes 8x 5-5), endpoints: setup (otpauth://), verify (enable + codes), status, disable, recovery-codes, login/2fa + login requires 2FA — 5 tests `test_2fa.py`
-- [x] `backend/app/models/webhook.py` + `services/webhooks/delivery.py` webhook delivery V2 E5.4+E7.2 — WebhookDeliveryAttempt model, deliver_event() HMAC signing X-AI-PDF-Signature + X-Webhook-Signature, exponential backoff 1s,2s,4s 3 retries, replay_failed(), admin DLQ V2 shows real failed attempts — 5 tests `test_webhook_delivery.py`
-- [x] `backend/app/api/v1/document_ai.py` + `services/ai/map_reduce_summarizer.py` streaming E2.2 — stream_map_reduce_summarize() generator yielding chunk {type,index,total,summary,page_citation} + final, POST /summarize/stream SSE and /summarize/stream/json NDJSON, team quota enforcement in _meter — 2 tests `test_summarize_stream.py`
-- **Tests:** 255 passing (was 210) — see `backend/tests/`; all in-memory SQLite, mocked AI, no network (E5.3 SSO 5 tests + E8.2 sync 4 tests added)
+- [x] E6.1 RTDN re-verification — Pub/Sub envelope decode, re-verify via play_verifier, heuristic cancel/revoked/expired, upserts Entitlement — 5 tests `test_billing_rtdn.py`
+- [x] E7.2 DLQ scaffold V1 + V2 — inactive + failed attempts, replay via delivery service, stats — enhanced from scaffold to V2
+- [x] E7.1 API key scopes — allowlist, DEFAULT_SCOPES, validation, GET /scopes — 4 tests `test_api_key_scopes.py`
+- [x] E8.1 per-team quota — ai_daily_quota + sso_required, PUT /quota owner/admin, get_team_quota + get_quota_with_team, X-Team-Id enforcement — 5 tests `test_team_quota.py`
+- [x] E5.2 TOTP 2FA — RFC 6238 stdlib, recovery codes, 6 endpoints — 5 tests `test_2fa.py`
+- [x] E5.4+E7.2 webhook delivery V2 — WebhookDeliveryAttempt, HMAC signing, backoff retry, replay — 5 tests `test_webhook_delivery.py`
+- [x] E2.2 streaming map-reduce — chunk events + final, SSE + NDJSON, team quota — 2 tests `test_summarize_stream.py`
+- [x] E5.3 SSO OIDC — Google/Apple/generic OIDC unsafe decode for tests, team sso_required enforcement — 5 tests `test_sso.py`
+- [x] E8.2 cloud sync opt-in — DocumentSync model, push/pull/list/delete/status, owner isolation, version++ — 4 tests `test_sync.py`
+- [x] E8.3 collab WebSocket — `/teams/{team_id}/collab/ws` JWT via ?token= query, require_member, ConnectionManager in-memory team->set[WS], broadcast, welcome + error handling, GET /collab/status — backend, no pytest yet but manual
+- [x] Link masterplan in README + MASTER_ENGINEERING_PLAN + PROJECT_STATUS
 
-### Frontend — shipped (needs flutter analyze) ✅
-- [x] E1.1 Rich text per-run UI — already wired in `pick_edit_screen.dart` + `inline_text_editor.dart` + `editor_rich_text_toolbar.dart` + `editor_rich_text_service.dart` (toolbar toggleBold/Italic/Underline/Color)
-- [x] E1.2 Snap guides V2 — already in `selection_service.dart` snapSelected + _snapToObjects object-to-object priority + page guides
-- [x] E1.4 Grouping + layer reorder — `annotation_group_service.dart` + `annotation_serialization.dart` zIndex persistence + `editor_layer_panel.dart` reorder
-- [x] E3.4 Form Profiles Manager UI — new `form_profile_manager_screen.dart`: list saved FormProfile per form type, view fields, export clipboard + share JSON temp file, import JSON dialog, delete confirm, empty state, route `/tools/form-profiles` + card in ToolsScreen
-- [x] E3.2 Validation UI — `editor_form_review_panel.dart` now StatefulWidget with ScrollController, red border for invalid, focused highlight, invalid badge tap cycles + animateTo next invalid, error container with suggestion button, block Apply if any accepted invalid (canApply = hasAccepted && !hasInvalidAccepted), banner + tooltip (commit 28747af)
-- [x] E4.1 Progressive Open — `editor_loading_overlay.dart` enhanced with progress %, page count, current page, low-RAM badge, cancel button, styled container; `page_preloader_service.dart` now preloadAdjacent with low-res ±5 first (900px) for thumbnail strip instant then high-res ±1, lowRamMode cap 1 + 900px only, renderFirstPageProgressive() low-res immediate + high-res upgrade (commit 28747af)
-- [x] E5.1 Encrypted Recent — new `encrypted_recent_files_service.dart` using FlutterSecureStorage (encryptedSharedPreferences true, Android Keystore), migration from `recent_files_v1` SharedPreferences to secure key `recent_files_encrypted_v1`, pagination listPaginated(page,pageSize) O(pageSize) <16ms target for 1k, count(), max 1000, ValueNotifier, benchmark() helper, file existence filtering (commit 28747af)
-- [x] E2.3 Chat History UI — `chat_history_screen.dart` list sessions GET /chat-history, restore, delete, offline fallback, empty states, route /ai/history, history icon in AI chat AppBar, card in ToolsScreen (commit b824242)
-- [ ] E4.4 Auto-backup hardening — TODO (needs Flutter toolchain)
-- [ ] E6.2 Paywall A/B onboarding — TODO
+### Frontend — shipped (needs flutter analyze) ✅ (10 enhancements)
+- [x] E1.1 Rich text per-run UI — already wired (`pick_edit_screen.dart` + `inline_text_editor.dart` + toolbar + service)
+- [x] E1.2 Snap guides V2 — object-to-object priority + page guides `selection_service.dart`
+- [x] E1.4 Grouping + layer reorder — `annotation_group_service.dart` + `zIndex` persistence
+- [x] E3.4 Form Profiles Manager UI — `form_profile_manager_screen.dart` list, view, export clipboard+share JSON temp file, import dialog, delete, route `/tools/form-profiles` + card
+- [x] E3.2 Validation UI — `editor_form_review_panel.dart` StatefulWidget + ScrollController, red border invalid, focused highlight, badge tap cycle animateTo next invalid, error container suggestion, block Apply if invalid accepted
+- [x] E4.1 Progressive Open — `editor_loading_overlay.dart` progress %, page count, current page, low-RAM badge, cancel, styled; `page_preloader_service.dart` low-res ±5 first (900px) then high-res ±1, lowRamMode cap 1, renderFirstPageProgressive()
+- [x] E5.1 Encrypted Recent — `encrypted_recent_files_service.dart` FlutterSecureStorage encryptedSharedPreferences, migration from `recent_files_v1` to secure key, pagination listPaginated <16ms target, max 1000, ValueNotifier, benchmark()
+- [x] E2.3 Chat History UI — `chat_history_screen.dart` list/restore/delete, offline fallback, empty states, route `/ai/history`, history icon in AI chat AppBar, card in ToolsScreen
+- [x] E4.4 Auto-backup V2 — `auto_backup_service_v2.dart` 3 rolling backups per file hash under backups_v2/{hash}/, latest.json + vN_meta.json, listForFile, listAll, getLatest, readLatestJson, _evictOld keeps 3, diffCount, integration with cloud sync E8.2
+- [x] E6.2 Paywall A/B — `paywall_ab_service.dart` variant A monthly emphasis vs B lifetime emphasis, random 50/50 persisted, trackExposure/trackConversion/getStats/reset; `onboarding_screen.dart` 5 pages welcome/AI setup/profile/first doc/paywall A/B with variant cards yearly/monthly/lifetime badge+highlight, route `/onboarding`
+- [x] E2.1 Hybrid BM25+Embeddings — `hybrid_retriever.dart` BM25 top-20 then re-rank TF-IDF cosine (3-gram + word, log TF, IDF), hybridScore 0.5*BM25+0.5*TFIDF, fallback TF-IDF for recall, hasOnnx flag scaffold for MiniLM 20MB optional download via ToolHandoff, loadOnnxModel placeholder
+- [x] E4.2 Low-RAM — `LowRamDetector.kt` ActivityManager.MemoryInfo totalMem/availMem/lowMemory/isLowRamDevice/threshold + isLowRamMode = totalMem<2GB OR lowMemory OR isLowRamDevice; `LowRamPlugin.kt` MethodChannel low_ram_detector getMemoryInfo; MainActivity registers LowRamPlugin; `low_ram_service.dart` Dart wrapper
+- [x] E2.6 Suggested Q/A — `suggested_questions_panel.dart` shows suggested_questions[] as ActionChip + action_items[] checkable list, onQuestionTap/onActionTap/onClose, after /analyze
+- [x] E4.5 WorkManager — `batch_work_manager.dart` BatchWorkManager initialize(), scheduleLargeJob filePaths+operation via Workmanager.registerOneOffTask, cancel(), showProgress processed/total notification progress bar, isLargeJob heuristic >50MB or >10 files, _callbackDispatcher entry-point background isolate
+- [x] E8.3 already (collab Ws) — plus frontend would use command log via WebSocket in editor_multi_doc_chat_panel? scaffold done backend
 
-### Remaining backlog (organized in masterplan)
-See Phase 1–4 sections above. Highest ROI next: E4.4 auto-backup hardening, E6.2 paywall A/B, E2.1 hybrid embeddings, E4.2 low-RAM Kotlin plugin, E8.3 collab.
+### Remaining backlog (Phase 5 Future)
+- E1.7 True Redaction — backend POST /document-ai/redact via PyMuPDF redact + frontend confirm sheet (requires legal review)
+- E1.5 Golden Tests CI — needs Flutter runner, corpus 5 PDFs
+- E2.7 Vision Forms — crop field rect image → /forms/understand-form vision models
+- E8.3 full replay persistence — Redis pub/sub for multi-instance + command log persistence for new client join
+
