@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Add comprehensive unit tests for the new OCR integration and scanner enhancements. Tests cover the scan_ocr_service, updated ScanPage entity, ScannerController state transitions for text detection, and searchable PDF generation logic.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "1. Create frontend/test/scanner/scan_page_test.dart with tests for the updated ScanPage entity: verify extractedText field, ocrProcessing flag, copyWith behavior for new fields.",
     "2. Create frontend/test/scanner/scanner_controller_test.dart with tests for: goToTextDetection() stage transition, setPageOcrText() storing text per page, text detection flow state management (from reviewing -> textDetection and back).",
@@ -20,5 +20,5 @@
     "Verify test assertions are meaningful and would catch regressions"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All three test files created following existing patterns (flutter_test, group/test blocks, const services). scan_page_test.dart: 14 tests covering extractedText, ocrProcessing, copyWith clearOcrText, displayBytes, rotatedCW. scanner_controller_test.dart: 20 tests covering goToTextDetection, setPageOcrText with recognizedText rebuild, setOcrProgress/finishOcr, markOcrProcessing, clearOcr, toggleSearchablePdf, full stage flow, isOcrRunning, and reset. scan_ocr_service_test.dart: 4 tests verifying const-constructibility and method interface presence (cannot test actual OCR without ML Kit). No Flutter SDK available so tests are verified by code review only."
 }
