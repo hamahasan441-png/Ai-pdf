@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "fix",
   "description": "Address code review feedback: fix stale page list in _startOcr, add clearOcrProgress flag to copyWith, wire extractWithPositions into searchable PDF for positional overlays, and surface OCR error count to users.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "1. Fix stale page list in _startOcr: capture page IDs upfront, re-read state each iteration to get current page data by ID.",
     "2. Add clearOcrProgress flag to ScannerState.copyWith paralleling clearActive/clearError, update finishOcr and clearOcr to use it.",
@@ -26,5 +26,5 @@
     "Verify failed page count is tracked and displayed"
   ],
   "blocked_reason": null,
-  "findings": null
+  "findings": "All 4 review issues addressed plus a bonus share-text feature for the user request. No Flutter SDK in sandbox so verification is via code review. The extractWithPositions method is now the primary OCR path (dead code eliminated). The clearOcrProgress flag follows the same pattern as clearActive/clearError. The stale page list issue is resolved by ID-based iteration with per-iteration state re-reads. OCR failures are tracked and surfaced with a count banner. Share buttons added to both the text detection view and the text result bottom sheet."
 }
