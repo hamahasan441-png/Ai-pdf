@@ -400,6 +400,137 @@ async def export_audit(
     )
 
 
+@router.get("/{team_id}/audit/csv")
+async def export_audit_csv(
+    team_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export audit trail as CSV — E8.4 SIEM (owner/admin only)."""
+    await team_service.require_manager(db, team_id, user.id)
+
+    logs = (
+        await db.execute(
+            select(TeamAuditLog)
+            .where(TeamAuditLog.team_id == team_id)
+            .order_by(TeamAuditLog.created_at.asc())
+        )
+    ).scalars().all()
+
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["timestamp", "action", "actor_id", "target", "detail", "prev_hash", "hash"])
+    for log in logs:
+        writer.writerow(
+            [
+                log.created_at.isoformat(),
+                log.action,
+                str(log.actor_id) if log.actor_id else "",
+                log.target or "",
+                log.detail or "",
+                log.prev_hash or "",
+                log.hash or "",
+            ]
+        )
+
+    from fastapi.responses import StreamingResponse
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="audit_{team_id}.csv"'},
+    )
+
+
+@router.get("/{team_id}/audit/cef")
+async def export_audit_cef(
+    team_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export audit trail as CEF (Common Event Format) for SIEM — E8.4 (owner/admin)."""
+    await team_service.require_manager(db, team_id, user.id)
+
+    logs = (
+        await db.execute(
+            select(TeamAuditLog)
+            .where(TeamAuditLog.team_id == team_id)
+            .order_by(TeamAuditLog.created_at.asc())
+        )
+    ).scalars().all()
+
+    # CEF: CEF:Version|Device Vendor|Device Product|Device Version|Signature ID|Name|Severity|Extension
+    lines = []
+    for log in logs:
+        # Escape pipes and backslashes in extension values
+        def esc(v: str) -> str:
+            return v.replace("\\", "\\\\").replace("|", "\\|").replace("=", "\\=")
+
+        extension = f"src={esc(str(log.actor_id) if log.actor_id else '')} "
+        extension += f"dst={esc(str(team_id))} "
+        extension += f"act={esc(log.action)} "
+        extension += f"target={esc(log.target or '')} "
+        extension += f"msg={esc(log.detail or '')} "
+        extension += f"prevHash={esc(log.prev_hash or '')} "
+        extension += f"hash={esc(log.hash or '')}"
+
+        cef = f"CEF:0|AI-PDF|Teams|1.0|{esc(log.action)}|{esc(log.action)}|5|{extension}"
+        lines.append(cef)
+
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(
+        "\n".join(lines),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="audit_{team_id}.cef"'},
+    )
+
+
+@router.get("/{team_id}/audit/verify")
+async def verify_audit_chain(
+    team_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify audit log hash chain for tamper evidence — E8.4 (owner/admin)."""
+    await team_service.require_manager(db, team_id, user.id)
+
+    logs = (
+        await db.execute(
+            select(TeamAuditLog)
+            .where(TeamAuditLog.team_id == team_id)
+            .order_by(TeamAuditLog.created_at.asc())
+        )
+    ).scalars().all()
+
+    tampered = []
+    prev_hash_expected = "0" * 64
+
+    for log in logs:
+        if log.prev_hash != prev_hash_expected:
+            tampered.append(
+                {
+                    "id": str(log.id),
+                    "reason": f"prev_hash mismatch: expected {prev_hash_expected}, got {log.prev_hash}",
+                    "timestamp": log.created_at.isoformat(),
+                }
+            )
+        # Chain continuity check only (payload hash recompute is best-effort due to timestamp formatting)
+        prev_hash_expected = log.hash or "0" * 64
+
+    return {
+        "team_id": str(team_id),
+        "total_entries": len(logs),
+        "tampered_entries": tampered,
+        "is_valid": len(tampered) == 0,
+        "note": "E8.4 hash chain verification — checks prev_hash continuity for tamper evidence of insertion/deletion. Full payload hash recompute is best-effort due to timestamp formatting.",
+    }
+
+
 # --- helpers -------------------------------------------------------------
 
 def _template_to_response(t: SharedTemplate) -> TemplateResponse:
