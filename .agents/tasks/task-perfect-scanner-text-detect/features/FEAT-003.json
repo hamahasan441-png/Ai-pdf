@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Address code review feedback: fix stale page list in _startOcr, add clearOcrProgress flag to copyWith, wire extractWithPositions into searchable PDF for positional overlays, and surface OCR error count to users.",
+  "status": "in_progress",
+  "steps": [
+    "1. Fix stale page list in _startOcr: capture page IDs upfront, re-read state each iteration to get current page data by ID.",
+    "2. Add clearOcrProgress flag to ScannerState.copyWith paralleling clearActive/clearError, update finishOcr and clearOcr to use it.",
+    "3. Wire extractWithPositions into the searchable PDF pipeline: store OcrLine data per page, use positional overlay in PDF export.",
+    "4. Add OCR error tracking: add ocrFailedPages count to ScannerState, surface it in the text detection view when pages fail."
+  ],
+  "acceptance_criteria": [
+    "_startOcr captures page IDs and re-reads state each iteration instead of using a stale pages list",
+    "ScannerState.copyWith has clearOcrProgress boolean flag that resets ocrProgressIndex to -1",
+    "finishOcr and clearOcr use the clearOcrProgress flag",
+    "extractWithPositions is used in PDF export for per-line positioned text overlay",
+    "ScanPage entity stores OcrLine positions data",
+    "OCR failures are tracked with a count and surfaced to users in the UI",
+    "All changes follow existing patterns and have correct Dart syntax"
+  ],
+  "verification": [
+    "Review all modified files for correct Dart syntax and pattern consistency",
+    "Verify _startOcr uses ID-based iteration",
+    "Verify clearOcrProgress flag works in copyWith",
+    "Verify extractWithPositions result is stored and used in PDF export",
+    "Verify failed page count is tracked and displayed"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}

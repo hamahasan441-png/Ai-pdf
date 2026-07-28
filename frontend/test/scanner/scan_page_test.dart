@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
@@ -143,6 +144,79 @@ void main() {
       page = page.copyWith(rotationQuarterTurns: 3);
       final rotated = page.rotatedCW();
       expect(rotated.rotationQuarterTurns, equals(0));
+    });
+  });
+
+  group('ScanPage - ocrLines field', () {
+    test('defaults to null when not provided', () {
+      final page = makePage();
+      expect(page.ocrLines, isNull);
+    });
+
+    test('stores OCR line positions when provided', () {
+      final lines = [
+        const OcrLine('Hello', 0.1, 0.2, 0.3, 0.04),
+        const OcrLine('World', 0.1, 0.3, 0.3, 0.04),
+      ];
+      final page = ScanPage(
+        id: 'test_1',
+        originalBytes: dummyBytes,
+        corners: corners,
+        ocrLines: lines,
+      );
+      expect(page.ocrLines, isNotNull);
+      expect(page.ocrLines!.length, equals(2));
+      expect(page.ocrLines![0].text, equals('Hello'));
+    });
+
+    test('copyWith preserves ocrLines when not overridden', () {
+      final lines = [const OcrLine('Test', 0.0, 0.0, 0.5, 0.05)];
+      final page = ScanPage(
+        id: 'test_1',
+        originalBytes: dummyBytes,
+        corners: corners,
+        ocrLines: lines,
+      );
+      final copied = page.copyWith(extractedText: 'Test');
+      expect(copied.ocrLines, same(lines));
+    });
+
+    test('clearOcrText also clears ocrLines', () {
+      final lines = [const OcrLine('Test', 0.0, 0.0, 0.5, 0.05)];
+      final page = ScanPage(
+        id: 'test_1',
+        originalBytes: dummyBytes,
+        corners: corners,
+        extractedText: 'Test',
+        ocrLines: lines,
+      );
+      final cleared = page.copyWith(clearOcrText: true);
+      expect(cleared.extractedText, isNull);
+      expect(cleared.ocrLines, isNull);
+    });
+  });
+
+  group('ScanPage - ocrFailed flag', () {
+    test('defaults to false', () {
+      final page = makePage();
+      expect(page.ocrFailed, isFalse);
+    });
+
+    test('can be set via copyWith', () {
+      final page = makePage();
+      final failed = page.copyWith(ocrFailed: true);
+      expect(failed.ocrFailed, isTrue);
+    });
+
+    test('clearOcrText resets ocrFailed via new page creation', () {
+      final page = ScanPage(
+        id: 'test_1',
+        originalBytes: dummyBytes,
+        corners: corners,
+        ocrFailed: true,
+      );
+      final cleared = page.copyWith(clearOcrText: true, ocrFailed: false);
+      expect(cleared.ocrFailed, isFalse);
     });
   });
 }

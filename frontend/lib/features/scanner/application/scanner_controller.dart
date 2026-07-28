@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
@@ -43,6 +44,9 @@ class ScannerState {
   /// Whether the searchable PDF option is enabled.
   final bool searchablePdf;
 
+  /// Number of pages where OCR failed (for user feedback).
+  final int ocrFailedPages;
+
   const ScannerState({
     this.pages = const [],
     this.stage = ScanStage.capturing,
@@ -54,6 +58,7 @@ class ScannerState {
     this.recognizedText = '',
     this.ocrProgressIndex = -1,
     this.searchablePdf = true,
+    this.ocrFailedPages = 0,
   });
 
   int get pageCount => pages.length;
@@ -76,8 +81,10 @@ class ScannerState {
     String? recognizedText,
     int? ocrProgressIndex,
     bool? searchablePdf,
+    int? ocrFailedPages,
     bool clearActive = false,
     bool clearError = false,
+    bool clearOcrProgress = false,
   }) {
     return ScannerState(
       pages: pages ?? this.pages,
@@ -88,8 +95,10 @@ class ScannerState {
       exporting: exporting ?? this.exporting,
       error: clearError ? null : (error ?? this.error),
       recognizedText: recognizedText ?? this.recognizedText,
-      ocrProgressIndex: ocrProgressIndex ?? this.ocrProgressIndex,
+      ocrProgressIndex:
+          clearOcrProgress ? -1 : (ocrProgressIndex ?? this.ocrProgressIndex),
       searchablePdf: searchablePdf ?? this.searchablePdf,
+      ocrFailedPages: ocrFailedPages ?? this.ocrFailedPages,
     );
   }
 }
@@ -211,6 +220,27 @@ class ScannerController extends StateNotifier<ScannerState> {
     _rebuildRecognizedText();
   }
 
+  /// Store full OCR result (text + line positions) for a specific page.
+  void setPageOcrResult(String pageId, OcrResult result) {
+    _mutate(pageId, (p) => p.copyWith(
+      extractedText: result.text.trim(),
+      ocrLines: result.lines,
+      ocrProcessing: false,
+      ocrFailed: false,
+    ));
+    _rebuildRecognizedText();
+  }
+
+  /// Mark a page as having failed OCR and increment the failed counter.
+  void markPageOcrFailed(String pageId) {
+    _mutate(pageId, (p) => p.copyWith(
+      extractedText: '',
+      ocrProcessing: false,
+      ocrFailed: true,
+    ));
+    state = state.copyWith(ocrFailedPages: state.ocrFailedPages + 1);
+  }
+
   /// Mark a page as currently running OCR.
   void markOcrProcessing(String pageId, bool value) =>
       _mutate(pageId, (p) => p.copyWith(ocrProcessing: value));
@@ -219,15 +249,16 @@ class ScannerController extends StateNotifier<ScannerState> {
   void clearOcr() {
     state = state.copyWith(
       pages: [
-        for (final p in state.pages) p.copyWith(clearOcrText: true),
+        for (final p in state.pages) p.copyWith(clearOcrText: true, ocrFailed: false),
       ],
       recognizedText: '',
-      ocrProgressIndex: -1,
+      ocrFailedPages: 0,
+      clearOcrProgress: true,
     );
   }
 
   /// Finish OCR processing (reset progress index).
-  void finishOcr() => state = state.copyWith(ocrProgressIndex: -1);
+  void finishOcr() => state = state.copyWith(clearOcrProgress: true);
 
   /// Toggle searchable PDF mode.
   void toggleSearchablePdf() =>
