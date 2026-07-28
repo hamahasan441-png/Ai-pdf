@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/application/scanner_controller.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 
@@ -235,6 +236,98 @@ void main() {
       expect(ctrl.state.ocrProgressIndex, equals(-1));
       expect(ctrl.state.searchablePdf, isTrue);
       expect(ctrl.state.stage, equals(ScanStage.capturing));
+    });
+  });
+
+  group('ScannerController - clearOcrProgress flag', () {
+    test('copyWith with clearOcrProgress resets ocrProgressIndex to -1', () {
+      ctrl.setOcrProgress(5);
+      expect(ctrl.state.ocrProgressIndex, equals(5));
+
+      // Using finishOcr which internally uses clearOcrProgress
+      ctrl.finishOcr();
+      expect(ctrl.state.ocrProgressIndex, equals(-1));
+      expect(ctrl.state.isOcrRunning, isFalse);
+    });
+
+    test('clearOcr uses clearOcrProgress flag', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      ctrl.setPageOcrText(page.id, 'text');
+      ctrl.setOcrProgress(3);
+
+      ctrl.clearOcr();
+      expect(ctrl.state.ocrProgressIndex, equals(-1));
+      expect(ctrl.state.isOcrRunning, isFalse);
+    });
+  });
+
+  group('ScannerController - ocrFailedPages tracking', () {
+    test('initial ocrFailedPages is 0', () {
+      expect(ctrl.state.ocrFailedPages, equals(0));
+    });
+
+    test('markPageOcrFailed increments ocrFailedPages', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      ctrl.markPageOcrFailed(page.id);
+      expect(ctrl.state.ocrFailedPages, equals(1));
+    });
+
+    test('markPageOcrFailed sets ocrFailed on the page', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      ctrl.markPageOcrFailed(page.id);
+
+      final updated = ctrl.state.pages.firstWhere((p) => p.id == page.id);
+      expect(updated.ocrFailed, isTrue);
+      expect(updated.ocrProcessing, isFalse);
+      expect(updated.extractedText, equals(''));
+    });
+
+    test('multiple failures accumulate', () {
+      final page1 = ctrl.addCapture(dummyBytes, corners);
+      ctrl.confirmCrop();
+      ctrl.resumeCapture();
+      final page2 = ctrl.addCapture(dummyBytes, corners);
+
+      ctrl.markPageOcrFailed(page1.id);
+      ctrl.markPageOcrFailed(page2.id);
+      expect(ctrl.state.ocrFailedPages, equals(2));
+    });
+
+    test('clearOcr resets ocrFailedPages to 0', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      ctrl.markPageOcrFailed(page.id);
+      expect(ctrl.state.ocrFailedPages, equals(1));
+
+      ctrl.clearOcr();
+      expect(ctrl.state.ocrFailedPages, equals(0));
+    });
+  });
+
+  group('ScannerController - setPageOcrResult', () {
+    test('stores text and lines from OcrResult', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      final result = OcrResult('Hello World', [
+        const OcrLine('Hello', 0.1, 0.2, 0.3, 0.04),
+        const OcrLine('World', 0.1, 0.3, 0.3, 0.04),
+      ]);
+
+      ctrl.setPageOcrResult(page.id, result);
+
+      final updated = ctrl.state.pages.firstWhere((p) => p.id == page.id);
+      expect(updated.extractedText, equals('Hello World'));
+      expect(updated.ocrLines, isNotNull);
+      expect(updated.ocrLines!.length, equals(2));
+      expect(updated.ocrProcessing, isFalse);
+      expect(updated.ocrFailed, isFalse);
+    });
+
+    test('rebuilds recognizedText after storing result', () {
+      final page = ctrl.addCapture(dummyBytes, corners);
+      final result = OcrResult('Test text', []);
+
+      ctrl.setPageOcrResult(page.id, result);
+
+      expect(ctrl.state.recognizedText, contains('Test text'));
     });
   });
 }

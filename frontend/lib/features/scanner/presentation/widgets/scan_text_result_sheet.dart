@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Bottom sheet that displays OCR-extracted text from scanned pages with
-/// copy and re-scan action buttons.
+/// copy, share, and re-scan action buttons.
 class ScanTextResultSheet extends StatelessWidget {
   final String text;
   final VoidCallback? onRescan;
@@ -90,6 +91,18 @@ class ScanTextResultSheet extends StatelessWidget {
                         );
                       }
                     },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, size: 20),
+                    tooltip: 'Share text to another app',
+                    onPressed: text.isEmpty
+                        ? null
+                        : () async {
+                            await Share.share(
+                              text,
+                              subject: 'Scanned Text',
+                            );
+                          },
                   ),
                 ],
               ),

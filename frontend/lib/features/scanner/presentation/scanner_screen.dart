@@ -12,6 +12,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/application/scanner_controller.dart';
 import 'package:ai_pdf/features/scanner/data/scan_image_processor.dart';
 import 'package:ai_pdf/features/scanner/data/scan_ocr_service.dart';
@@ -401,6 +402,29 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               ],
             ),
           ),
+        // Show OCR failure warning if any pages failed.
+        if (!state.isOcrRunning && state.ocrFailedPages > 0)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color: Colors.orange.shade900.withOpacity(0.3),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    color: Colors.orangeAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'OCR failed for ${state.ocrFailedPages} '
+                    '${state.ocrFailedPages == 1 ? 'page' : 'pages'}. '
+                    'Those pages may be blank or unreadable.',
+                    style: const TextStyle(
+                        color: Colors.orangeAccent, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Expanded(
           child: state.recognizedText.isEmpty && !state.isOcrRunning
               ? const Center(
@@ -463,6 +487,16 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                     },
                   ),
                   IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    tooltip: 'Share text',
+                    onPressed: () async {
+                      await Share.share(
+                        state.recognizedText,
+                        subject: 'Scanned Text',
+                      );
+                    },
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.description, color: Colors.white),
                     tooltip: 'View formatted text',
                     onPressed: () => ScanTextResultSheet.show(
@@ -488,20 +522,38 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   // ── OCR Flow ─────────────────────────────────────────────────────────────
 
   /// Start OCR on all pages and navigate to text detection view.
+  ///
+  /// Uses page IDs captured upfront and re-reads state each iteration to avoid
+  /// stale-list issues if pages are modified concurrently.
   Future<void> _startOcr() async {
     final controller = ref.read(scannerControllerProvider.notifier);
     controller.goToTextDetection();
 
-    final state = ref.read(scannerControllerProvider);
-    for (var i = 0; i < state.pages.length; i++) {
-      final page = state.pages[i];
+    // Capture page IDs upfront - iterate by ID, not by stale list reference.
+    final pageIds = ref.read(scannerControllerProvider).pages
+        .map((p) => p.id)
+        .toList();
+
+    for (var i = 0; i < pageIds.length; i++) {
+      final pageId = pageIds[i];
+
+      // Re-read state each iteration to get current page data.
+      final currentState = ref.read(scannerControllerProvider);
+      final page = currentState.pages.cast<ScanPage?>().firstWhere(
+        (p) => p?.id == pageId,
+        orElse: () => null,
+      );
+
+      // Skip if page was deleted during OCR.
+      if (page == null) continue;
+
       controller.setOcrProgress(i);
-      controller.markOcrProcessing(page.id, true);
+      controller.markOcrProcessing(pageId, true);
       try {
-        final text = await _ocrService.extractText(page.displayBytes);
-        controller.setPageOcrText(page.id, text);
+        final result = await _ocrService.extractWithPositions(page.displayBytes);
+        controller.setPageOcrResult(pageId, result);
       } catch (e) {
-        controller.setPageOcrText(page.id, '');
+        controller.markPageOcrFailed(pageId);
       }
     }
     controller.finishOcr();
@@ -553,28 +605,32 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       for (final page in state.pages) {
         final image = pw.MemoryImage(page.displayBytes);
         if (useSearchable && page.hasOcrText) {
-          // Searchable PDF: image with invisible text overlay.
+          // Searchable PDF: image with positional text overlay.
           doc.addPage(
             pw.Page(
               pageFormat: PdfPageFormat.a4,
-              build: (_) => pw.Stack(
+              build: (context) => pw.Stack(
                 children: [
                   pw.Center(
                     child: pw.Image(image, fit: pw.BoxFit.contain),
                   ),
-                  // Hidden text layer for searchability.
-                  pw.Positioned.fill(
-                    child: pw.Padding(
-                      padding: const pw.EdgeInsets.all(20),
-                      child: pw.Text(
-                        page.extractedText ?? '',
-                        style: pw.TextStyle(
-                          fontSize: 1,
-                          color: PdfColor.fromInt(0x00000000),
+                  // Use per-line positioned overlay if positions are available.
+                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
+                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
+                  else
+                    // Fallback: single block text layer for searchability.
+                    pw.Positioned.fill(
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.all(20),
+                        child: pw.Text(
+                          page.extractedText ?? '',
+                          style: pw.TextStyle(
+                            fontSize: 1,
+                            color: PdfColor.fromInt(0x00000000),
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -604,6 +660,30 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
   }
 
+  /// Build per-line positioned invisible text widgets for searchable PDF.
+  /// Each line is placed at its normalized (0..1) position within the page.
+  List<pw.Widget> _buildPositionedTextOverlay(
+    List<OcrLine> lines,
+    pw.Context context,
+  ) {
+    return [
+      for (final line in lines)
+        pw.Positioned(
+          left: line.x * PdfPageFormat.a4.width,
+          top: line.y * PdfPageFormat.a4.height,
+          width: line.w * PdfPageFormat.a4.width,
+          height: line.h * PdfPageFormat.a4.height,
+          child: pw.Text(
+            line.text,
+            style: pw.TextStyle(
+              fontSize: (line.h * PdfPageFormat.a4.height).clamp(1.0, 12.0),
+              color: PdfColor.fromInt(0x00000000),
+            ),
+          ),
+        ),
+    ];
+  }
+
   /// Save PDF directly to the device's documents directory.
   Future<void> _saveToDevice() async {
     final controller = ref.read(scannerControllerProvider.notifier);
@@ -617,23 +697,26 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           doc.addPage(
             pw.Page(
               pageFormat: PdfPageFormat.a4,
-              build: (_) => pw.Stack(
+              build: (context) => pw.Stack(
                 children: [
                   pw.Center(
                     child: pw.Image(image, fit: pw.BoxFit.contain),
                   ),
-                  pw.Positioned.fill(
-                    child: pw.Padding(
-                      padding: const pw.EdgeInsets.all(20),
-                      child: pw.Text(
-                        page.extractedText ?? '',
-                        style: pw.TextStyle(
-                          fontSize: 1,
-                          color: PdfColor.fromInt(0x00000000),
+                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
+                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
+                  else
+                    pw.Positioned.fill(
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.all(20),
+                        child: pw.Text(
+                          page.extractedText ?? '',
+                          style: pw.TextStyle(
+                            fontSize: 1,
+                            color: PdfColor.fromInt(0x00000000),
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
