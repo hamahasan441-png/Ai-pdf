@@ -28,6 +28,12 @@ class ScanPage {
   /// True while a (re)process is running for this page.
   final bool processing;
 
+  /// OCR-extracted text for this page; null if OCR has not been run.
+  final String? extractedText;
+
+  /// True while OCR is running for this page.
+  final bool ocrProcessing;
+
   const ScanPage({
     required this.id,
     required this.originalBytes,
@@ -36,6 +42,8 @@ class ScanPage {
     this.filter = ScanFilter.auto,
     this.rotationQuarterTurns = 0,
     this.processing = false,
+    this.extractedText,
+    this.ocrProcessing = false,
   });
 
   /// The bytes to display/export: processed if available, else the original.
@@ -43,13 +51,19 @@ class ScanPage {
 
   bool get isProcessed => processedBytes != null;
 
+  /// Whether OCR has been run and produced text for this page.
+  bool get hasOcrText => extractedText != null && extractedText!.isNotEmpty;
+
   ScanPage copyWith({
     Uint8List? processedBytes,
     DocumentCorners? corners,
     ScanFilter? filter,
     int? rotationQuarterTurns,
     bool? processing,
+    String? extractedText,
+    bool? ocrProcessing,
     bool clearProcessed = false,
+    bool clearOcrText = false,
   }) {
     return ScanPage(
       id: id,
@@ -60,6 +74,9 @@ class ScanPage {
       filter: filter ?? this.filter,
       rotationQuarterTurns: rotationQuarterTurns ?? this.rotationQuarterTurns,
       processing: processing ?? this.processing,
+      extractedText:
+          clearOcrText ? null : (extractedText ?? this.extractedText),
+      ocrProcessing: ocrProcessing ?? this.ocrProcessing,
     );
   }
 
