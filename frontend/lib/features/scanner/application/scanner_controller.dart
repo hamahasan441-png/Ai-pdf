@@ -16,6 +16,9 @@ enum ScanStage {
 
   /// Reviewing all captured pages (grid) before export.
   reviewing,
+
+  /// Text detection / OCR processing stage.
+  textDetection,
 }
 
 /// UI state for a scan session (Phase 51).
@@ -31,6 +34,15 @@ class ScannerState {
   final bool exporting;
   final String? error;
 
+  /// Combined OCR text from all pages (aggregated after detection).
+  final String recognizedText;
+
+  /// Current page index being OCR'd (for progress display), -1 if idle.
+  final int ocrProgressIndex;
+
+  /// Whether the searchable PDF option is enabled.
+  final bool searchablePdf;
+
   const ScannerState({
     this.pages = const [],
     this.stage = ScanStage.capturing,
@@ -39,10 +51,14 @@ class ScannerState {
     this.defaultFilter = ScanFilter.auto,
     this.exporting = false,
     this.error,
+    this.recognizedText = '',
+    this.ocrProgressIndex = -1,
+    this.searchablePdf = true,
   });
 
   int get pageCount => pages.length;
   bool get hasPages => pages.isNotEmpty;
+  bool get isOcrRunning => ocrProgressIndex >= 0;
 
   ScanPage? get activePage =>
       (activeIndex != null && activeIndex! >= 0 && activeIndex! < pages.length)
@@ -57,6 +73,9 @@ class ScannerState {
     ScanFilter? defaultFilter,
     bool? exporting,
     String? error,
+    String? recognizedText,
+    int? ocrProgressIndex,
+    bool? searchablePdf,
     bool clearActive = false,
     bool clearError = false,
   }) {
@@ -68,6 +87,9 @@ class ScannerState {
       defaultFilter: defaultFilter ?? this.defaultFilter,
       exporting: exporting ?? this.exporting,
       error: clearError ? null : (error ?? this.error),
+      recognizedText: recognizedText ?? this.recognizedText,
+      ocrProgressIndex: ocrProgressIndex ?? this.ocrProgressIndex,
+      searchablePdf: searchablePdf ?? this.searchablePdf,
     );
   }
 }
@@ -173,6 +195,55 @@ class ScannerController extends StateNotifier<ScannerState> {
 
   void goToReview() =>
       state = state.copyWith(stage: ScanStage.reviewing, clearActive: true);
+
+  /// Enter the text detection stage.
+  void goToTextDetection() =>
+      state = state.copyWith(stage: ScanStage.textDetection, clearActive: true);
+
+  /// Set OCR progress (which page index is currently being processed).
+  void setOcrProgress(int index) =>
+      state = state.copyWith(ocrProgressIndex: index);
+
+  /// Store OCR text for a specific page.
+  void setPageOcrText(String pageId, String text) {
+    _mutate(pageId, (p) => p.copyWith(extractedText: text, ocrProcessing: false));
+    // Rebuild the combined recognized text.
+    _rebuildRecognizedText();
+  }
+
+  /// Mark a page as currently running OCR.
+  void markOcrProcessing(String pageId, bool value) =>
+      _mutate(pageId, (p) => p.copyWith(ocrProcessing: value));
+
+  /// Clear all OCR results.
+  void clearOcr() {
+    state = state.copyWith(
+      pages: [
+        for (final p in state.pages) p.copyWith(clearOcrText: true),
+      ],
+      recognizedText: '',
+      ocrProgressIndex: -1,
+    );
+  }
+
+  /// Finish OCR processing (reset progress index).
+  void finishOcr() => state = state.copyWith(ocrProgressIndex: -1);
+
+  /// Toggle searchable PDF mode.
+  void toggleSearchablePdf() =>
+      state = state.copyWith(searchablePdf: !state.searchablePdf);
+
+  void _rebuildRecognizedText() {
+    final buf = StringBuffer();
+    for (var i = 0; i < state.pages.length; i++) {
+      final text = state.pages[i].extractedText;
+      if (text != null && text.isNotEmpty) {
+        if (buf.isNotEmpty) buf.write('\n\n');
+        buf.write('--- Page ${i + 1} ---\n$text');
+      }
+    }
+    state = state.copyWith(recognizedText: buf.toString());
+  }
 
   void toggleAutoCapture() =>
       state = state.copyWith(autoCapture: !state.autoCapture);
