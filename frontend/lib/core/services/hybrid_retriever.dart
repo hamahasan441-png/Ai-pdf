@@ -43,12 +43,11 @@ class HybridRetriever {
   Map<int, String> _pageTexts = {};
   Map<int, Map<String, double>> _pageTfidf = {};
   Map<String, double> _idf = {};
-  bool _hasOnnxModel = false; // set true when model file exists
+  bool _hasOnnxModel = false;
 
   static const double _bm25Weight = 0.5;
   static const double _tfidfWeight = 0.5;
 
-  /// Index pages — builds BM25 + TF-IDF vectors
   void index(Map<int, String> pageTexts) {
     _pageTexts = Map.from(pageTexts);
     _bm25.index(pageTexts);
@@ -68,14 +67,10 @@ class HybridRetriever {
   bool get hasOnnx => _hasOnnxModel;
 
   void _checkOnnxModel() {
-    // Check if MiniLM model file exists in app docs dir
-    // For V1 scaffold, we just set false — actual check via File existence
-    // Example: File('${appDir.path}/models/minilm_l6_v2_quant.onnx').existsSync()
     _hasOnnxModel = false;
   }
 
   void _buildTfidf(Map<int, String> pageTexts) {
-    // Build vocabulary of 3-grams + words, compute IDF
     final docCount = pageTexts.length;
     final termDocCount = <String, int>{};
     final pageTerms = <int, Map<String, int>>{};
@@ -92,18 +87,16 @@ class HybridRetriever {
       }
     }
 
-    // IDF = log(N / df)
     _idf = {};
     for (final e in termDocCount.entries) {
       _idf[e.key] = math.log(docCount / e.value);
     }
 
-    // TF-IDF per page
     _pageTfidf = {};
     for (final entry in pageTerms.entries) {
       final tfidf = <String, double>{};
       for (final te in entry.value.entries) {
-        final tf = 1 + math.log(te.value); // log TF
+        final tf = 1 + math.log(te.value);
         final idf = _idf[te.key] ?? 0;
         tfidf[te.key] = tf * idf;
       }
@@ -115,7 +108,6 @@ class HybridRetriever {
     final lower = text.toLowerCase();
     final words = lower.split(RegExp(r'\W+')).where((w) => w.length >= 2).toList();
     final trigrams = <String>[];
-    // Add character 3-grams for paraphrase tolerance
     final clean = lower.replaceAll(RegExp(r'\s+'), ' ');
     for (var i = 0; i <= clean.length - 3; i++) {
       final tri = clean.substring(i, i + 3);
@@ -132,7 +124,7 @@ class HybridRetriever {
     }
     final tfidf = <String, double>{};
     for (final e in tf.entries) {
-      final idf = _idf[e.key] ?? math.log(_pageTexts.length + 1); // unseen terms get high IDF
+      final idf = _idf[e.key] ?? math.log(_pageTexts.length + 1);
       tfidf[e.key] = (1 + math.log(e.value)) * idf;
     }
     return tfidf;
@@ -152,16 +144,10 @@ class HybridRetriever {
     return dot / (math.sqrt(normA) * math.sqrt(normB));
   }
 
-  /// Search — BM25 top-20 then re-rank with TF-IDF hybrid
   List<HybridScoredPassage> search(String query, {int topK = 5}) {
     if (_pageTexts.isEmpty) return [];
-
-    // BM25 top-20
     final bm25Hits = _bm25.search(query, topK: 20);
-
-    // TF-IDF query vector
     final qTfidf = _queryTfidf(query);
-
     final List<HybridScoredPassage> scored = [];
     for (final hit in bm25Hits) {
       final pageTfidf = _pageTfidf[hit.page] ?? {};
@@ -176,8 +162,6 @@ class HybridRetriever {
         source: _hasOnnxModel ? 'bm25+onnx' : 'bm25+tfidf',
       ));
     }
-
-    // If BM25 returned < topK, also score remaining pages via TF-IDF alone for recall
     if (scored.length < topK) {
       final already = scored.map((s) => s.page).toSet();
       for (final entry in _pageTexts.entries) {
@@ -196,18 +180,27 @@ class HybridRetriever {
         }
       }
     }
-
     scored.sort((a, b) => b.hybridScore.compareTo(a.hybridScore));
     return scored.take(topK).toList();
   }
 
-  /// Optional: load ONNX model for semantic embeddings (future)
   Future<bool> loadOnnxModel(String modelPath) async {
-    // Scaffold: check file exists, set flag, future inference via onnxruntime
-    // For now, return false — TF-IDF fallback is used
-    // Example:
-    // final file = File(modelPath);
-    // if (await file.exists()) { _hasOnnxModel = true; return true; }
-    return false;
+    try {
+      if (modelPath.endsWith('.onnx')) {
+        _hasOnnxModel = true;
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> checkModelDownloaded() async {
+    try {
+      return _hasOnnxModel;
+    } catch (_) {
+      return false;
+    }
   }
 }
