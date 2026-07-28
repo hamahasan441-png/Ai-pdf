@@ -168,18 +168,15 @@ The backend provides managed AI (no user key needed), server-side billing verifi
 
 ---
 
-## Documentation & Masterplans
+## Documentation & Masterplan
 
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** — full architecture, editor internals, contribution guide, local setup
-- **[ENHANCEMENT_BASED_MASTERPLAN.md](docs/ENHANCEMENT_BASED_MASTERPLAN.md)** — **NEW** 90-day enhancement plan (8 pillars, 42 tasks, additive, privacy-first, verification-gated)
-- **[ENHANCEMENT_TASKS.md](docs/ENHANCEMENT_TASKS.md)** — checkout-ready task list with file pointers & acceptance criteria
-- **[MASTER_ENGINEERING_PLAN.md](docs/MASTER_ENGINEERING_PLAN.md)** — completed P0–P3 + roadmap status
-- **[EDITOR_AND_INTELLIGENCE_MASTERPLAN.md](docs/EDITOR_AND_INTELLIGENCE_MASTERPLAN.md)** — deep editor/AI pillar design
-- **[CTO_REVIEW.md](docs/CTO_REVIEW.md)** — billion-dollar CTO review & why Flutter-native wins over native rewrite
-- **[PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** — what ships, what needs you (backend deploy, Play Console, AdMob)
+- **[docs/MASTERPLAN.md](docs/MASTERPLAN.md)** — **the single source of truth** for what to fix, improve, and ship (Phase 0 blockers → Phase 3 roadmap). Replaces all previous plan/review/status docs.
 
-### Enhancement-Based Principles
-> Build on what ships, additively, verifiably. Every enhancement is a small PR <400 lines, with test, migrating existing contracts (PageLayer, stable id, AnnotationDraw single render path, tiered get_quota metering). See `docs/ENHANCEMENT_BASED_MASTERPLAN.md` Pillar 1–8 for concrete designs.
+### Planning Principles
+> One plan, kept current. Build additively in small verifiable PRs, privacy-first, and
+> **never advertise a feature a user cannot reach**. See `docs/MASTERPLAN.md` for the
+> phased, evidence-linked task list.
 
 ---
 
