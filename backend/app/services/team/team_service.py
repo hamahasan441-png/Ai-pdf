@@ -79,7 +79,29 @@ async def record_audit(
     target: Optional[str] = None,
     detail: Optional[str] = None,
 ) -> None:
-    """Append a team audit entry. Flushed with the surrounding transaction."""
+    """Append a team audit entry with hash chain for tamper evidence (E8.4)."""
+    import hashlib
+
+    # Fetch last entry's hash for chain
+    last = (
+        await db.execute(
+            select(TeamAuditLog)
+            .where(TeamAuditLog.team_id == team_id)
+            .order_by(TeamAuditLog.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    prev_hash = last.hash if last and last.hash else "0" * 64
+
+    # Compute hash: SHA256(prev_hash + action + target + detail + timestamp)
+    # Use deterministic string concatenation
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload = f"{prev_hash}|{action}|{target or ''}|{detail or ''}|{now}"
+    curr_hash = hashlib.sha256(payload.encode()).hexdigest()
+
     db.add(
         TeamAuditLog(
             team_id=team_id,
@@ -87,6 +109,8 @@ async def record_audit(
             action=action,
             target=target,
             detail=detail,
+            prev_hash=prev_hash,
+            hash=curr_hash,
         )
     )
     await db.flush()

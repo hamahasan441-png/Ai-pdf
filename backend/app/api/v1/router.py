@@ -33,6 +33,7 @@ from app.api.v1.collab import router as collab_router
 from app.api.v1.redact import router as redact_router
 from app.api.v1.vision_forms import router as vision_forms_router
 from app.api.v1.paywall_analytics import router as paywall_analytics_router
+from app.api.v1.perf import router as perf_router
 
 api_router = APIRouter()
 
@@ -43,6 +44,7 @@ api_router.include_router(collab_router, tags=["Collaboration"])
 api_router.include_router(redact_router, tags=["Document AI"])
 api_router.include_router(vision_forms_router, tags=["Forms"])
 api_router.include_router(paywall_analytics_router, tags=["Billing"])
+api_router.include_router(perf_router, tags=["Admin"])
 api_router.include_router(profile_router, prefix="/profile", tags=["Profile"])
 api_router.include_router(documents_router, prefix="/documents", tags=["Documents"])
 api_router.include_router(ai_router, prefix="/ai", tags=["Managed AI"])

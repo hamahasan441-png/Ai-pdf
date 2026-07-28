@@ -108,11 +108,15 @@ class TeamMember(Base):
 
 
 class TeamAuditLog(Base):
-    """Append-only record of security-relevant team actions (Part 5.8).
+    """Append-only record of security-relevant team actions (Part 5.8 + E8.4 hash chain).
 
     Unlike the process-level :mod:`app.middleware.audit_log` (which streams to
     the app log), this table persists team-scoped events so an admin can export
     a compliance trail: who added/removed members, created/deleted templates, etc.
+
+    E8.4 — Hash chain for tamper evidence: each entry stores prev_hash (hash of previous entry)
+    and hash (SHA256 of prev_hash + action + target + detail + timestamp). This makes the log
+    tamper-evident: if any entry is modified, its hash changes and breaks chain.
     """
 
     __tablename__ = "team_audit_logs"
@@ -129,6 +133,9 @@ class TeamAuditLog(Base):
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # E8.4 — Hash chain for tamper evidence
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
