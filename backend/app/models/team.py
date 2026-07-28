@@ -13,8 +13,10 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -44,7 +46,11 @@ class TeamRole(str):
 
 
 class Team(Base):
-    """A group of users who share templates and (later) quotas/billing."""
+    """A group of users who share templates and (later) quotas/billing.
+
+    E8.1 — Per-team AI quota: optional daily limit that overrides the per-user
+    tier when acting in team context (X-Team-Id header). None = use user tier.
+    """
 
     __tablename__ = "teams"
 
@@ -55,6 +61,10 @@ class Team(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    # E8.1 — Daily AI quota for the whole team pool (None = unlimited or use user tier, depending on enforcement).
+    ai_daily_quota: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # E8.2 — Optional SSO requirement flag (enterprise)
+    sso_required: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -98,11 +108,15 @@ class TeamMember(Base):
 
 
 class TeamAuditLog(Base):
-    """Append-only record of security-relevant team actions (Part 5.8).
+    """Append-only record of security-relevant team actions (Part 5.8 + E8.4 hash chain).
 
     Unlike the process-level :mod:`app.middleware.audit_log` (which streams to
     the app log), this table persists team-scoped events so an admin can export
     a compliance trail: who added/removed members, created/deleted templates, etc.
+
+    E8.4 — Hash chain for tamper evidence: each entry stores prev_hash (hash of previous entry)
+    and hash (SHA256 of prev_hash + action + target + detail + timestamp). This makes the log
+    tamper-evident: if any entry is modified, its hash changes and breaks chain.
     """
 
     __tablename__ = "team_audit_logs"
@@ -119,6 +133,9 @@ class TeamAuditLog(Base):
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # E8.4 — Hash chain for tamper evidence
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

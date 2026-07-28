@@ -1,27 +1,26 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' show Rect;
+import 'dart:convert';
 
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'package:ai_pdf/core/config/app_settings.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
-/// A rectangular region marked for redaction (Phase 17).
-///
-/// [rect] is in the normalised 0..1 page space shared by the rest of the
-/// editor. [label] is optional metadata (e.g. "PII", "SSN") for an audit trail.
+/// A rectangular region marked for redaction (Phase 17 + E1.7).
 class RedactionRegion {
   final Rect rect;
   final String? label;
+  final int pageIndex;
 
-  const RedactionRegion(this.rect, {this.label});
+  const RedactionRegion(this.rect, {this.label, this.pageIndex = 0});
 }
 
-/// The result of burning redactions into a page.
 class RedactionResult {
-  /// Text-layer elements that survive (were NOT covered by any region).
   final List<PdfTextElement> remainingText;
-
-  /// Indices (into the original list) of the elements that were removed.
   final List<int> removedIndices;
-
-  /// Opaque rectangles to paint over the page (overlapping regions merged).
   final List<Rect> coverRects;
 
   const RedactionResult({
@@ -33,33 +32,15 @@ class RedactionResult {
   int get removedCount => removedIndices.length;
 }
 
-/// True redaction for the editor (Phase 17).
-///
-/// A common mistake in PDF tools is to draw a black box over text and call it
-/// "redacted" — the text underneath is still selectable and copyable. This
-/// service performs *real* redaction: any native text‑layer element that
-/// intersects a redaction region is **removed** from the text layer, so the
-/// covered content can no longer be searched, selected, or extracted. It also
-/// returns opaque cover rectangles (overlapping regions merged into as few
-/// rects as possible) to paint on the page and burn into the export raster.
-///
-/// Pure Dart + `dart:ui` geometry only → fully unit‑testable and isolate‑safe.
+/// True redaction service — Phase 17 + E1.7 Phase 6 true backend via PyMuPDF.
 class RedactionService {
   const RedactionService();
 
-  /// Fraction of a text element's area that must be covered for it to count as
-  /// redacted. A tiny clip (e.g. a region just grazing an element) shouldn't
-  /// wipe an entire line, so the default requires meaningful overlap.
   static const double coverageThreshold = 0.15;
 
-  /// Burn [regions] into a page's [elements].
-  RedactionResult apply(
-    List<PdfTextElement> elements,
-    List<RedactionRegion> regions,
-  ) {
+  RedactionResult apply(List<PdfTextElement> elements, List<RedactionRegion> regions) {
     final remaining = <PdfTextElement>[];
     final removed = <int>[];
-
     for (var i = 0; i < elements.length; i++) {
       if (_isCovered(elements[i].rect, regions)) {
         removed.add(i);
@@ -67,7 +48,6 @@ class RedactionService {
         remaining.add(elements[i]);
       }
     }
-
     return RedactionResult(
       remainingText: remaining,
       removedIndices: removed,
@@ -75,11 +55,7 @@ class RedactionService {
     );
   }
 
-  /// Indices of elements that would be redacted (preview without mutating).
-  List<int> coveredElements(
-    List<PdfTextElement> elements,
-    List<RedactionRegion> regions,
-  ) {
+  List<int> coveredElements(List<PdfTextElement> elements, List<RedactionRegion> regions) {
     final out = <int>[];
     for (var i = 0; i < elements.length; i++) {
       if (_isCovered(elements[i].rect, regions)) out.add(i);
@@ -87,8 +63,6 @@ class RedactionService {
     return out;
   }
 
-  /// Merge a set of rects so overlapping/touching ones collapse into their
-  /// bounding union. Repeats until no more merges happen (handles chains).
   List<Rect> mergeOverlapping(List<Rect> rects) {
     final result = <Rect>[for (final r in rects) r];
     var merged = true;
@@ -112,7 +86,6 @@ class RedactionService {
 
   bool _isCovered(Rect element, List<RedactionRegion> regions) {
     if (element.width <= 0 || element.height <= 0) {
-      // Degenerate element: covered if any region contains its top-left.
       for (final region in regions) {
         if (region.rect.contains(element.topLeft)) return true;
       }
@@ -129,9 +102,61 @@ class RedactionService {
   }
 
   bool _overlapsOrTouches(Rect a, Rect b) {
-    return a.left <= b.right &&
-        b.left <= a.right &&
-        a.top <= b.bottom &&
-        b.top <= a.bottom;
+    return a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom;
+  }
+
+  /// True redaction via backend — E1.7 Phase 6
+  /// Calls POST /document-ai/redact with file + areas_json, returns redacted PDF path
+  Future<String?> redactViaBackend({
+    required String filePath,
+    required List<RedactionRegion> regions,
+    String? teamId,
+  }) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+
+      final areas = regions.map((r) => {
+        'page': r.pageIndex,
+        'x0': r.rect.left.clamp(0.0, 1.0),
+        'y0': r.rect.top.clamp(0.0, 1.0),
+        'x1': r.rect.right.clamp(0.0, 1.0),
+        'y1': r.rect.bottom.clamp(0.0, 1.0),
+        'fill': 'white',
+      }).toList();
+
+      final jsonStr = jsonEncode(areas);
+
+      final dio = Dio(BaseOptions(
+        baseUrl: AppSettings.instance.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 60),
+      ));
+
+      final headers = <String, String>{};
+      if (teamId != null) headers['X-Team-Id'] = teamId;
+
+      final resp = await dio.post(
+        '/document-ai/redact',
+        data: FormData.fromMap({
+          'file': await MultipartFile.fromFile(filePath),
+          'areas_json': jsonStr,
+        }),
+        options: Options(headers: headers, responseType: ResponseType.bytes),
+      );
+
+      if (resp.statusCode == 200) {
+        final bytes = resp.data is Uint8List ? resp.data as Uint8List : Uint8List.fromList(resp.data as List<int>);
+        final dir = await getTemporaryDirectory();
+        final outPath = '${dir.path}/redacted_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final outFile = File(outPath);
+        await outFile.writeAsBytes(bytes);
+        return outPath;
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[RedactionService] backend redact failed: $e');
+    }
+    return null;
   }
 }

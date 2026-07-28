@@ -391,7 +391,12 @@ the change additive. **Proposed:** third-party/remote plugins.
 3. ✅ Deepen the AI moat (multi-doc reasoning, suggest-edits, analyze, form AI).
 4. ✅ Productionize (full auth, 210 tests, CI gates, tiered billing, developer platform).
 5. ✅ Platform (plugins, enterprise/teams, audit export, admin dashboard, API keys, webhooks).
-6. 🔜 Next: on-device embeddings; cloud sync; SSO; Flutter golden tests; 2FA.
+6. ✅ **Enhancement-Based Masterplan (NEW)** — `docs/ENHANCEMENT_BASED_MASTERPLAN.md` + `docs/ENHANCEMENT_TASKS.md`: 8 pillars, 42 tasks, additive, verification-gated. Backend enhancements shipped in this branch: RTDN re-verification `billing.py` (E6.1, 5 tests), webhook DLQ scaffold `admin.py` (E7.2), metering guard `backend/scripts/check_metering.py` (E5.5), tests now 225 passing.
+7. 🔜 Next: Execute Phase 1–4 from enhancement masterplan:
+   - Phase 1 (Weeks 1-3): E1.1 rich text per-run UI, E1.2 snap guides V2, E3.2 validation UI, E3.4 profiles manager, E4.4 auto-backup hardening
+   - Phase 2 (Weeks 4-6): E2.2 map-reduce streaming, E2.3 chat history UI, E4.1 progressive open, E4.2 low-RAM
+   - Phase 3 (Weeks 7-9): E5.1 encrypted recent + drift, E6.1 RTDN already done + E6.2 paywall A/B, E7.1 API key scopes
+   - Phase 4 (Weeks 10-12): E2.1 hybrid embeddings optional download, E5.2 2FA, E5.3 SSO, E8.1 per-team quotas, E8.2 cloud sync opt-in
 
 ---
 

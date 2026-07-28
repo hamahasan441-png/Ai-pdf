@@ -1,4 +1,4 @@
-"""API Key model (Part 7.1 — Developer Platform).
+"""API Key model (Part 7.1 — Developer Platform + E7.1 Scopes).
 
 Allows users (and optionally teams) to create long-lived API keys for
 programmatic access. The key itself is shown once at creation and never stored
@@ -12,6 +12,9 @@ Security rules:
 - Keys can be revoked (soft-delete: ``revoked_at`` is set, lookups skip it).
 - ``last_used_at`` is updated on each successful authentication so stale keys
   can be identified.
+- E7.1 — Scopes: each key carries a comma-separated allowlist of capabilities
+  (e.g. ai:read, forms:write). The enforcement helper ``has_scope`` checks
+  membership so endpoints can gate access without touching the auth flow.
 """
 
 import hashlib
@@ -20,7 +23,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Uuid
+from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -28,6 +31,41 @@ from app.db.database import Base
 # Prefix makes keys visually identifiable and grep-able in logs/configs.
 _KEY_PREFIX = "aipdf_"
 _KEY_BYTES = 32  # 256-bit random
+
+# E7.1 — Allowed scopes, additive design.
+API_KEY_SCOPES = frozenset(
+    {
+        "ai:read",
+        "ai:write",
+        "forms:read",
+        "forms:write",
+        "documents:read",
+        "documents:write",
+        "teams:read",
+        "teams:write",
+        "webhooks:read",
+        "webhooks:write",
+        "api_keys:read",
+        "api_keys:write",
+        "admin:read",
+    }
+)
+
+# Default scopes granted when none specified — full access, backward-compatible.
+DEFAULT_SCOPES = frozenset(
+    {
+        "ai:read",
+        "ai:write",
+        "forms:read",
+        "forms:write",
+        "documents:read",
+        "documents:write",
+        "teams:read",
+        "webhooks:read",
+        "webhooks:write",
+        "api_keys:read",
+    }
+)
 
 
 def generate_api_key() -> tuple[str, str]:
@@ -67,6 +105,8 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     # Prefix of the plaintext (first 8 chars) for display in the list UI.
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    # E7.1 — Comma-separated scopes (e.g. "ai:read,forms:write").
+    scopes: Mapped[str] = mapped_column(Text, default=",".join(sorted(DEFAULT_SCOPES)))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -80,3 +120,11 @@ class ApiKey(Base):
     @property
     def is_active(self) -> bool:
         return self.revoked_at is None
+
+    @property
+    def scope_list(self) -> list[str]:
+        return [s.strip() for s in (self.scopes or "").split(",") if s.strip()]
+
+    def has_scope(self, required: str) -> bool:
+        return required in self.scope_list
+

@@ -236,6 +236,22 @@ class BatchFillResponse(BaseModel):
     total_filled: int
 
 
+class BatchFillV2ResultItem(BaseModel):
+    doc: str
+    name: str
+    status: str  # success, partial, failed
+    filled_count: int
+    errors: list
+
+
+class BatchFillV2Response(BaseModel):
+    results: list[BatchFillV2ResultItem]
+    total: int
+    succeeded: int
+    failed: int
+    partial: int
+
+
 _MAX_BATCH_DOCS = 50  # Reasonable cap to avoid runaway CPU usage.
 
 
@@ -280,6 +296,65 @@ async def batch_fill_forms(request: BatchFillRequest):
         results=results,
         total_forms=len(results),
         total_filled=sum(r.fields_filled for r in results),
+    )
+
+
+@router.post("/batch/v2", response_model=BatchFillV2Response)
+async def batch_fill_forms_v2(request: BatchFillRequest):
+    """Fill multiple forms — V2 with per-doc status + error report (E3.6).
+
+    Returns for each doc:
+    - doc: index
+    - name: doc name
+    - status: success (all fields filled), partial (some filled), failed (none filled)
+    - filled_count: number filled
+    - errors: list of {field, error} validation errors
+
+    Frontend shows progress bar + cancel + error report with retry failed only.
+    Uses batch_processor with bounded concurrency (future: WorkManager for large).
+    """
+    if len(request.documents) > _MAX_BATCH_DOCS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Batch size exceeds maximum ({_MAX_BATCH_DOCS} documents).",
+        )
+
+    docs = [{"name": d.name, "fields": [f.model_dump() for f in d.fields]} for d in request.documents]
+    raw_results = batch_processor.process_batch(
+        docs,
+        request.profile,
+        request.field_mappings or {},
+    )
+
+    v2_results = []
+    succeeded = failed = partial = 0
+    for r in raw_results:
+        if r.fields_filled == 0:
+            status = "failed"
+            failed += 1
+        elif r.fields_filled < r.fields_detected:
+            status = "partial"
+            partial += 1
+        else:
+            status = "success"
+            succeeded += 1
+
+        v2_results.append(
+            BatchFillV2ResultItem(
+                doc=str(r.doc_index),
+                name=r.doc_name,
+                status=status,
+                filled_count=r.fields_filled,
+                errors=r.validation_errors,
+            )
+        )
+
+    return BatchFillV2Response(
+        results=v2_results,
+        total=len(v2_results),
+        succeeded=succeeded,
+        failed=failed,
+        partial=partial,
     )
 
 

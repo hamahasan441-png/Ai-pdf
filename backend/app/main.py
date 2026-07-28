@@ -28,6 +28,9 @@ async def lifespan(app: FastAPI):
         from app.models import api_key as _api_key  # noqa: F401
         from app.models import webhook as _webhook  # noqa: F401
         from app.models import chat_history as _chat_history  # noqa: F401
+        from app.models import sync as _sync  # noqa: F401 E8.2
+        from app.models import collab as _collab  # noqa: F401 E8.3
+        from app.models import paywall_event as _paywall  # noqa: F401 E6.3A
 
         await init_db()
     except Exception as e:  # noqa: BLE001 - never block boot on DB init
