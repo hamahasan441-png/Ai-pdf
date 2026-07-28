@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 
@@ -28,6 +29,19 @@ class ScanPage {
   /// True while a (re)process is running for this page.
   final bool processing;
 
+  /// OCR-extracted text for this page; null if OCR has not been run.
+  final String? extractedText;
+
+  /// Per-line OCR positions (normalized 0..1) for searchable PDF overlay.
+  /// Null if OCR has not been run or positions are unavailable.
+  final List<OcrLine>? ocrLines;
+
+  /// True while OCR is running for this page.
+  final bool ocrProcessing;
+
+  /// True if OCR was attempted but failed for this page.
+  final bool ocrFailed;
+
   const ScanPage({
     required this.id,
     required this.originalBytes,
@@ -36,6 +50,10 @@ class ScanPage {
     this.filter = ScanFilter.auto,
     this.rotationQuarterTurns = 0,
     this.processing = false,
+    this.extractedText,
+    this.ocrLines,
+    this.ocrProcessing = false,
+    this.ocrFailed = false,
   });
 
   /// The bytes to display/export: processed if available, else the original.
@@ -43,13 +61,21 @@ class ScanPage {
 
   bool get isProcessed => processedBytes != null;
 
+  /// Whether OCR has been run and produced text for this page.
+  bool get hasOcrText => extractedText != null && extractedText!.isNotEmpty;
+
   ScanPage copyWith({
     Uint8List? processedBytes,
     DocumentCorners? corners,
     ScanFilter? filter,
     int? rotationQuarterTurns,
     bool? processing,
+    String? extractedText,
+    List<OcrLine>? ocrLines,
+    bool? ocrProcessing,
+    bool? ocrFailed,
     bool clearProcessed = false,
+    bool clearOcrText = false,
   }) {
     return ScanPage(
       id: id,
@@ -60,6 +86,11 @@ class ScanPage {
       filter: filter ?? this.filter,
       rotationQuarterTurns: rotationQuarterTurns ?? this.rotationQuarterTurns,
       processing: processing ?? this.processing,
+      extractedText:
+          clearOcrText ? null : (extractedText ?? this.extractedText),
+      ocrLines: clearOcrText ? null : (ocrLines ?? this.ocrLines),
+      ocrProcessing: ocrProcessing ?? this.ocrProcessing,
+      ocrFailed: ocrFailed ?? this.ocrFailed,
     );
   }
 

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,8 +12,10 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
+import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/application/scanner_controller.dart';
 import 'package:ai_pdf/features/scanner/data/scan_image_processor.dart';
+import 'package:ai_pdf/features/scanner/data/scan_ocr_service.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
@@ -20,6 +23,7 @@ import 'package:ai_pdf/features/scanner/domain/services/document_detection_servi
 import 'package:ai_pdf/features/scanner/presentation/widgets/scan_crop_editor.dart';
 import 'package:ai_pdf/features/scanner/presentation/widgets/scan_filter_bar.dart';
 import 'package:ai_pdf/features/scanner/presentation/widgets/scan_review_grid.dart';
+import 'package:ai_pdf/features/scanner/presentation/widgets/scan_text_result_sheet.dart';
 
 /// Isolate-sendable job describing one page's dewarp + filter.
 class ScanProcessJob {
@@ -57,7 +61,8 @@ Uint8List? runScanProcessJob(ScanProcessJob job) {
 /// The professional document scanner screen (Phase 51).
 ///
 /// Flow: capture (system camera) -> auto edge-detect + crop editor -> filter
-/// -> review grid (reorder / rotate / delete) -> export multi-page PDF.
+/// -> review grid (reorder / rotate / delete) -> text detection (OCR) ->
+/// export multi-page PDF (searchable or image-only).
 class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
 
@@ -69,6 +74,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   final ImagePicker _picker = ImagePicker();
   static const _detector = DocumentDetectionService();
   static const _processor = ScanImageProcessor();
+  static const _ocrService = ScanOcrService();
 
   /// Original-image pixel sizes keyed by page id (for the crop editor mapping).
   final Map<String, ui.Size> _sizes = {};
@@ -97,6 +103,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         ScanStage.capturing => _captureView(state),
         ScanStage.cropping => _cropView(state),
         ScanStage.reviewing => _reviewView(state),
+        ScanStage.textDetection => _textDetectionView(state),
       },
     );
   }
@@ -105,6 +112,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         ScanStage.capturing => 'Scan Document',
         ScanStage.cropping => 'Adjust Edges',
         ScanStage.reviewing => 'Review & Export',
+        ScanStage.textDetection => 'Text Detection',
       };
 
   // ── Capture ──────────────────────────────────────────────────────────────
@@ -138,6 +146,13 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                 style: TextStyle(color: Colors.white70)),
             onPressed: _importFromGallery,
           ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.collections_outlined, color: Colors.white70),
+            label: const Text('Batch import (multiple)',
+                style: TextStyle(color: Colors.white70)),
+            onPressed: _batchImportFromGallery,
+          ),
           if (state.error != null) ...[
             const SizedBox(height: 16),
             Text(state.error!, style: const TextStyle(color: Colors.redAccent)),
@@ -161,31 +176,53 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();
-
-      // Auto-detect the document boundary from a downscaled analysis pass.
-      final input = _processor.extractDetectionInput(bytes);
-      final DocumentCorners corners;
-      final ui.Size size;
-      if (input == null) {
-        size = const ui.Size(1000, 1400);
-        corners = DocumentCorners.insetFrame(size, 0.05);
-      } else {
-        size = input.fullSize;
-        final result = _detector.estimateFromEnergy(
-          input.rowEnergy,
-          input.colEnergy,
-          input.fullSize,
-        );
-        corners = result.corners;
-      }
-
-      final page = controller.addCapture(bytes, corners);
-      _sizes[page.id] = size;
-      // Kick off processing for the thumbnail.
-      _process(page.id);
+      _addPageFromBytes(bytes);
     } catch (e) {
       controller.setError('Capture failed: $e');
     }
+  }
+
+  /// Batch import: pick multiple images from the gallery at once.
+  Future<void> _batchImportFromGallery() async {
+    final controller = ref.read(scannerControllerProvider.notifier);
+    try {
+      final files = await _picker.pickMultiImage(
+        imageQuality: 100,
+        maxWidth: 3000,
+        maxHeight: 3000,
+      );
+      if (files.isEmpty) return;
+      for (final file in files) {
+        final bytes = await file.readAsBytes();
+        _addPageFromBytes(bytes);
+      }
+    } catch (e) {
+      controller.setError('Batch import failed: $e');
+    }
+  }
+
+  /// Shared logic for adding a page from raw image bytes.
+  void _addPageFromBytes(Uint8List bytes) {
+    final controller = ref.read(scannerControllerProvider.notifier);
+    final input = _processor.extractDetectionInput(bytes);
+    final DocumentCorners corners;
+    final ui.Size size;
+    if (input == null) {
+      size = const ui.Size(1000, 1400);
+      corners = DocumentCorners.insetFrame(size, 0.05);
+    } else {
+      size = input.fullSize;
+      final result = _detector.estimateFromEnergy(
+        input.rowEnergy,
+        input.colEnergy,
+        input.fullSize,
+      );
+      corners = result.corners;
+    }
+
+    final page = controller.addCapture(bytes, corners);
+    _sizes[page.id] = size;
+    _process(page.id);
   }
 
   // ── Crop ─────────────────────────────────────────────────────────────────
@@ -276,27 +313,62 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           padding: const EdgeInsets.all(12),
           child: SafeArea(
             top: false,
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add_a_photo, color: Colors.white),
-                  label: const Text('Add page',
-                      style: TextStyle(color: Colors.white)),
-                  onPressed: controller.resumeCapture,
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add_a_photo, color: Colors.white),
+                      label: const Text('Add page',
+                          style: TextStyle(color: Colors.white)),
+                      onPressed: controller.resumeCapture,
+                    ),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      icon:
+                          const Icon(Icons.text_fields, color: Colors.white),
+                      label: const Text('Detect Text',
+                          style: TextStyle(color: Colors.white)),
+                      onPressed: state.hasPages ? _startOcr : null,
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                FilledButton.icon(
-                  icon: state.exporting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.picture_as_pdf),
-                  label: const Text('Export PDF'),
-                  onPressed:
-                      state.exporting || !state.hasPages ? null : _exportPdf,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: state.exporting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.picture_as_pdf),
+                        label: const Text('Export PDF'),
+                        onPressed:
+                            state.exporting || !state.hasPages ? null : _exportPdf,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: state.exporting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.save_alt),
+                        label: const Text('Save to device'),
+                        onPressed:
+                            state.exporting || !state.hasPages ? null : _saveToDevice,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -304,6 +376,187 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         ),
       ],
     );
+  }
+
+  // ── Text Detection ─────────────────────────────────────────────────────
+
+  Widget _textDetectionView(ScannerState state) {
+    final controller = ref.read(scannerControllerProvider.notifier);
+    return Column(
+      children: [
+        if (state.isOcrRunning)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                LinearProgressIndicator(
+                  value: state.pageCount > 0
+                      ? (state.ocrProgressIndex + 1) / state.pageCount
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Processing page ${state.ocrProgressIndex + 1} of ${state.pageCount}...',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        // Show OCR failure warning if any pages failed.
+        if (!state.isOcrRunning && state.ocrFailedPages > 0)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color: Colors.orange.shade900.withOpacity(0.3),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    color: Colors.orangeAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'OCR failed for ${state.ocrFailedPages} '
+                    '${state.ocrFailedPages == 1 ? 'page' : 'pages'}. '
+                    'Those pages may be blank or unreadable.',
+                    style: const TextStyle(
+                        color: Colors.orangeAccent, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: state.recognizedText.isEmpty && !state.isOcrRunning
+              ? const Center(
+                  child: Text(
+                    'No text detected.\nTry running text detection again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                )
+              : state.isOcrRunning
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Running OCR...',
+                              style: TextStyle(color: Colors.white70)),
+                        ],
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: SelectableText(
+                        state.recognizedText,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+        ),
+        Container(
+          color: Colors.black,
+          padding: const EdgeInsets.all(12),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  label: const Text('Back',
+                      style: TextStyle(color: Colors.white)),
+                  onPressed: controller.goToReview,
+                ),
+                const Spacer(),
+                if (state.recognizedText.isNotEmpty && !state.isOcrRunning) ...[
+                  IconButton(
+                    icon: const Icon(Icons.copy, color: Colors.white),
+                    tooltip: 'Copy all text',
+                    onPressed: () async {
+                      await Clipboard.setData(
+                          ClipboardData(text: state.recognizedText));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied to clipboard')),
+                        );
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    tooltip: 'Share text',
+                    onPressed: () async {
+                      await Share.share(
+                        state.recognizedText,
+                        subject: 'Scanned Text',
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.description, color: Colors.white),
+                    tooltip: 'View formatted text',
+                    onPressed: () => ScanTextResultSheet.show(
+                      context,
+                      text: state.recognizedText,
+                      onRescan: _startOcr,
+                    ),
+                  ),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('Searchable PDF'),
+                    onPressed: () => _exportPdf(forceSearchable: true),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── OCR Flow ─────────────────────────────────────────────────────────────
+
+  /// Start OCR on all pages and navigate to text detection view.
+  ///
+  /// Uses page IDs captured upfront and re-reads state each iteration to avoid
+  /// stale-list issues if pages are modified concurrently.
+  Future<void> _startOcr() async {
+    final controller = ref.read(scannerControllerProvider.notifier);
+    controller.goToTextDetection();
+
+    // Capture page IDs upfront - iterate by ID, not by stale list reference.
+    final pageIds = ref.read(scannerControllerProvider).pages
+        .map((p) => p.id)
+        .toList();
+
+    for (var i = 0; i < pageIds.length; i++) {
+      final pageId = pageIds[i];
+
+      // Re-read state each iteration to get current page data.
+      final currentState = ref.read(scannerControllerProvider);
+      final page = currentState.pages.cast<ScanPage?>().firstWhere(
+        (p) => p?.id == pageId,
+        orElse: () => null,
+      );
+
+      // Skip if page was deleted during OCR.
+      if (page == null) continue;
+
+      controller.setOcrProgress(i);
+      controller.markOcrProcessing(pageId, true);
+      try {
+        final result = await _ocrService.extractWithPositions(page.displayBytes);
+        controller.setPageOcrResult(pageId, result);
+      } catch (e) {
+        controller.markPageOcrFailed(pageId);
+      }
+    }
+    controller.finishOcr();
   }
 
   // ── Processing & export ──────────────────────────────────────────────────
@@ -342,22 +595,57 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
   }
 
-  Future<void> _exportPdf() async {
+  Future<void> _exportPdf({bool forceSearchable = false}) async {
     final controller = ref.read(scannerControllerProvider.notifier);
     final state = ref.read(scannerControllerProvider);
+    final useSearchable = forceSearchable || state.searchablePdf;
     controller.beginExport();
     try {
       final doc = pw.Document();
       for (final page in state.pages) {
         final image = pw.MemoryImage(page.displayBytes);
-        doc.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            build: (_) => pw.Center(
-              child: pw.Image(image, fit: pw.BoxFit.contain),
+        if (useSearchable && page.hasOcrText) {
+          // Searchable PDF: image with positional text overlay.
+          doc.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (context) => pw.Stack(
+                children: [
+                  pw.Center(
+                    child: pw.Image(image, fit: pw.BoxFit.contain),
+                  ),
+                  // Use per-line positioned overlay if positions are available.
+                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
+                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
+                  else
+                    // Fallback: single block text layer for searchability.
+                    pw.Positioned.fill(
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.all(20),
+                        child: pw.Text(
+                          page.extractedText ?? '',
+                          style: pw.TextStyle(
+                            fontSize: 1,
+                            color: PdfColor.fromInt(0x00000000),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          // Image-only PDF page.
+          doc.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (_) => pw.Center(
+                child: pw.Image(image, fit: pw.BoxFit.contain),
+              ),
+            ),
+          );
+        }
       }
       final bytes = await doc.save();
       final dir = await getTemporaryDirectory();
@@ -369,6 +657,102 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       await Share.shareXFiles([XFile(path)], text: 'Scanned document');
     } catch (e) {
       controller.setError('Export failed: $e');
+    }
+  }
+
+  /// Build per-line positioned invisible text widgets for searchable PDF.
+  /// Each line is placed at its normalized (0..1) position within the page.
+  List<pw.Widget> _buildPositionedTextOverlay(
+    List<OcrLine> lines,
+    pw.Context context,
+  ) {
+    return [
+      for (final line in lines)
+        pw.Positioned(
+          left: line.x * PdfPageFormat.a4.width,
+          top: line.y * PdfPageFormat.a4.height,
+          width: line.w * PdfPageFormat.a4.width,
+          height: line.h * PdfPageFormat.a4.height,
+          child: pw.Text(
+            line.text,
+            style: pw.TextStyle(
+              fontSize: (line.h * PdfPageFormat.a4.height).clamp(1.0, 12.0),
+              color: PdfColor.fromInt(0x00000000),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// Save PDF directly to the device's documents directory.
+  Future<void> _saveToDevice() async {
+    final controller = ref.read(scannerControllerProvider.notifier);
+    final state = ref.read(scannerControllerProvider);
+    controller.beginExport();
+    try {
+      final doc = pw.Document();
+      for (final page in state.pages) {
+        final image = pw.MemoryImage(page.displayBytes);
+        if (state.searchablePdf && page.hasOcrText) {
+          doc.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (context) => pw.Stack(
+                children: [
+                  pw.Center(
+                    child: pw.Image(image, fit: pw.BoxFit.contain),
+                  ),
+                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
+                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
+                  else
+                    pw.Positioned.fill(
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.all(20),
+                        child: pw.Text(
+                          page.extractedText ?? '',
+                          style: pw.TextStyle(
+                            fontSize: 1,
+                            color: PdfColor.fromInt(0x00000000),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        } else {
+          doc.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (_) => pw.Center(
+                child: pw.Image(image, fit: pw.BoxFit.contain),
+              ),
+            ),
+          );
+        }
+      }
+      final bytes = await doc.save();
+      final dir = await getApplicationDocumentsDirectory();
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final path = '${dir.path}/scan_$ts.pdf';
+      final f = File(path);
+      await f.writeAsBytes(bytes);
+      controller.finishExport();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved to: $path'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      controller.setError('Save failed: $e');
     }
   }
 }
