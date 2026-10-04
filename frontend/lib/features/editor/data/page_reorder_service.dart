@@ -42,6 +42,7 @@ class PageReorderService {
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
     required int pageCount,
+    Map<int, int>? resolution,
   }) {
     if (pageCount <= 1) return pageCount; // can't delete the last page
     if (index < 0 || index >= pageCount) return pageCount;
@@ -52,11 +53,15 @@ class PageReorderService {
 
     final newCache = <int, Uint8List>{};
     final newLayers = <int, PageLayer>{};
+    final newResolution = <int, int>{};
     for (var i = 0; i < pageCount; i++) {
       if (i == index) continue;
       final newIdx = i < index ? i : i - 1;
       if (pageCache.containsKey(i)) newCache[newIdx] = pageCache[i]!;
       if (layers.containsKey(i)) newLayers[newIdx] = layers[i]!;
+      if (resolution != null && resolution.containsKey(i)) {
+        newResolution[newIdx] = resolution[i]!;
+      }
     }
 
     pageCache
@@ -65,6 +70,11 @@ class PageReorderService {
     layers
       ..clear()
       ..addAll(newLayers);
+    if (resolution != null) {
+      resolution
+        ..clear()
+        ..addAll(newResolution);
+    }
 
     return pageCount - 1;
   }
@@ -75,20 +85,27 @@ class PageReorderService {
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
     required int pageCount,
+    Map<int, int>? resolution,
   }) {
     // Shift existing pages from [index] onward up by one.
     final newCache = <int, Uint8List>{};
     final newLayers = <int, PageLayer>{};
+    final newResolution = <int, int>{};
 
     for (var i = pageCount - 1; i >= index; i--) {
       if (pageCache.containsKey(i)) newCache[i + 1] = pageCache[i]!;
       if (layers.containsKey(i)) newLayers[i + 1] = layers[i]!;
+      if (resolution != null && resolution.containsKey(i)) {
+        newResolution[i + 1] = resolution[i]!;
+      }
       pageCache.remove(i);
       layers.remove(i);
+      resolution?.remove(i);
     }
 
     pageCache.addAll(newCache);
     layers.addAll(newLayers);
+    resolution?.addAll(newResolution);
     // The blank page at [index] has no cache entry (will show as empty/white).
     layers[index] = PageLayer();
 
@@ -101,16 +118,21 @@ class PageReorderService {
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
     required int pageCount,
+    Map<int, int>? resolution,
   }) {
     final newCount = insertBlankPage(
       index: index + 1,
       pageCache: pageCache,
       layers: layers,
       pageCount: pageCount,
+      resolution: resolution,
     );
     // Copy the rendered bytes to the new slot.
     if (pageCache.containsKey(index)) {
       pageCache[index + 1] = Uint8List.fromList(pageCache[index]!);
+    }
+    if (resolution != null && resolution.containsKey(index)) {
+      resolution[index + 1] = resolution[index]!;
     }
     return newCount;
   }

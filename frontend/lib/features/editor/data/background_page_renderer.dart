@@ -36,26 +36,38 @@ class BackgroundPageRenderer {
     required Map<int, Uint8List> pageCache,
     required int renderMaxEdge,
     int? downscaleMaxEdge,
+    Map<int, int>? resolution,
+    bool Function()? stillCurrent,
   }) async {
-    if (pageCache.containsKey(index)) return;
+    if (pageCache.containsKey(index) && resolution == null) return;
 
-    // Step 1: render via pdfx (native async).
+    // Step 1: render via pdfx (native async, serialized per document).
     await _renderer.renderPage(
       doc: doc,
       index: index,
       pageCache: pageCache,
       renderMaxEdge: renderMaxEdge,
+      resolution: resolution,
+      stillCurrent: stillCurrent,
     );
 
+    // The renderer already capped the long edge. Decoding that JPEG just to
+    // discover it is small enough is pure main-isolate waste — skip it.
+    if (downscaleMaxEdge == null || downscaleMaxEdge >= renderMaxEdge) return;
+    if (stillCurrent != null && !stillCurrent()) return;
+
     // Step 2: optionally downscale on a background isolate to save memory.
-    if (downscaleMaxEdge != null && pageCache.containsKey(index)) {
+    if (pageCache.containsKey(index)) {
       final bytes = pageCache[index]!;
       final scaled = await compute(
         _downscaleJpeg,
         _DownscaleParams(bytes: bytes, maxEdge: downscaleMaxEdge),
       );
-      if (scaled != null) {
+      if (stillCurrent != null && !stillCurrent()) return;
+      // Don't clobber a sharper bitmap that landed while we were decoding.
+      if (scaled != null && identical(pageCache[index], bytes)) {
         pageCache[index] = scaled;
+        if (resolution != null) resolution[index] = downscaleMaxEdge;
       }
     }
   }
@@ -65,11 +77,13 @@ class BackgroundPageRenderer {
     required Map<int, Uint8List> pageCache,
     required int keepIndex,
     required int maxCachedPages,
+    Map<int, int>? resolution,
   }) {
     _renderer.evictFarPages(
       pageCache: pageCache,
       keepIndex: keepIndex,
       maxCachedPages: maxCachedPages,
+      resolution: resolution,
     );
   }
 }
