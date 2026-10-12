@@ -17,6 +17,7 @@ class EditorScreenBody extends StatelessWidget {
   final Widget? richTextToolbar;
   final Widget? thumbnailStrip;
   final Widget? searchBar;
+  final Widget? textSelectionBar;
   final Widget? redactionOverlay;
   final Widget? outlinePanel;
   final Widget? chatPanel;
@@ -37,6 +38,7 @@ class EditorScreenBody extends StatelessWidget {
     this.richTextToolbar,
     this.thumbnailStrip,
     this.searchBar,
+    this.textSelectionBar,
     this.redactionOverlay,
     this.outlinePanel,
     this.chatPanel,
@@ -67,6 +69,13 @@ class EditorScreenBody extends StatelessWidget {
         if (richTextToolbar != null) richTextToolbar!,
         if (searchBar != null)
           Positioned(left: 16, right: 16, top: 8, child: searchBar!),
+        if (textSelectionBar != null)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: thumbnailStrip != null ? 168 : 112,
+            child: textSelectionBar!,
+          ),
         if (outlinePanel != null)
           Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
         if (layerPanel != null)

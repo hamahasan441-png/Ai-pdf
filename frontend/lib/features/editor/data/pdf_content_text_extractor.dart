@@ -327,8 +327,8 @@ class _PdfDoc {
     final lly = box[1];
     final urx = box.length > 2 ? box[2] : 612;
     final ury = box.length > 3 ? box[3] : 792;
-    final pw = (urx - llx).abs() < 1 ? 612.0 : (urx - llx);
-    final ph = (ury - lly).abs() < 1 ? 792.0 : (ury - lly);
+    final pw = ((urx - llx).abs() < 1 ? 612.0 : (urx - llx)).toDouble();
+    final ph = ((ury - lly).abs() < 1 ? 792.0 : (ury - lly)).toDouble();
     final out = <PdfTextElement>[];
     for (final stream in streams) {
       try {
@@ -738,7 +738,7 @@ class _PdfDoc {
       if (t.isEmpty) return const [];
       return [PdfTextElement(text: t, rect: rect, fontSize: fontSize)];
     }
-    final rtl = _rtl.isRtl(clean);
+    final rtl = PdfContentTextExtractor._rtl.isRtl(clean);
     final n = clean.length;
     if (n == 0 || rect.width <= 0) return const [];
     final unit = rect.width / n;

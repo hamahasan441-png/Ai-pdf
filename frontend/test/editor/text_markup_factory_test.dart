@@ -51,6 +51,25 @@ void main() {
     }
   });
 
+  test('a tap inside a word selects only that word', () {
+    final sel = factory.wordsBetween(
+      start: const Offset(0.12, 0.11),
+      end: const Offset(0.12, 0.11),
+      elements: elements,
+    );
+    expect(sel, isNotNull);
+    expect(sel!.text, 'Hello');
+    expect(factory.containsText(elements, const Offset(0.12, 0.11)), isTrue);
+    expect(factory.containsText(elements, const Offset(0.01, 0.01)), isFalse);
+    final mark = factory.fromSelection(
+      tool: EditTool.strikeout,
+      selection: sel,
+      color: yellow,
+    );
+    expect(mark!.kind, TextMarkupKind.strikeout);
+    expect(mark.text, 'Hello');
+  });
+
   test('a scanned page uses the drag rectangle', () {
     final mark = factory.fromDrag(
       tool: EditTool.highlight,

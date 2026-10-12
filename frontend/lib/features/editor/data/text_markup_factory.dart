@@ -85,4 +85,40 @@ class TextMarkupFactory {
     if (rect.width < 0.01 || rect.height < 0.004) return null;
     return TextMarkupAnnotation(kind: kind, rects: [rect], color: color);
   }
+
+  /// True when [p] lands on a word, with a little padding for a finger.
+  bool containsText(List<PdfTextElement> elements, Offset p) {
+    for (final e in elements) {
+      if (e.rect.inflate(0.008).contains(p)) return true;
+    }
+    return false;
+  }
+
+  /// Words between two points. Empty when the page has no text layer.
+  TextSelectionResult? wordsBetween({
+    required Offset start,
+    required Offset end,
+    required List<PdfTextElement> elements,
+  }) {
+    if (elements.isEmpty) return null;
+    final sel = selection.selectRange(elements, start, end);
+    if (sel.isEmpty) return null;
+    return sel;
+  }
+
+  /// Turn an existing word selection into a mark (Copy bar → Highlight, etc.).
+  TextMarkupAnnotation? fromSelection({
+    required EditTool tool,
+    required TextSelectionResult selection,
+    required Color color,
+  }) {
+    final kind = kindFor(tool);
+    if (kind == null || selection.isEmpty) return null;
+    return TextMarkupAnnotation(
+      kind: kind,
+      rects: selection.rects,
+      color: color,
+      text: selection.text,
+    );
+  }
 }

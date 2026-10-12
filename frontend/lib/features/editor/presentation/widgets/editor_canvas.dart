@@ -31,6 +31,9 @@ class EditorCanvas extends StatelessWidget {
   final bool highlightPreview;
   final List<Rect> markupPreview;
   final TextMarkupKind? markupKind;
+  final List<Rect> findRects;
+  final int activeFind;
+  final List<Rect> wordSelection;
   final bool showFields;
   final List<DetectedField> pageFields;
   final bool showEditLines;
@@ -102,6 +105,9 @@ class EditorCanvas extends StatelessWidget {
     required this.highlightPreview,
     this.markupPreview = const [],
     this.markupKind,
+    this.findRects = const [],
+    this.activeFind = -1,
+    this.wordSelection = const [],
     required this.showFields,
     required this.pageFields,
     required this.showEditLines,
@@ -203,6 +209,9 @@ class EditorCanvas extends StatelessWidget {
                   markups: layer.markups,
                   markupPreview: markupPreview,
                   markupKind: markupKind,
+                  findRects: findRects,
+                  activeFind: activeFind,
+                  wordSelection: wordSelection,
                   revision: canvasRevision,
                 ),
               ),

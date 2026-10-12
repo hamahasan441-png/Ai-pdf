@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,7 @@ import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 import 'package:ai_pdf/features/editor/data/text_markup_factory.dart';
+import 'package:ai_pdf/features/editor/domain/services/text_selection_service.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
@@ -69,6 +71,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_smart_fill_re
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_value_prompt_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_dialog.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_selection_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
@@ -132,8 +135,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
   List<Rect> _markupPreview = const [];
+  TextSelectionResult? _wordSelection;
   final TextMarkupFactory _markupFactory = const TextMarkupFactory();
   int _navTicket = 0;
+  int _textGen = 0;
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
 
@@ -533,6 +538,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageEdge.clear();
       _textLayer.clear();
       _markupPreview = const [];
+      _wordSelection = null;
       _layers.clear();
       _fields.clear();
       _multi.clear();
@@ -545,8 +551,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _doc = loaded.document;
       _pageCount = loaded.pageCount;
       final ticket = ++_navTicket;
+      final textGen = ++_textGen;
       if (loaded.isPdf && _doc != null) {
-        unawaited(_loadTextLayer(path, ticket));
+        unawaited(_loadTextLayer(path, textGen));
         await _preloader.renderFirstPageProgressive(
           doc: _doc!,
           index: 0,
@@ -606,18 +613,81 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  Future<void> _loadTextLayer(String path, int ticket) async {
+  Future<void> _loadTextLayer(String path, int gen) async {
     try {
       final map = await compute(extractPdfTextLayerFromPath, path);
-      if (!mounted || ticket != _navTicket) return;
+      if (!mounted || gen != _textGen) return;
       setState(() {
         _textLayer
           ..clear()
           ..addAll(map);
       });
+      _searchController.setPages(_textLayer);
+      if (_searchController.state.active && _searchController.state.hasMatches) {
+        _jumpToSearch();
+      }
     } catch (_) {
       // A PDF this parser does not understand still edits; marks use the drag box.
     }
+  }
+
+  void _syncSearchPages() {
+    _searchController.setPages(_textLayer);
+  }
+
+  void _jumpToSearch() {
+    final page = _searchController.state.currentPage;
+    if (page >= 0 && page != _current) _goToPage(page);
+  }
+
+  void _onSearchQuery(String query) {
+    setState(() => _searchController.setQuery(query));
+    _jumpToSearch();
+  }
+
+  void _onSearchStep(void Function() step) {
+    setState(step);
+    _jumpToSearch();
+  }
+
+  List<Rect> _findRects() {
+    if (!_searchController.state.active) return const [];
+    return _searchController.state.rectsForPage(_current);
+  }
+
+  int _activeFindIndex() {
+    final state = _searchController.state;
+    final match = state.currentMatch;
+    if (match == null || match.pageIndex != _current) return -1;
+    var i = 0;
+    for (final m in state.matches) {
+      if (m.pageIndex != _current) continue;
+      if (m.elementIndex == match.elementIndex && m.start == match.start) return i;
+      i++;
+    }
+    return -1;
+  }
+
+  void _copyWords() {
+    final text = _wordSelection?.text ?? '';
+    if (text.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    final l10n = AppLocalizations.of(context);
+    _showError(l10n?.copied ?? 'Copied');
+  }
+
+  void _markSelection(EditTool tool) {
+    final sel = _wordSelection;
+    if (sel == null) return;
+    final color = tool == EditTool.highlight && _color == Colors.red
+        ? const Color(0xFFFFEB3B)
+        : _color;
+    final ann = _markupFactory.fromSelection(tool: tool, selection: sel, color: color);
+    if (ann == null) return;
+    setState(() {
+      _pushItem(ann);
+      _wordSelection = null;
+    });
   }
 
   void _reindexTextOnDelete(int index, int oldCount) {
@@ -630,6 +700,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _textLayer
       ..clear()
       ..addAll(next);
+    _syncSearchPages();
   }
 
   void _reindexTextOnInsert(int index) {
@@ -640,6 +711,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _textLayer
       ..clear()
       ..addAll(next);
+    _syncSearchPages();
   }
 
   Future<void> _renderPage(int index, {int? maxEdge}) async {
@@ -674,6 +746,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _multi.clear();
         _showFields = false;
         _showEditLines = false;
+        _wordSelection = null;
+        _markupPreview = const [];
       });
     } else {
       setState(() {});
@@ -688,6 +762,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _multi.clear();
         _showFields = false;
         _showEditLines = false;
+        _wordSelection = null;
+        _markupPreview = const [];
       });
     }
     await _renderPage(index, maxEdge: _renderMaxEdge);
@@ -847,10 +923,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
           ..add(hit);
         _selMode = 'move';
         _selDragLast = n;
+        _wordSelection = null;
+      } else if (_markupFactory.containsText(_textLayer[_current] ?? const [], n)) {
+        _selMode = 'text';
+        _shapeStart = n;
+        _shapeEnd = n;
+        _multi.clear();
+        _wordSelection = _markupFactory.wordsBetween(
+          start: n,
+          end: n,
+          elements: _textLayer[_current] ?? const [],
+        );
       } else {
         _selMode = 'marquee';
         _marqueeStart = n;
         _marqueeEnd = n;
+        _wordSelection = null;
       }
       if (_selMode == 'move' && _multi.isNotEmpty) {
         // Capture a single undoable step for the whole drag-move.
@@ -860,6 +948,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       return;
     }
     if (_isMarkup) {
+      _wordSelection = null;
       _shapeStart = n;
       _shapeEnd = n;
       _markupPreview = _markupFactory.previewRects(
@@ -891,6 +980,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (_tool == EditTool.select) {
+      if (_selMode == 'text' && _shapeStart != null) {
+        _shapeEnd = n;
+        _wordSelection = _markupFactory.wordsBetween(
+          start: _shapeStart!,
+          end: n,
+          elements: _textLayer[_current] ?? const [],
+        );
+        setState(() {});
+        return;
+      }
       if (_selMode == 'marquee') {
         _marqueeEnd = n;
         setState(() {});
@@ -934,6 +1033,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanEnd() {
     if (_tool == EditTool.select) {
+      if (_selMode == 'text') {
+        _selMode = 'none';
+        _shapeStart = null;
+        _shapeEnd = null;
+        setState(() {});
+        return;
+      }
       if (_selMode == 'marquee' && _marqueeStart != null && _marqueeEnd != null) {
         _multi
           ..clear()
@@ -1081,6 +1187,20 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _placeNote(n);
       return;
     }
+    if (_isMarkup) {
+      final words = _textLayer[_current] ?? const [];
+      if (words.isEmpty || _markupFactory.containsText(words, n)) {
+        final ann = _markupFactory.fromDrag(
+          tool: _tool,
+          start: n,
+          end: n,
+          elements: words,
+          color: _color,
+        );
+        if (ann != null) setState(() => _pushItem(ann));
+      }
+      return;
+    }
 
     final mark = _tapTools.buildMarkAnnotation(_tool, n);
     if (mark != null) {
@@ -1099,10 +1219,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() => _selected = _hitTest(n));
     } else if (_tool == EditTool.select) {
       final hit = _hitTest(n);
-      setState(() {
-        _multi.clear();
-        if (hit != null) _multi.add(hit);
-      });
+      if (hit != null) {
+        setState(() {
+          _wordSelection = null;
+          _multi
+            ..clear()
+            ..add(hit);
+        });
+      } else {
+        final words = _textLayer[_current] ?? const [];
+        setState(() {
+          _multi.clear();
+          _wordSelection = _markupFactory.containsText(words, n)
+              ? _markupFactory.wordsBetween(start: n, end: n, elements: words)
+              : null;
+        });
+      }
     }
   }
 
@@ -1865,12 +1997,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
         searchBar: _searchController.state.active
             ? EditorSearchBar(
                 searchState: _searchController.state,
-                onQueryChanged: (q) => setState(() => _searchController.setQuery(q)),
-                onNext: () => setState(() => _searchController.next()),
-                onPrevious: () => setState(() => _searchController.previous()),
+                onQueryChanged: _onSearchQuery,
+                onNext: () => _onSearchStep(_searchController.next),
+                onPrevious: () => _onSearchStep(_searchController.previous),
                 onClose: () => setState(() => _searchController.close()),
                 onCaseSensitiveChanged: (v) => setState(() => _searchController.setCaseSensitive(v)),
                 onWholeWordChanged: (v) => setState(() => _searchController.setWholeWord(v)),
+              )
+            : null,
+        textSelectionBar: _wordSelection != null && _wordSelection!.isNotEmpty
+            ? EditorTextSelectionBar(
+                onCopy: _copyWords,
+                onMarkup: _markSelection,
+                onClose: () => setState(() => _wordSelection = null),
               )
             : null,
         redactionOverlay: _redactionController.state.active
@@ -1990,6 +2129,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
             highlightPreview: false,
             markupPreview: _markupPreview,
             markupKind: _markupFactory.kindFor(_tool),
+            findRects: _findRects(),
+            activeFind: _activeFindIndex(),
+            wordSelection: _wordSelection?.rects ?? const [],
             showFields: _showFields,
             pageFields: _pageFields,
             showEditLines: _showEditLines,
@@ -2090,6 +2232,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 tool == EditTool.highlight && _tool != EditTool.highlight;
             _tool = tool;
             _markupPreview = const [];
+            _wordSelection = null;
             _shapeStart = null;
             _shapeEnd = null;
             if (enteringHighlight && _color == Colors.red) {

@@ -31,6 +31,9 @@ class EditorCanvasPainter extends CustomPainter {
   final List<TextMarkupAnnotation> markups;
   final List<Rect> markupPreview;
   final TextMarkupKind? markupKind;
+  final List<Rect> findRects;
+  final int activeFind;
+  final List<Rect> wordSelection;
 
   /// Bumped by the screen whenever an async image decode completes, so the
   /// canvas repaints even though the annotation list length is unchanged.
@@ -53,6 +56,9 @@ class EditorCanvasPainter extends CustomPainter {
     this.markups = const [],
     this.markupPreview = const [],
     this.markupKind,
+    this.findRects = const [],
+    this.activeFind = -1,
+    this.wordSelection = const [],
     this.revision = 0,
   });
 
@@ -61,6 +67,7 @@ class EditorCanvasPainter extends CustomPainter {
     for (final im in images) {
       imageRenderer.paint(canvas, size, im);
     }
+    _paintFind(canvas, size);
     for (final m in markups) {
       AnnotationDraw.markup(canvas, size, m, multiply: false);
     }
@@ -96,7 +103,50 @@ class EditorCanvasPainter extends CustomPainter {
         multiply: false,
       );
     }
+    _paintWordSelection(canvas, size);
   }
+
+  void _paintFind(Canvas canvas, Size size) {
+    for (var i = 0; i < findRects.length; i++) {
+      final rect = _norm(findRects[i], size);
+      final active = i == activeFind;
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..color = active ? const Color(0x88FF9800) : const Color(0x55FFEB3B)
+          ..style = PaintingStyle.fill,
+      );
+      if (active) {
+        canvas.drawRect(
+          rect,
+          Paint()
+            ..color = const Color(0xFFFF9800)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6,
+        );
+      }
+    }
+  }
+
+  void _paintWordSelection(Canvas canvas, Size size) {
+    final fill = Paint()..color = const Color(0x443F51B5);
+    final edge = Paint()
+      ..color = const Color(0xFF3F51B5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    for (final r in wordSelection) {
+      final rect = _norm(r, size);
+      canvas.drawRect(rect, fill);
+      canvas.drawRect(rect, edge);
+    }
+  }
+
+  Rect _norm(Rect r, Size size) => Rect.fromLTWH(
+        r.left * size.width,
+        r.top * size.height,
+        r.width * size.width,
+        r.height * size.height,
+      );
 
   /// Use structural equality so Flutter only repaints when the visible content
   /// actually changes. Returning `true` unconditionally caused the canvas to
@@ -117,7 +167,10 @@ class EditorCanvasPainter extends CustomPainter {
         old.stamps.length != stamps.length ||
         old.markups.length != markups.length ||
         old.markupKind != markupKind ||
+        old.activeFind != activeFind ||
         !_sameRects(old.markupPreview, markupPreview) ||
+        !_sameRects(old.findRects, findRects) ||
+        !_sameRects(old.wordSelection, wordSelection) ||
         _markupSig(old.markups) != _markupSig(markups) ||
         old.revision != revision) {
       return true;
