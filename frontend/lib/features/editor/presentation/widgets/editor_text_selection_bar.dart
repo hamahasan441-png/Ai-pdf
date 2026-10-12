@@ -8,12 +8,14 @@ import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 class EditorTextSelectionBar extends StatelessWidget {
   final ValueChanged<EditTool> onMarkup;
   final VoidCallback onCopy;
+  final VoidCallback? onEdit;
   final VoidCallback onClose;
 
   const EditorTextSelectionBar({
     super.key,
     required this.onMarkup,
     required this.onCopy,
+    this.onEdit,
     required this.onClose,
   });
 
@@ -35,6 +37,12 @@ class EditorTextSelectionBar extends StatelessWidget {
               icon: const Icon(Icons.copy),
               onPressed: onCopy,
             ),
+            if (onEdit != null)
+              IconButton(
+                tooltip: l10n.toolText,
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit,
+              ),
             IconButton(
               tooltip: l10n.toolHighlight,
               icon: const Icon(Icons.highlight),

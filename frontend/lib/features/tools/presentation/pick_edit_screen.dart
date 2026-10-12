@@ -137,6 +137,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, int> _pageEdge = {};
   /// width / height of each page. Missing entries fall back to A4 portrait.
   final Map<int, double> _pageAspect = {};
+  final Map<int, double> _pageHeightPt = {};
   /// Clockwise quarter-turns applied to the on-screen page this session.
   final Map<int, int> _pageQuarterTurns = {};
   final TransformationController _viewTransform = TransformationController();
@@ -556,6 +557,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageCache.clear();
       _pageEdge.clear();
       _pageAspect.clear();
+      _pageHeightPt.clear();
       _pageQuarterTurns.clear();
       _textLayer.clear();
       _markupPreview = const [];
@@ -581,6 +583,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           pageCache: _pageCache,
           resolution: _pageEdge,
           aspects: _pageAspect,
+          pageHeights: _pageHeightPt,
           stillCurrent: () => mounted && ticket == _navTicket,
           onLowRes: (_) {
             if (mounted && ticket == _navTicket) setState(() {});
@@ -750,6 +753,33 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return -1;
   }
 
+  Future<void> _editSelectedWords() async {
+    final sel = _wordSelection;
+    final words = _textLayer[_current] ?? const <PdfTextElement>[];
+    if (sel == null || sel.indices.isEmpty) return;
+    final picked = <PdfTextElement>[
+      for (final i in sel.indices)
+        if (i >= 0 && i < words.length) words[i],
+    ];
+    if (picked.isEmpty) return;
+    final draft = _existingText.draftForWords(
+      picked,
+      pageHeightPt: _pageHeightPt[_current] ?? 0,
+    );
+    setState(() {
+      _wordSelection = null;
+      _pushItem(draft.whiteout);
+    });
+    final before = _layer.items.length;
+    await _editTextBox(draft.textBox, isNew: true);
+    if (_layer.items.length == before &&
+        _layer.items.isNotEmpty &&
+        _layer.items.last is ShapeAnnotation &&
+        (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
+      setState(() => _layer.items.removeLast());
+    }
+  }
+
   void _copyWords() {
     final text = _wordSelection?.text ?? '';
     if (text.isEmpty) return;
@@ -806,6 +836,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       renderMaxEdge: maxEdge ?? _renderMaxEdge,
       resolution: _pageEdge,
       aspects: _pageAspect,
+      pageHeights: _pageHeightPt,
       stillCurrent: () => mounted && ticket == _navTicket,
     );
     if (!mounted || ticket != _navTicket) return;
@@ -863,6 +894,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             renderMaxEdge: _previewEdge,
             resolution: _pageEdge,
             aspects: _pageAspect,
+      pageHeights: _pageHeightPt,
             stillCurrent: () => mounted && ticket == _navTicket,
           )
           .then((_) {
@@ -2126,6 +2158,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         textSelectionBar: _wordSelection != null && _wordSelection!.isNotEmpty
             ? EditorTextSelectionBar(
                 onCopy: _copyWords,
+                onEdit: _editSelectedWords,
                 onMarkup: _markSelection,
                 onClose: () => setState(() => _wordSelection = null),
               )
