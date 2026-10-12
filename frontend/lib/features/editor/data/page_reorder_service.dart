@@ -134,6 +134,14 @@ class PageReorderService {
     if (resolution != null && resolution.containsKey(index)) {
       resolution[index + 1] = resolution[index]!;
     }
+    final sourceLayer = layers[index];
+    if (sourceLayer != null) {
+      final copy = PageLayer();
+      for (final item in sourceLayer.items) {
+        copy.items.add(item.clone());
+      }
+      layers[index + 1] = copy;
+    }
     return newCount;
   }
 

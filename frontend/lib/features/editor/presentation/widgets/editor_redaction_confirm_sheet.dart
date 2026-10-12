@@ -60,7 +60,7 @@ class _RedactionConfirmSheetState extends State<_RedactionConfirmSheet> {
             const SizedBox(height: 16),
             Icon(Icons.warning_amber_rounded, size: 48, color: cs.error),
             const SizedBox(height: 12),
-            Text('True Redaction — Irreversible', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.error)),
+            Text('Cover in the export', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: cs.error)),
             const SizedBox(height: 12),
             Expanded(
               child: SingleChildScrollView(
@@ -68,12 +68,11 @@ class _RedactionConfirmSheetState extends State<_RedactionConfirmSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('You are about to permanently remove content from ${widget.areaCount} area(s).', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    Text('You are about to cover ${widget.areaCount} area(s) with a black mark that is burned into the exported page image.', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
-                    _bullet('Unlike whiteout (which just covers), true redaction REMOVES underlying text/images via PyMuPDF — it cannot be undone.'),
-                    _bullet('The redacted PDF will not contain the original text — it cannot be extracted via text_layer.py or PyMuPDF get_text().'),
-                    _bullet('This action will be logged to team audit if you are in a team context (X-Team-Id header) — see GET /teams/{id}/audit.'),
-                    _bullet('Exported file will be marked "redacted_" prefix and include X-Redacted-Areas header.'),
+                    _bullet('This is not the same as whiteout. Whiteout is a removable white box. This cover is painted into the exported picture of the page.'),
+                    _bullet('The original PDF file is not rewritten. Hidden text inside the original file can still be extracted until you keep only the exported copy.'),
+                    _bullet('The app cannot remove text from the PDF content stream, images behind the cover, or document metadata.'),
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -82,7 +81,7 @@ class _RedactionConfirmSheetState extends State<_RedactionConfirmSheet> {
                         children: [
                           Icon(Icons.info_outline, size: 20, color: cs.onErrorContainer),
                           const SizedBox(width: 8),
-                          Expanded(child: Text('Test: test_redact.py verifies secret data not extractable after redaction.', style: TextStyle(fontSize: 11, color: cs.onErrorContainer))),
+                          Expanded(child: Text('A black rectangle in the export is not proof that the original text was removed from the source PDF.', style: TextStyle(fontSize: 11, color: cs.onErrorContainer))),
                         ],
                       ),
                     ),
@@ -91,7 +90,7 @@ class _RedactionConfirmSheetState extends State<_RedactionConfirmSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(children: [Checkbox(value: _understandChecked, onChanged: (v) => setState(() => _understandChecked = v ?? false)), const Expanded(child: Text('I understand this is irreversible and removes underlying content', style: TextStyle(fontSize: 12)))]),
+            Row(children: [Checkbox(value: _understandChecked, onChanged: (v) => setState(() => _understandChecked = v ?? false)), const Expanded(child: Text('I understand the cover is burned into the export and the original file is kept', style: TextStyle(fontSize: 12)))]),
             const SizedBox(height: 12),
             Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context, RedactionConfirmResult.cancelled), child: const Text('Cancel'))), const SizedBox(width: 12), Expanded(child: FilledButton(onPressed: _understandChecked ? () => setState(() => _step = 2) : null, child: const Text('Continue')))]),
           ],
@@ -117,7 +116,7 @@ class _RedactionConfirmSheetState extends State<_RedactionConfirmSheet> {
             const SizedBox(height: 12),
             const Text('Final Confirmation', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            Text('Type "REDACT" to confirm permanent removal of ${widget.areaCount} area(s)', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+            Text('Type "REDACT" to burn the cover into the exported copy of ${widget.areaCount} area(s)', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 16),
             TextField(controller: _typedController, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Type REDACT', hintText: 'REDACT'), onChanged: (_) => setState(() {}), textCapitalization: TextCapitalization.characters),
             const SizedBox(height: 12),
