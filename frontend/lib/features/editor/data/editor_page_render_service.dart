@@ -25,6 +25,7 @@ class EditorPageRenderService {
     required Map<int, Uint8List> pageCache,
     required int renderMaxEdge,
     Map<int, int>? resolution,
+    Map<int, double>? aspects,
     bool Function()? stillCurrent,
   }) {
     if (_freshEnough(pageCache, resolution, index, renderMaxEdge)) {
@@ -46,6 +47,7 @@ class EditorPageRenderService {
         pageCache: pageCache,
         renderMaxEdge: renderMaxEdge,
         resolution: resolution,
+        aspects: aspects,
         stillCurrent: stillCurrent,
       );
     });
@@ -77,11 +79,15 @@ class EditorPageRenderService {
     required Map<int, Uint8List> pageCache,
     required int renderMaxEdge,
     Map<int, int>? resolution,
+    Map<int, double>? aspects,
     bool Function()? stillCurrent,
   }) async {
     final page = await doc.getPage(index + 1);
     try {
       if (stillCurrent != null && !stillCurrent()) return;
+      if (aspects != null && page.width > 0 && page.height > 0) {
+        aspects.putIfAbsent(index, () => page.width / page.height);
+      }
       final longEdge = page.width > page.height ? page.width : page.height;
       final scale = longEdge > renderMaxEdge ? renderMaxEdge / longEdge : 1.0;
       final renderW = (page.width * scale).clamp(1, renderMaxEdge.toDouble());

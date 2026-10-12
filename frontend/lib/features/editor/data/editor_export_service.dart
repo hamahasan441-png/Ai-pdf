@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
 import 'package:ai_pdf/features/editor/data/annotation_draw.dart';
+import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
@@ -39,6 +40,7 @@ class EditorExportService {
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
     required int pageCount,
+    Map<int, int> quarterTurns = const {},
   }) async {
     final pdf = pw.Document();
     final fonts = EditorPdfFonts();
@@ -56,6 +58,7 @@ class EditorExportService {
         pageCache: pageCache,
         layers: layers,
         uni: uni,
+        quarterTurns: (quarterTurns[i] ?? 0) % 4,
       );
       if (composed == null) {
         await Future<void>.delayed(Duration.zero);
@@ -74,7 +77,9 @@ class EditorExportService {
 
       final image = pw.MemoryImage(composed.bytes);
       final shapes = (layers[i]?.shapes ?? const <ShapeAnnotation>[])
-          .where((s) => s.type == ShapeType.rect || s.type == ShapeType.whiteout)
+          .where((s) =>
+              !s.isSecureRedaction &&
+              (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
           .toList();
       final texts = (layers[i]?.texts ?? const <TextAnnotation>[])
           .where((t) => t.text.isNotEmpty && _canVectorize(t, uni))
@@ -302,6 +307,7 @@ class EditorExportService {
     required Map<int, Uint8List> pageCache,
     required Map<int, PageLayer> layers,
     required PdfUnicodeFonts uni,
+    int quarterTurns = 0,
   }) async {
     Uint8List? baseBytes;
     if (doc != null) {
@@ -323,8 +329,15 @@ class EditorExportService {
       baseBytes = pageCache[index];
     }
     if (baseBytes == null) return null;
+    var pageBytes = baseBytes;
+    const rotator = EditorPageTransformService();
+    for (var turn = 0; turn < quarterTurns; turn++) {
+      final rotated = await rotator.rotateClockwise(pageBytes);
+      if (rotated == null) break;
+      pageBytes = rotated;
+    }
 
-    final codec = await ui.instantiateImageCodec(baseBytes);
+    final codec = await ui.instantiateImageCodec(pageBytes);
     final frame = await codec.getNextFrame();
     final base = frame.image;
 
@@ -346,6 +359,12 @@ class EditorExportService {
           AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
         }
         for (final s in layer.shapes) {
+          if (s.isSecureRedaction) {
+            // Burn the cover into the bitmap. A separate PDF object could be
+            // deleted and would reveal the page underneath.
+            AnnotationDraw.secureCover(canvas, size, s.start, s.end);
+            continue;
+          }
           if (s.type == ShapeType.rect || s.type == ShapeType.whiteout) {
             continue;
           }

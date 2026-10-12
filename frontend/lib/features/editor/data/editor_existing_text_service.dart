@@ -10,7 +10,8 @@ class ExistingLineEditDraft {
   const ExistingLineEditDraft({required this.whiteout, required this.textBox});
 }
 
-/// Helpers for the editor's OCR-based existing-text editing flow.
+/// OCR-line cover. This does not rewrite the original PDF text object.
+/// It places a whiteout shape and a replacement text annotation on top.
 class EditorExistingTextService {
   const EditorExistingTextService();
 

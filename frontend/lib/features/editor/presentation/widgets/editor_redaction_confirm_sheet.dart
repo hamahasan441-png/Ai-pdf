@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 /// Double confirmation sheet for true redaction — E6.3B / E1.7 Phase 6.
 enum RedactionConfirmResult { cancelled, confirmed }
 
+/// Only valid after a backend redaction call returns a new PDF.
+/// The editor Redact tool burns a black cover into the exported page image
+/// and does not rewrite the original file in place.
 Future<RedactionConfirmResult?> showEditorRedactionConfirmSheet(
   BuildContext context, {
   required int areaCount,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
+
 /// Wraps the editor canvas in a pannable/zoomable viewport.
 ///
 /// ### Why StatefulWidget + TransformationController
@@ -19,12 +21,14 @@ import 'package:flutter/material.dart';
 class EditorDocumentViewport extends StatefulWidget {
   final bool panEnabled;
   final bool scaleEnabled;
+  final double pageAspect;
   final Widget child;
 
   const EditorDocumentViewport({
     super.key,
     required this.panEnabled,
     required this.scaleEnabled,
+    this.pageAspect = PageFit.a4PortraitAspect,
     required this.child,
   });
 
@@ -52,20 +56,11 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
           // (which fills the Stack minus the toolbar). We pass a concrete Size
           // via SizedBox so InteractiveViewer's child has a FINITE intrinsic
           // size. Without this, AspectRatio/Image.memory lay out at 0×0.
-          final maxW = constraints.maxWidth;
-          final maxH = constraints.maxHeight;
-          const aspect = 1 / 1.414; // A4 portrait
-
-          double pageW, pageH;
-          if (maxW / maxH > aspect) {
-            // Height-limited
-            pageH = maxH;
-            pageW = maxH * aspect;
-          } else {
-            // Width-limited
-            pageW = maxW;
-            pageH = maxW / aspect;
-          }
+          final fitted = PageFit.box(
+            maxWidth: constraints.maxWidth,
+            maxHeight: constraints.maxHeight,
+            aspect: widget.pageAspect,
+          );
 
           return InteractiveViewer(
             transformationController: _controller,
@@ -74,8 +69,8 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
             scaleEnabled: widget.scaleEnabled,
             child: Center(
               child: SizedBox(
-                width: pageW,
-                height: pageH,
+                width: fitted.width,
+                height: fitted.height,
                 child: RepaintBoundary(child: widget.child),
               ),
             ),

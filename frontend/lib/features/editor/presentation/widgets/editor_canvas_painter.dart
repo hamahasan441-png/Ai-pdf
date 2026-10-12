@@ -34,6 +34,7 @@ class EditorCanvasPainter extends CustomPainter {
   final List<Rect> findRects;
   final int activeFind;
   final List<Rect> wordSelection;
+  final bool securePreview;
 
   /// Bumped by the screen whenever an async image decode completes, so the
   /// canvas repaints even though the annotation list length is unchanged.
@@ -59,6 +60,7 @@ class EditorCanvasPainter extends CustomPainter {
     this.findRects = const [],
     this.activeFind = -1,
     this.wordSelection = const [],
+    this.securePreview = false,
     this.revision = 0,
   });
 
@@ -75,8 +77,12 @@ class EditorCanvasPainter extends CustomPainter {
       AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
     }
     for (final s in shapes) {
-      AnnotationDraw.shape(
-          canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
+      if (s.isSecureRedaction) {
+        AnnotationDraw.secureCover(canvas, size, s.start, s.end);
+      } else {
+        AnnotationDraw.shape(
+            canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
+      }
     }
     for (final st in stamps) {
       stampRenderer.paint(canvas, size, st);
@@ -92,8 +98,12 @@ class EditorCanvasPainter extends CustomPainter {
       );
     }
     if (shapeType != null && shapeStart != null && shapeEnd != null) {
-      AnnotationDraw.shape(
-          canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
+      if (securePreview) {
+        AnnotationDraw.secureCover(canvas, size, shapeStart!, shapeEnd!);
+      } else {
+        AnnotationDraw.shape(
+            canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
+      }
     }
     if (markupKind != null && markupPreview.isNotEmpty) {
       AnnotationDraw.markup(
@@ -171,6 +181,7 @@ class EditorCanvasPainter extends CustomPainter {
         !_sameRects(old.markupPreview, markupPreview) ||
         !_sameRects(old.findRects, findRects) ||
         !_sameRects(old.wordSelection, wordSelection) ||
+        old.securePreview != securePreview ||
         _markupSig(old.markups) != _markupSig(markups) ||
         old.revision != revision) {
       return true;
