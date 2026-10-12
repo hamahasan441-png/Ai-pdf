@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -11,6 +12,9 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
+import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
+import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
+import 'package:ai_pdf/features/editor/data/text_markup_factory.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
@@ -45,6 +49,7 @@ import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
@@ -124,6 +129,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Long-edge the cached JPEG was rendered at, so a preview cannot block
   /// the sharp frame and a late preview cannot overwrite it.
   final Map<int, int> _pageEdge = {};
+  /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
+  final Map<int, List<PdfTextElement>> _textLayer = {};
+  List<Rect> _markupPreview = const [];
+  final TextMarkupFactory _markupFactory = const TextMarkupFactory();
   int _navTicket = 0;
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
@@ -522,6 +531,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _pageCache.clear();
       _pageEdge.clear();
+      _textLayer.clear();
+      _markupPreview = const [];
       _layers.clear();
       _fields.clear();
       _multi.clear();
@@ -535,6 +546,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageCount = loaded.pageCount;
       final ticket = ++_navTicket;
       if (loaded.isPdf && _doc != null) {
+        unawaited(_loadTextLayer(path, ticket));
         await _preloader.renderFirstPageProgressive(
           doc: _doc!,
           index: 0,
@@ -592,6 +604,42 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _showError('Could not open file: $e');
       if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _loadTextLayer(String path, int ticket) async {
+    try {
+      final map = await compute(extractPdfTextLayerFromPath, path);
+      if (!mounted || ticket != _navTicket) return;
+      setState(() {
+        _textLayer
+          ..clear()
+          ..addAll(map);
+      });
+    } catch (_) {
+      // A PDF this parser does not understand still edits; marks use the drag box.
+    }
+  }
+
+  void _reindexTextOnDelete(int index, int oldCount) {
+    final next = <int, List<PdfTextElement>>{};
+    for (var i = 0; i < oldCount; i++) {
+      if (i == index) continue;
+      final words = _textLayer[i];
+      if (words != null) next[i < index ? i : i - 1] = words;
+    }
+    _textLayer
+      ..clear()
+      ..addAll(next);
+  }
+
+  void _reindexTextOnInsert(int index) {
+    final next = <int, List<PdfTextElement>>{};
+    for (final entry in _textLayer.entries) {
+      next[entry.key >= index ? entry.key + 1 : entry.key] = entry.value;
+    }
+    _textLayer
+      ..clear()
+      ..addAll(next);
   }
 
   Future<void> _renderPage(int index, {int? maxEdge}) async {
@@ -728,6 +776,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _deletePage(int index) {
     if (_pageCount <= 1) return;
     setState(() {
+      final oldCount = _pageCount;
       final newCount = _pageReorder.deletePage(
         index: index,
         pageCache: _pageCache,
@@ -735,6 +784,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCount: _pageCount,
         resolution: _pageEdge,
       );
+      _reindexTextOnDelete(index, oldCount);
       _pageCount = newCount;
       if (_current >= _pageCount) _current = _pageCount - 1;
       _hasUnsavedChanges = true;
@@ -754,6 +804,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
       _pageCount = newCount;
       _hasUnsavedChanges = true;
+      _reindexTextOnInsert(index + 1);
+      final words = _textLayer[index];
+      if (words != null) _textLayer[index + 1] = List<PdfTextElement>.of(words);
     });
   }
 
@@ -768,13 +821,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
       _pageCount = newCount;
       _hasUnsavedChanges = true;
+      _reindexTextOnInsert(index);
     });
     _goToPage(index);
   }
 
   // ---- Gesture handling (coordinates normalized to canvas) ----
 
-  bool get _isFreehand => _tool == EditTool.draw || _tool == EditTool.highlight;
+  bool get _isFreehand => _tool == EditTool.draw;
+  bool get _isMarkup => _markupFactory.isMarkupTool(_tool);
   bool get _isShape =>
       _tool == EditTool.line || _tool == EditTool.arrow || _tool == EditTool.rect ||
       _tool == EditTool.oval || _tool == EditTool.whiteout;
@@ -801,6 +856,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
         // Capture a single undoable step for the whole drag-move.
         _editorController.beginEdit(_multi, label: 'Move');
       }
+      setState(() {});
+      return;
+    }
+    if (_isMarkup) {
+      _shapeStart = n;
+      _shapeEnd = n;
+      _markupPreview = _markupFactory.previewRects(
+        tool: _tool,
+        start: n,
+        end: n,
+        elements: _textLayer[_current] ?? const [],
+        color: _color,
+      );
       setState(() {});
       return;
     }
@@ -835,6 +903,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _hasUnsavedChanges = true;
         setState(() {});
       }
+      return;
+    }
+    if (_isMarkup && _shapeStart != null) {
+      _shapeEnd = n;
+      _markupPreview = _markupFactory.previewRects(
+        tool: _tool,
+        start: _shapeStart!,
+        end: n,
+        elements: _textLayer[_current] ?? const [],
+        color: _color,
+      );
+      setState(() {});
       return;
     }
     if (_tool == EditTool.pan && _selected != null && _dragOffset != null) {
@@ -875,6 +955,28 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {});
       return;
     }
+    if (_isMarkup) {
+      final start = _shapeStart;
+      final end = _shapeEnd;
+      final ann = start != null && end != null
+          ? _markupFactory.fromDrag(
+              tool: _tool,
+              start: start,
+              end: end,
+              elements: _textLayer[_current] ?? const [],
+              color: _color,
+            )
+          : null;
+      _shapeStart = null;
+      _shapeEnd = null;
+      _markupPreview = const [];
+      if (ann != null) {
+        setState(() => _pushItem(ann));
+      } else {
+        setState(() {});
+      }
+      return;
+    }
     _dragOffset = null;
     _editorController.commitEdit(_layer);
     _guideX = null;
@@ -907,10 +1009,76 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {});
   }
 
+  Future<String?> _promptNote(String initial) async {
+    final controller = TextEditingController(text: initial);
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(l10n.toolNote),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 8,
+            decoration: InputDecoration(hintText: l10n.toolNote),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.discard),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: Text(l10n.saveAndExit),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return text;
+  }
+
+  Future<void> _placeNote(Offset n) async {
+    final text = await _promptNote('');
+    if (!mounted || text == null || text.isEmpty) return;
+    setState(() => _pushItem(StickyNoteAnnotation(pos: n, text: text)));
+  }
+
+  Future<void> _editNote(StickyNoteAnnotation note) async {
+    final text = await _promptNote(note.text);
+    if (!mounted || text == null) return;
+    if (text.isEmpty) {
+      _deleteNote(note);
+      return;
+    }
+    setState(() {
+      _editorController.beginEdit([note], label: 'Edit note');
+      note.text = text;
+      _editorController.commitEdit(_layer, force: true);
+    });
+    _schedulePersist();
+  }
+
+  void _deleteNote(StickyNoteAnnotation note) {
+    setState(() {
+      _editorController.deleteSelected(_layer, note);
+      _selected = null;
+      _multi.remove(note);
+    });
+    _schedulePersist();
+  }
+
   void _onTapUp(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (_tapTools.isTextTool(_tool)) {
       _editTextBox(_tapTools.buildTextDraft(n, _color, _textSize, _bold), isNew: true);
+      return;
+    }
+    if (_tool == EditTool.note) {
+      _placeNote(n);
       return;
     }
 
@@ -1819,7 +1987,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
             previewShapeType: _shapePreviewType(),
             color: _color,
             stroke: _stroke,
-            highlightPreview: _tool == EditTool.highlight,
+            highlightPreview: false,
+            markupPreview: _markupPreview,
+            markupKind: _markupFactory.kindFor(_tool),
             showFields: _showFields,
             pageFields: _pageFields,
             showEditLines: _showEditLines,
@@ -1877,6 +2047,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
             onSendToBack: _sendToBack,
             onDeleteSelected: _deleteSelected,
             onDeselectSelected: () => setState(() => _selected = null),
+            onNoteTap: _editNote,
+            onNoteDelete: _deleteNote,
             onAlignMulti: _alignMulti,
             onDistributeMulti: _distributeMulti,
             onDuplicateMulti: _duplicateMulti,
@@ -1913,7 +2085,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
           stroke: _stroke,
           textSize: _textSize,
           bold: _bold,
-          onToolChanged: (tool) => setState(() => _tool = tool),
+          onToolChanged: (tool) => setState(() {
+            final enteringHighlight =
+                tool == EditTool.highlight && _tool != EditTool.highlight;
+            _tool = tool;
+            _markupPreview = const [];
+            _shapeStart = null;
+            _shapeEnd = null;
+            if (enteringHighlight && _color == Colors.red) {
+              _color = const Color(0xFFFFEB3B);
+            }
+          }),
           onAutoFill: _autoFill,
           onAiFill: _smartFillPage,
           onEditTextTool: _scanForEdit,

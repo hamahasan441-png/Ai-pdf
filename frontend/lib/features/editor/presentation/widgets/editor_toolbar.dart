@@ -77,7 +77,13 @@ class EditorToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
-    final showStyle = tool == EditTool.draw || tool == EditTool.highlight || tool == EditTool.text || isShape;
+    final showStyle = tool == EditTool.draw ||
+        tool == EditTool.highlight ||
+        tool == EditTool.underline ||
+        tool == EditTool.strikeout ||
+        tool == EditTool.squiggly ||
+        tool == EditTool.text ||
+        isShape;
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -109,6 +115,7 @@ class EditorToolbar extends StatelessWidget {
                       cs,
                     ),
                   _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
+                  _toolBtn(Icons.near_me_outlined, l10n.toolSelect, EditTool.select, cs),
                   _actionBtn(Icons.gesture, l10n.toolSign, onAddSignature, cs),
                   _actionBtn(Icons.event_available, l10n.signatureDate, onPlaceSignatureDate, cs),
                   _actionBtn(Icons.badge_outlined, l10n.myProfile, onInsertProfileField, cs),
@@ -120,8 +127,12 @@ class EditorToolbar extends StatelessWidget {
                   _toolBtn(Icons.fiber_manual_record, l10n.markDot, EditTool.dot, cs),
                   _toolBtn(Icons.remove, l10n.markDash, EditTool.dash, cs),
                   _toolBtn(Icons.title, l10n.toolText, EditTool.text, cs),
+                  _toolBtn(Icons.sticky_note_2_outlined, l10n.toolNote, EditTool.note, cs),
                   _toolBtn(Icons.edit, l10n.toolDraw, EditTool.draw, cs),
                   _toolBtn(Icons.highlight, l10n.toolHighlight, EditTool.highlight, cs),
+                  _toolBtn(Icons.format_underlined, l10n.toolUnderline, EditTool.underline, cs),
+                  _toolBtn(Icons.format_strikethrough, l10n.toolStrikeout, EditTool.strikeout, cs),
+                  _toolBtn(Icons.waves, l10n.toolSquiggly, EditTool.squiggly, cs),
                   _toolBtn(Icons.horizontal_rule, l10n.toolLine, EditTool.line, cs),
                   _toolBtn(Icons.north_east, l10n.toolArrow, EditTool.arrow, cs),
                   _toolBtn(Icons.crop_square, l10n.toolBox, EditTool.rect, cs),
@@ -150,7 +161,7 @@ class EditorToolbar extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 6, left: 10, right: 10),
                 child: Row(
                   children: [
-                    ...[Colors.red, Colors.blue, Colors.black, Colors.green, Colors.orange, Colors.purple].map(
+                    ...[const Color(0xFFFFEB3B), Colors.red, Colors.blue, Colors.black, Colors.green, Colors.orange, Colors.purple].map(
                       (c) => GestureDetector(
                         onTap: () => onColorChanged(c),
                         child: Container(

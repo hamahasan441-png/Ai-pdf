@@ -6,6 +6,7 @@ import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 
 /// On-screen painter for images, freehand strokes, shapes, stamps, and live
 /// previews. Text boxes are drawn as draggable widgets, not here.
@@ -27,6 +28,9 @@ class EditorCanvasPainter extends CustomPainter {
   final Color curColor;
   final double curWidth;
   final bool curHighlight;
+  final List<TextMarkupAnnotation> markups;
+  final List<Rect> markupPreview;
+  final TextMarkupKind? markupKind;
 
   /// Bumped by the screen whenever an async image decode completes, so the
   /// canvas repaints even though the annotation list length is unchanged.
@@ -46,6 +50,9 @@ class EditorCanvasPainter extends CustomPainter {
     this.curColor,
     this.curWidth,
     this.curHighlight, {
+    this.markups = const [],
+    this.markupPreview = const [],
+    this.markupKind,
     this.revision = 0,
   });
 
@@ -53,6 +60,9 @@ class EditorCanvasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final im in images) {
       imageRenderer.paint(canvas, size, im);
+    }
+    for (final m in markups) {
+      AnnotationDraw.markup(canvas, size, m, multiply: false);
     }
     for (final s in strokes) {
       AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
@@ -78,6 +88,14 @@ class EditorCanvasPainter extends CustomPainter {
       AnnotationDraw.shape(
           canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
     }
+    if (markupKind != null && markupPreview.isNotEmpty) {
+      AnnotationDraw.markup(
+        canvas,
+        size,
+        TextMarkupAnnotation(kind: markupKind!, rects: markupPreview, color: curColor),
+        multiply: false,
+      );
+    }
   }
 
   /// Use structural equality so Flutter only repaints when the visible content
@@ -97,9 +115,31 @@ class EditorCanvasPainter extends CustomPainter {
         old.shapes.length != shapes.length ||
         old.images.length != images.length ||
         old.stamps.length != stamps.length ||
+        old.markups.length != markups.length ||
+        old.markupKind != markupKind ||
+        !_sameRects(old.markupPreview, markupPreview) ||
+        _markupSig(old.markups) != _markupSig(markups) ||
         old.revision != revision) {
       return true;
     }
     return false;
   }
+}
+
+bool _sameRects(List<Rect> a, List<Rect> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+int _markupSig(List<TextMarkupAnnotation> list) {
+  var h = list.length;
+  for (final m in list) {
+    final b = m.bounds;
+    h = Object.hash(h, b.left, b.top, b.right, b.bottom, m.color, m.kind, m.opacity, m.visible);
+  }
+  return h;
 }

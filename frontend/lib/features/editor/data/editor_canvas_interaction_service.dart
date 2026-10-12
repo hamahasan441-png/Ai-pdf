@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
+import 'package:ai_pdf/features/editor/domain/services/ink_smooth_service.dart';
 
 /// Stateless interaction helpers used by the editor canvas gesture handlers.
 class EditorCanvasInteractionService {
-  const EditorCanvasInteractionService();
+  final InkSmoothService _ink;
+
+  const EditorCanvasInteractionService({InkSmoothService ink = const InkSmoothService()}) : _ink = ink;
 
   Offset normalize(Offset local, Size canvas) =>
       Offset(local.dx / canvas.width, local.dy / canvas.height);
@@ -35,8 +38,9 @@ class EditorCanvasInteractionService {
     required double stroke,
   }) {
     if (drawing.length <= 1) return null;
+    final points = tool == EditTool.draw ? _ink.smooth(drawing) : List<Offset>.of(drawing);
     return StrokeAnnotation(
-      List.of(drawing),
+      points,
       tool == EditTool.highlight ? color.withOpacity(0.35) : color,
       tool == EditTool.highlight ? 16 : stroke,
       tool == EditTool.highlight,

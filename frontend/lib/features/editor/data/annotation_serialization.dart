@@ -1,12 +1,14 @@
 import 'dart:convert' show base64Decode, base64Encode;
-import 'dart:ui' show Offset, TextAlign, TextDirection;
+import 'dart:ui' show Offset, Rect, TextAlign, TextDirection;
 
 import 'package:flutter/material.dart' show Color, Colors;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
-import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 
 /// Pure-Dart JSON serialization for the annotation model.
 ///
@@ -50,6 +52,8 @@ Map<String, dynamic> annotationToJson(EditorAnnotation a) {
   if (a is TextAnnotation) return _textToJson(a);
   if (a is ImageAnnotation) return _imageToJson(a);
   if (a is StampAnnotation) return _stampToJson(a);
+  if (a is TextMarkupAnnotation) return _markupToJson(a);
+  if (a is StickyNoteAnnotation) return _noteToJson(a);
   return {'type': 'unknown', 'id': a.id};
 }
 
@@ -64,6 +68,30 @@ Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       'label': im.label,
       'bytes': base64Encode(im.bytes),
       ..._baseToJson(im),
+    };
+
+Map<String, dynamic> _markupToJson(TextMarkupAnnotation m) => {
+      'type': 'markup',
+      'id': m.id,
+      'kind': m.kind.name,
+      'color': m.color.value,
+      'text': m.text,
+      'rects': [
+        for (final r in m.rects) [r.left, r.top, r.right, r.bottom],
+      ],
+      ..._baseToJson(m),
+    };
+
+Map<String, dynamic> _noteToJson(StickyNoteAnnotation n) => {
+      'type': 'note',
+      'id': n.id,
+      'posX': n.pos.dx,
+      'posY': n.pos.dy,
+      'text': n.text,
+      'color': n.color.name,
+      'author': n.author,
+      'createdAt': n.createdAt,
+      ..._baseToJson(n),
     };
 
 Map<String, dynamic> _stampToJson(StampAnnotation st) => {
@@ -182,6 +210,12 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
       case 'stamp':
         a = _stampFromJson(j);
         break;
+      case 'markup':
+        a = _markupFromJson(j);
+        break;
+      case 'note':
+        a = _noteFromJson(j);
+        break;
       default:
         return null;
     }
@@ -190,6 +224,51 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
   } catch (_) {
     return null;
   }
+}
+
+TextMarkupAnnotation _markupFromJson(Map<String, dynamic> j) {
+  final rects = <Rect>[];
+  final raw = j['rects'];
+  if (raw is List) {
+    for (final e in raw) {
+      if (e is List && e.length >= 4) {
+        rects.add(Rect.fromLTRB(
+          (e[0] as num).toDouble(),
+          (e[1] as num).toDouble(),
+          (e[2] as num).toDouble(),
+          (e[3] as num).toDouble(),
+        ));
+      }
+    }
+  }
+  return TextMarkupAnnotation(
+    kind: TextMarkupKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => TextMarkupKind.highlight,
+    ),
+    rects: rects,
+    color: Color(j['color'] as int? ?? 0xFFFFEB3B),
+    text: j['text'] as String? ?? '',
+    id: j['id'] as String?,
+  );
+}
+
+StickyNoteAnnotation _noteFromJson(Map<String, dynamic> j) {
+  final colorName = j['color'] as String? ?? 'yellow';
+  return StickyNoteAnnotation(
+    pos: Offset(
+      (j['posX'] as num?)?.toDouble() ?? 0.1,
+      (j['posY'] as num?)?.toDouble() ?? 0.1,
+    ),
+    text: j['text'] as String? ?? '',
+    color: StickyNoteColor.values.firstWhere(
+      (c) => c.name == colorName,
+      orElse: () => StickyNoteColor.yellow,
+    ),
+    author: j['author'] as String? ?? '',
+    createdAt: j['createdAt'] as String?,
+    id: j['id'] as String?,
+  );
 }
 
 StrokeAnnotation _strokeFromJson(Map<String, dynamic> j) {

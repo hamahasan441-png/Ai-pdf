@@ -17,6 +17,7 @@ import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Off-screen export compositor for the editor.
@@ -269,6 +270,32 @@ class EditorExportService {
     }
   }
 
+  void _paintNote(Canvas canvas, Size size, StickyNoteAnnotation note) {
+    if (!note.visible || note.text.isEmpty) return;
+    final rect = Rect.fromLTWH(
+      note.pos.dx * size.width,
+      note.pos.dy * size.height,
+      size.width * 0.22,
+      size.height * 0.12,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+      Paint()..color = note.color.value,
+    );
+    final rtl = const RtlDetectionService().isRtl(note.text);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: note.text,
+        style: TextStyle(color: Colors.black87, fontSize: size.height * 0.018, height: 1.25),
+      ),
+      textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+      textAlign: rtl ? TextAlign.right : TextAlign.left,
+      maxLines: 6,
+      ellipsis: '…',
+    )..layout(maxWidth: rect.width - 8);
+    painter.paint(canvas, rect.topLeft + const Offset(4, 4));
+  }
+
   Future<({Uint8List bytes, int width, int height})?> _composePagePng({
     required int index,
     required pdfx.PdfDocument? doc,
@@ -312,6 +339,9 @@ class EditorExportService {
         for (final im in layer.images) {
           await _drawImageAnnotation(canvas, size, im);
         }
+        for (final m in layer.markups) {
+          AnnotationDraw.markup(canvas, size, m);
+        }
         for (final s in layer.strokes) {
           AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
         }
@@ -324,6 +354,9 @@ class EditorExportService {
         // Stamps (bordered label boxes) sit above shapes, matching the preview.
         for (final st in layer.stamps) {
           _stampRenderer.paint(canvas, size, st);
+        }
+        for (final note in layer.notes) {
+          _paintNote(canvas, size, note);
         }
         // Text that can't be exported as vector (non-Latin without a bundled
         // Unicode font, or multi-run rich text) is rasterized with full
