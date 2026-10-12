@@ -12,6 +12,7 @@ class EditorHitTestService {
   /// Hit-test in reverse draw order (topmost first): text, shapes, strokes.
   EditorAnnotation? hitTest(PageLayer layer, Offset n) {
     for (final item in layer.items.reversed) {
+      if (!item.visible || item.locked) continue;
       if (item is TextAnnotation) {
         if ((item.pos - n).distance < 0.07) return item;
       } else if (item is ShapeAnnotation) {

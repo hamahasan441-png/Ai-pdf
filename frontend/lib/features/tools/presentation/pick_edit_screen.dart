@@ -591,7 +591,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _editorController.finishOpenFile(pageCount: _pageCount, currentPage: 0);
 
       // Restore any previously saved annotations (crash recovery).
-      final savedLayers = await _persistence.load(path);
+      final saved = await _persistence.loadChecked(path);
+      if (saved.corrupt) {
+        _showError('Saved marks could not be read. A backup was kept.');
+      }
+      final savedLayers = saved.layers;
       if (savedLayers.isNotEmpty) {
         _layers.addAll(savedLayers);
         _hasUnsavedChanges = true;

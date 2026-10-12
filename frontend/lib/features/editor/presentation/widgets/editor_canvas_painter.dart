@@ -67,6 +67,7 @@ class EditorCanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final im in images) {
+      if (!im.visible) continue;
       imageRenderer.paint(canvas, size, im);
     }
     _paintFind(canvas, size);
@@ -74,9 +75,12 @@ class EditorCanvasPainter extends CustomPainter {
       AnnotationDraw.markup(canvas, size, m, multiply: false);
     }
     for (final s in strokes) {
-      AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
+      if (!s.visible) continue;
+      final color = s.color.withOpacity((s.color.opacity * s.opacity).clamp(0.0, 1.0));
+      AnnotationDraw.stroke(canvas, size, s.points, color, s.width);
     }
     for (final s in shapes) {
+      if (!s.visible) continue;
       if (s.isSecureRedaction) {
         AnnotationDraw.secureCover(canvas, size, s.start, s.end);
       } else {
@@ -85,6 +89,7 @@ class EditorCanvasPainter extends CustomPainter {
       }
     }
     for (final st in stamps) {
+      if (!st.visible) continue;
       stampRenderer.paint(canvas, size, st);
     }
     if (current.length > 1) {

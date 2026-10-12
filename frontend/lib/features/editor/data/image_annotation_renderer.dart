@@ -30,7 +30,7 @@ class ImageAnnotationRenderer {
   /// Paint a prepared image annotation onto [canvas].
   void paint(Canvas canvas, Size size, ImageAnnotation annotation) {
     final image = _cache[annotation.id];
-    if (image == null) return;
+    if (image == null || !annotation.visible) return;
 
     final rect = Rect.fromLTWH(
       annotation.pos.dx * size.width,
@@ -48,14 +48,18 @@ class ImageAnnotationRenderer {
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         Rect.fromLTWH(0, 0, rect.width, rect.height),
-        Paint()..filterQuality = FilterQuality.high,
+        Paint()
+          ..filterQuality = FilterQuality.high
+          ..color = Color.fromRGBO(255, 255, 255, annotation.opacity.clamp(0.0, 1.0)),
       );
     } else {
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         rect,
-        Paint()..filterQuality = FilterQuality.high,
+        Paint()
+          ..filterQuality = FilterQuality.high
+          ..color = Color.fromRGBO(255, 255, 255, annotation.opacity.clamp(0.0, 1.0)),
       );
     }
     canvas.restore();
