@@ -119,6 +119,7 @@ class _Font {
   List<double>? widths;
   int firstChar = 0;
   bool twoByte = false;
+  String baseName = '';
 
   double widthOf(int code) {
     final w = widths;
@@ -358,6 +359,8 @@ class _PdfDoc {
     final obj = v.ref != null ? _load(v.ref!) : _Obj(v, null);
     final d = obj.dict;
     final font = _Font();
+    final base = d['/BaseFont']?.name;
+    if (base != null) font.baseName = base.startsWith('/') ? base.substring(1) : base;
     final first = d['/FirstChar']?.number?.toInt();
     if (first != null) font.firstChar = first;
     final widths = d['/Widths']?.array ?? (d['/Widths']?.ref != null ? _load(d['/Widths']!.ref!).value.array : null);
@@ -567,9 +570,9 @@ class _PdfDoc {
         final rect = Rect.fromLTRB(left, top, right, bottom);
         final horizontal = (rgt.dy - o.dy).abs() < 1.5;
         if (horizontal) {
-          out.addAll(_splitWords(shown, rect, fontSize));
+          out.addAll(_splitWords(shown, rect, fontSize, font));
         } else {
-          out.add(PdfTextElement(text: shown.trim(), rect: rect, fontSize: fontSize));
+          out.add(_styled(shown.trim(), rect, fontSize, font));
         }
       }
       _advanceTm(tm, advance);
@@ -731,12 +734,24 @@ class _PdfDoc {
     tm.f = tm.f + tx * tm.b;
   }
 
-  List<PdfTextElement> _splitWords(String text, Rect rect, double fontSize) {
+  PdfTextElement _styled(String text, Rect rect, double fontSize, _Font font) {
+    final name = font.baseName.toLowerCase();
+    return PdfTextElement(
+      text: text,
+      rect: rect,
+      fontSize: fontSize,
+      fontName: font.baseName.isEmpty ? null : font.baseName,
+      isBold: name.contains('bold') || name.contains('black'),
+      isItalic: name.contains('italic') || name.contains('oblique'),
+    );
+  }
+
+  List<PdfTextElement> _splitWords(String text, Rect rect, double fontSize, _Font font) {
     final clean = text.replaceAll('\n', ' ').replaceAll('\r', ' ');
     if (!clean.contains(RegExp(r'\s'))) {
       final t = clean.trim();
       if (t.isEmpty) return const [];
-      return [PdfTextElement(text: t, rect: rect, fontSize: fontSize)];
+      return [_styled(t, rect, fontSize, font)];
     }
     final rtl = PdfContentTextExtractor._rtl.isRtl(clean);
     final n = clean.length;
@@ -757,10 +772,11 @@ class _PdfDoc {
       final w = (i - start) * unit;
       final left = rtl ? rect.right - i * unit : rect.left + start * unit;
       if (w > 0.0005) {
-        out.add(PdfTextElement(
-          text: word,
-          rect: Rect.fromLTWH(left, rect.top, w, rect.height),
-          fontSize: fontSize,
+        out.add(_styled(
+          word,
+          Rect.fromLTWH(left, rect.top, w, rect.height),
+          fontSize,
+          font,
         ));
       }
     }

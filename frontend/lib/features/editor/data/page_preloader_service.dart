@@ -103,6 +103,7 @@ class PagePreloaderService {
     required void Function(Uint8List lowRes) onLowRes,
     Map<int, int>? resolution,
     Map<int, double>? aspects,
+    Map<int, double>? pageHeights,
     bool Function()? stillCurrent,
   }) async {
     // Low-res first (<1.5s target)
@@ -113,6 +114,7 @@ class PagePreloaderService {
       renderMaxEdge: _lowResEdge,
       resolution: resolution,
       aspects: aspects,
+      pageHeights: pageHeights,
       stillCurrent: stillCurrent,
     );
     final lowRes = pageCache[index];
@@ -130,6 +132,7 @@ class PagePreloaderService {
         pageCache: highResCache,
         renderMaxEdge: _highResEdge,
         aspects: aspects,
+      pageHeights: pageHeights,
         stillCurrent: stillCurrent,
       );
       final highRes = highResCache[index];
@@ -146,6 +149,7 @@ class PagePreloaderService {
       renderMaxEdge: _highResEdge,
       resolution: resolution,
       aspects: aspects,
+      pageHeights: pageHeights,
       stillCurrent: stillCurrent,
     );
     return pageCache[index] ?? lowRes;
