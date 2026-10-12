@@ -121,7 +121,13 @@ class EditorExportService {
 
     final dir = await getApplicationDocumentsDirectory();
     final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
-    await File(outPath).writeAsBytes(await pdf.save());
+    final partial = File('$outPath.partial');
+    await partial.writeAsBytes(await pdf.save(), flush: true);
+    if (!partial.existsSync() || partial.lengthSync() < 32) {
+      if (partial.existsSync()) await partial.delete();
+      return null;
+    }
+    await partial.rename(outPath);
     return outPath;
   }
 

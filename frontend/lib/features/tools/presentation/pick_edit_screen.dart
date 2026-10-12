@@ -540,6 +540,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     await _loadFile(picked.path, picked.name);
   }
 
+  String _openError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('password') || text.contains('encrypt')) {
+      return 'This PDF is password-protected and cannot be edited until the password is removed.';
+    }
+    return 'Could not open file: $error';
+  }
+
   /// Load a PDF/image from [path]. Optionally pre-place [fields] as editable
   /// text boxes (used by the AI form filler).
   Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
@@ -627,8 +635,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       }
       if (mounted) setState(() {});
     } catch (e) {
-      _editorController.failOpenFile('Could not open file: $e');
-      _showError('Could not open file: $e');
+      _editorController.failOpenFile(_openError(e));
+      _showError(_openError(e));
       if (mounted) setState(() {});
     }
   }
@@ -994,6 +1002,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {});
       return;
     }
+    if (_tool == EditTool.eraser) {
+      _eraseAt(n);
+      return;
+    }
     if (_tool == EditTool.select) {
       final hit = _hitTest(n);
       if (hit != null && _multi.contains(hit)) {
@@ -1066,6 +1078,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {});
       return;
     }
+    if (_tool == EditTool.eraser) {
+      _eraseAt(n);
+      return;
+    }
     if (_tool == EditTool.select) {
       if (_selMode == 'text' && _shapeStart != null) {
         _shapeEnd = n;
@@ -1119,6 +1135,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _onPanEnd() {
+    if (_tool == EditTool.eraser) return;
     if (_redactionController.state.active) {
       _commitRedaction();
       return;
@@ -1300,12 +1317,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
 
     if (_tool == EditTool.eraser) {
-      setState(() {
-        if (_editorController.eraseLast(_layer)) {
-          _selected = null;
-          _multi.clear();
-        }
-      });
+      _eraseAt(n);
     } else if (_tool == EditTool.pan) {
       setState(() => _selected = _hitTest(n));
     } else if (_tool == EditTool.select) {
@@ -1329,7 +1341,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  /// Hit-test in reverse draw order (topmost first): text, shapes, strokes.
+  void _eraseAt(Offset n) {
+    if (_editorController.eraseStrokeAt(_layer, n)) {
+      _selected = null;
+      _multi.clear();
+      setState(() {});
+    }
+  }
+
   EditorAnnotation? _hitTest(Offset n) {
     return _hitTestService.hitTest(_layer, n);
   }
@@ -2007,9 +2026,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (outPath == null) {
         _editorController.finishExport(error: 'Nothing to export');
         _showError('Nothing to export');
+      } else if (!File(outPath).existsSync() || File(outPath).lengthSync() < 32) {
+        _editorController.finishExport(error: 'Export file was not written');
+        _showError('Export file was not written');
+        return null;
       } else {
         _editorController.finishExport();
-        // Clear the saved annotations — work is now in the exported PDF.
+        // Recovery data stays until the new file is actually on disk.
         final srcPath = _editorController.state.filePath;
         if (srcPath != null) _persistence.delete(srcPath);
       }

@@ -3,6 +3,7 @@ import 'dart:ui' show Offset, Rect;
 import 'package:flutter/widgets.dart' show Axis;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_pdf/features/editor/data/editor_hit_test_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/history/editor_command.dart';
@@ -193,6 +194,15 @@ class EditorController extends StateNotifier<EditorState> {
       layer,
     );
     markDirty();
+  }
+
+  /// Remove the ink stroke under [point]. Does not delete text, images, or shapes.
+  bool eraseStrokeAt(PageLayer layer, Offset point) {
+    final stroke = const EditorHitTestService().strokeNear(layer, point);
+    if (stroke == null) return false;
+    _currentHistory.push(RemoveCommand(stroke, layer), layer);
+    markDirty();
+    return true;
   }
 
   bool eraseLast(PageLayer layer) {

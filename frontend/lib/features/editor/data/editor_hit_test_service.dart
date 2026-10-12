@@ -37,4 +37,32 @@ class EditorHitTestService {
     }
     return null;
   }
+
+  /// Topmost unlocked ink stroke near [n]. The eraser uses this so it removes
+  /// a drawing, not the last annotation of any kind.
+  StrokeAnnotation? strokeNear(PageLayer layer, Offset n, {double slop = 0.02}) {
+    for (final item in layer.items.reversed) {
+      if (item is! StrokeAnnotation || !item.visible || item.locked) continue;
+      if (_nearPolyline(item.points, n, slop)) return item;
+    }
+    return null;
+  }
+
+  bool _nearPolyline(List<Offset> points, Offset n, double slop) {
+    if (points.isEmpty) return false;
+    if (points.length == 1) return (points.first - n).distance <= slop;
+    for (var i = 1; i < points.length; i++) {
+      if (_distanceToSegment(n, points[i - 1], points[i]) <= slop) return true;
+    }
+    return false;
+  }
+
+  double _distanceToSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final len2 = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (len2 == 0) return (p - a).distance;
+    final t = (((p.dx - a.dx) * ab.dx + (p.dy - a.dy) * ab.dy) / len2).clamp(0.0, 1.0);
+    final closest = Offset(a.dx + ab.dx * t, a.dy + ab.dy * t);
+    return (p - closest).distance;
+  }
 }
