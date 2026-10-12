@@ -65,24 +65,31 @@ class EditorExportService {
         continue;
       }
 
+      final image = pw.MemoryImage(composed.bytes);
       const longPts = 842.0;
-      final double pageW, pageH;
-      if (composed.width >= composed.height) {
+      final double pageW;
+      final double pageH;
+      if (composed.sourceWidth != null &&
+          composed.sourceHeight != null &&
+          composed.sourceWidth! > 1 &&
+          composed.sourceHeight! > 1) {
+        pageW = composed.sourceWidth!;
+        pageH = composed.sourceHeight!;
+      } else if (composed.width >= composed.height) {
         pageW = longPts;
         pageH = longPts * composed.height / composed.width;
       } else {
         pageH = longPts;
         pageW = longPts * composed.width / composed.height;
       }
-
-      final image = pw.MemoryImage(composed.bytes);
       final shapes = (layers[i]?.shapes ?? const <ShapeAnnotation>[])
           .where((s) =>
+              s.visible &&
               !s.isSecureRedaction &&
               (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
           .toList();
       final texts = (layers[i]?.texts ?? const <TextAnnotation>[])
-          .where((t) => t.text.isNotEmpty && _canVectorize(t, uni))
+          .where((t) => t.visible && t.text.isNotEmpty && _canVectorize(t, uni))
           .toList();
 
       pdf.addPage(
@@ -301,7 +308,7 @@ class EditorExportService {
     painter.paint(canvas, rect.topLeft + const Offset(4, 4));
   }
 
-  Future<({Uint8List bytes, int width, int height})?> _composePagePng({
+  Future<({Uint8List bytes, int width, int height, double? sourceWidth, double? sourceHeight})?> _composePagePng({
     required int index,
     required pdfx.PdfDocument? doc,
     required Map<int, Uint8List> pageCache,
@@ -310,9 +317,13 @@ class EditorExportService {
     int quarterTurns = 0,
   }) async {
     Uint8List? baseBytes;
+    double? sourceWidth;
+    double? sourceHeight;
     if (doc != null) {
       final page = await doc.getPage(index + 1);
       try {
+        sourceWidth = page.width;
+        sourceHeight = page.height;
         final longEdge = page.width > page.height ? page.width : page.height;
         final scale = longEdge > exportMaxEdge ? exportMaxEdge / longEdge : 1.0;
         final img = await page.render(
@@ -337,6 +348,12 @@ class EditorExportService {
       pageBytes = rotated;
     }
 
+    if (quarterTurns.isOdd && sourceWidth != null && sourceHeight != null) {
+      final swap = sourceWidth;
+      sourceWidth = sourceHeight;
+      sourceHeight = swap;
+    }
+
     final codec = await ui.instantiateImageCodec(pageBytes);
     final frame = await codec.getNextFrame();
     final base = frame.image;
@@ -350,15 +367,20 @@ class EditorExportService {
       if (layer != null) {
         // Background layer: images (photos / logos / scanned signatures).
         for (final im in layer.images) {
+          if (!im.visible) continue;
           await _drawImageAnnotation(canvas, size, im);
         }
         for (final m in layer.markups) {
+          if (!m.visible) continue;
           AnnotationDraw.markup(canvas, size, m);
         }
         for (final s in layer.strokes) {
-          AnnotationDraw.stroke(canvas, size, s.points, s.color, s.width);
+          if (!s.visible) continue;
+          final ink = s.color.withOpacity((s.color.opacity * s.opacity).clamp(0.0, 1.0));
+          AnnotationDraw.stroke(canvas, size, s.points, ink, s.width);
         }
         for (final s in layer.shapes) {
+          if (!s.visible) continue;
           if (s.isSecureRedaction) {
             // Burn the cover into the bitmap. A separate PDF object could be
             // deleted and would reveal the page underneath.
@@ -372,6 +394,7 @@ class EditorExportService {
         }
         // Stamps (bordered label boxes) sit above shapes, matching the preview.
         for (final st in layer.stamps) {
+          if (!st.visible) continue;
           _stampRenderer.paint(canvas, size, st);
         }
         for (final note in layer.notes) {
@@ -381,6 +404,7 @@ class EditorExportService {
         // Unicode font, or multi-run rich text) is rasterized with full
         // RTL/BiDi handling so it still exports in the correct visual order.
         for (final t in layer.texts) {
+          if (!t.visible) continue;
           if (!_canVectorize(t, uni)) {
             _rtlText.paint(canvas, size, t);
           }
@@ -395,6 +419,8 @@ class EditorExportService {
           bytes: data.buffer.asUint8List(),
           width: base.width,
           height: base.height,
+          sourceWidth: sourceWidth,
+          sourceHeight: sourceHeight,
         );
       } finally {
         composed.dispose();

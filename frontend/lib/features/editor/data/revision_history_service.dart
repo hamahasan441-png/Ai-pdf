@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'package:ai_pdf/features/editor/data/document_identity.dart';
+
 /// Local revision history — persists edit commands across sessions.
 ///
 /// Every mutation (add, remove, move, edit) is logged as a timestamped entry.
@@ -80,7 +82,7 @@ class RevisionHistoryService {
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);
     }
-    final hash = filePath.hashCode.toRadixString(36);
+    final hash = stableDocumentId(filePath);
     return '${logDir.path}/$hash.edits.jsonl';
   }
 }

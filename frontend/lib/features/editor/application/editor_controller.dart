@@ -270,6 +270,7 @@ class EditorController extends StateNotifier<EditorState> {
   }
 
   void moveAnnotation(EditorAnnotation annotation, Offset d, SelectionService selection) {
+    if (annotation.locked || !annotation.visible) return;
     selection.moveAnnotation(annotation, d);
     markDirty();
   }
