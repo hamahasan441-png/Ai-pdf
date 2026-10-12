@@ -29,6 +29,7 @@ class EditorCanvas extends StatelessWidget {
   final Color color;
   final double stroke;
   final bool highlightPreview;
+  final bool securePreview;
   final List<Rect> markupPreview;
   final TextMarkupKind? markupKind;
   final List<Rect> findRects;
@@ -103,6 +104,7 @@ class EditorCanvas extends StatelessWidget {
     required this.color,
     required this.stroke,
     required this.highlightPreview,
+    this.securePreview = false,
     this.markupPreview = const [],
     this.markupKind,
     this.findRects = const [],
@@ -206,6 +208,7 @@ class EditorCanvas extends StatelessWidget {
                   color,
                   stroke,
                   highlightPreview,
+                  securePreview: securePreview,
                   markups: layer.markups,
                   markupPreview: markupPreview,
                   markupKind: markupKind,

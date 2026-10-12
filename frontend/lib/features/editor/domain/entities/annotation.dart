@@ -17,6 +17,10 @@ Offset clampOffset01(Offset o, [double max = 1.0]) =>
 /// Shape kinds for the vector shape tools.
 enum ShapeType { line, arrow, rect, oval, whiteout }
 
+/// Metadata key for a black cover that is burned into the exported page image.
+/// Unlike [ShapeType.whiteout], it is not a separate removable object.
+const String secureRedactionKey = 'secureRedaction';
+
 /// Base type for anything drawn on a page — the editor's unified Document
 /// Object Model (DOM) node.
 ///
@@ -166,6 +170,9 @@ class ShapeAnnotation extends EditorAnnotation {
   Color color;
   double width;
   bool filled;
+
+  /// True when this box is a secure cover, burned into the page bitmap on export.
+  bool get isSecureRedaction => metadata[secureRedactionKey] == true;
 
   ShapeAnnotation(
     this.type,

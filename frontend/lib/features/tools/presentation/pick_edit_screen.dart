@@ -81,6 +81,9 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnai
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_redaction_controller.dart';
+import 'package:ai_pdf/features/editor/data/redaction_service.dart';
+import 'package:ai_pdf/features/editor/domain/services/page_coordinate_transform.dart';
+import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_multi_doc_chat_controller.dart';
@@ -89,7 +92,6 @@ import 'package:ai_pdf/features/editor/application/editor_form_review_controller
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_highlight_painter.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_redaction_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_compare_view.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_multi_doc_chat_panel.dart';
@@ -133,6 +135,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Long-edge the cached JPEG was rendered at, so a preview cannot block
   /// the sharp frame and a late preview cannot overwrite it.
   final Map<int, int> _pageEdge = {};
+  /// width / height of each page. Missing entries fall back to A4 portrait.
+  final Map<int, double> _pageAspect = {};
+  /// Clockwise quarter-turns applied to the on-screen page this session.
+  final Map<int, int> _pageQuarterTurns = {};
+  final TransformationController _viewTransform = TransformationController();
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
   List<Rect> _markupPreview = const [];
@@ -249,6 +256,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   @override
   void initState() {
     super.initState();
+    _viewTransform.addListener(_onViewTransform);
     // Restore signatures saved in previous sessions (once per app run).
     if (!_signaturesLoaded) {
       _signaturesLoaded = true;
@@ -270,6 +278,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   @override
   void dispose() {
+    _viewTransform.removeListener(_onViewTransform);
+    _viewTransform.dispose();
     _doc?.close();
     _ocr.dispose();
     _imageRenderer.dispose();
@@ -537,6 +547,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _pageCache.clear();
       _pageEdge.clear();
+      _pageAspect.clear();
+      _pageQuarterTurns.clear();
       _textLayer.clear();
       _markupPreview = const [];
       _wordSelection = null;
@@ -560,6 +572,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           index: 0,
           pageCache: _pageCache,
           resolution: _pageEdge,
+          aspects: _pageAspect,
           stillCurrent: () => mounted && ticket == _navTicket,
           onLowRes: (_) {
             if (mounted && ticket == _navTicket) setState(() {});
@@ -590,6 +603,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
         }
       }
 
+      _maskRedactedText();
+
       if (fields != null && fields.isNotEmpty) {
         _initialFields.applyInitialFields(
           fields: fields,
@@ -614,6 +629,59 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
+  void _onViewTransform() {
+    if (_inlineEditing != null && mounted) setState(() {});
+  }
+
+  double _aspectFor(int index) {
+    final stored = _pageAspect[index];
+    if (stored == null || stored <= 0 || stored.isNaN) return PageFit.a4PortraitAspect;
+    return stored;
+  }
+
+  void _maskRedactedText() {
+    const svc = RedactionService();
+    var changed = false;
+    for (final entry in _layers.entries) {
+      final words = _textLayer[entry.key];
+      if (words == null || words.isEmpty) continue;
+      final regions = [
+        for (final shape in entry.value.shapes)
+          if (shape.isSecureRedaction)
+            RedactionRegion(shape.bounds, pageIndex: entry.key),
+      ];
+      if (regions.isEmpty) continue;
+      final next = svc.apply(words, regions).remainingText;
+      if (next.length != words.length) {
+        _textLayer[entry.key] = next;
+        changed = true;
+      }
+    }
+    if (changed) _searchController.setPages(_textLayer);
+  }
+
+  void _commitRedaction() {
+    final start = _shapeStart;
+    final end = _shapeEnd;
+    _shapeStart = null;
+    _shapeEnd = null;
+    if (start == null || end == null) {
+      setState(() {});
+      return;
+    }
+    final rect = Rect.fromPoints(start, end);
+    if (rect.width < 0.005 || rect.height < 0.005) {
+      setState(() {});
+      return;
+    }
+    final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
+      ..metadata[secureRedactionKey] = true;
+    setState(() {
+      _pushItem(cover);
+      _maskRedactedText();
+    });
+  }
+
   Future<void> _loadTextLayer(String path, int gen) async {
     try {
       final map = await compute(extractPdfTextLayerFromPath, path);
@@ -624,6 +692,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           ..addAll(map);
       });
       _searchController.setPages(_textLayer);
+      _maskRedactedText();
       if (_searchController.state.active && _searchController.state.hasMatches) {
         _jumpToSearch();
       }
@@ -724,6 +793,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       pageCache: _pageCache,
       renderMaxEdge: maxEdge ?? _renderMaxEdge,
       resolution: _pageEdge,
+      aspects: _pageAspect,
       stillCurrent: () => mounted && ticket == _navTicket,
     );
     if (!mounted || ticket != _navTicket) return;
@@ -780,6 +850,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             pageCache: _pageCache,
             renderMaxEdge: _previewEdge,
             resolution: _pageEdge,
+            aspects: _pageAspect,
             stillCurrent: () => mounted && ticket == _navTicket,
           )
           .then((_) {
@@ -913,6 +984,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (_redactionController.state.active) {
+      _shapeStart = n;
+      _shapeEnd = n;
+      setState(() {});
+      return;
+    }
     if (_tool == EditTool.select) {
       final hit = _hitTest(n);
       if (hit != null && _multi.contains(hit)) {
@@ -980,6 +1057,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (_redactionController.state.active && _shapeStart != null) {
+      _shapeEnd = n;
+      setState(() {});
+      return;
+    }
     if (_tool == EditTool.select) {
       if (_selMode == 'text' && _shapeStart != null) {
         _shapeEnd = n;
@@ -1033,6 +1115,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _onPanEnd() {
+    if (_redactionController.state.active) {
+      _commitRedaction();
+      return;
+    }
     if (_tool == EditTool.select) {
       if (_selMode == 'text') {
         _selMode = 'none';
@@ -1881,6 +1967,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final rotated = await _pageTransform.rotateClockwise(bytes);
       if (rotated != null) {
         _pageCache[_current] = rotated;
+        final aspect = _aspectFor(_current);
+        _pageAspect[_current] = 1 / aspect;
+        _pageQuarterTurns[_current] = ((_pageQuarterTurns[_current] ?? 0) + 1) % 4;
       }
     } catch (e) {
       _editorController.setError('Rotate failed: $e');
@@ -1909,6 +1998,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCache: _pageCache,
         layers: _layers,
         pageCount: _pageCount,
+        quarterTurns: _pageQuarterTurns,
       );
       if (outPath == null) {
         _editorController.finishExport(error: 'Nothing to export');
@@ -2013,13 +2103,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onClose: () => setState(() => _wordSelection = null),
               )
             : null,
-        redactionOverlay: _redactionController.state.active
-            ? EditorRedactionOverlay(
-                redactionState: _redactionController.state,
-                pageSize: const Size(1, 1), // will be scaled by parent
-                currentPage: _current,
-              )
-            : null,
         outlinePanel: _outlineController.state.visible
             ? EditorOutlinePanel(
                 outlineState: _outlineController.state,
@@ -2071,21 +2154,21 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final editing = _inlineEditing!;
-                    final canvasW = constraints.maxWidth;
-                    final canvasH = constraints.maxHeight;
-                    const aspect = 1 / 1.414;
-                    double pageW, pageH;
-                    if (canvasW / canvasH > aspect) {
-                      pageH = canvasH;
-                      pageW = canvasH * aspect;
-                    } else {
-                      pageW = canvasW;
-                      pageH = canvasW / aspect;
-                    }
-                    final offsetX = (canvasW - pageW) / 2;
-                    final offsetY = (canvasH - pageH) / 2;
-                    final left = offsetX + editing.pos.dx * pageW;
-                    final top = offsetY + editing.pos.dy * pageH;
+                    final fitted = PageFit.box(
+                      maxWidth: constraints.maxWidth,
+                      maxHeight: constraints.maxHeight,
+                      aspect: _aspectFor(_current),
+                    );
+                    final origin = PageCoordinateTransform.zoomedPagePoint(
+                      norm: editing.pos,
+                      pageLeft: fitted.left,
+                      pageTop: fitted.top,
+                      pageSize: Size(fitted.width, fitted.height),
+                      zoom: _viewTransform.value,
+                    );
+                    final scale = _viewTransform.value.storage[0];
+                    final pageW = fitted.width * scale;
+                    final pageH = fitted.height * scale;
                     return Stack(
                       children: [
                         // Tap outside to dismiss inline editor.
@@ -2096,8 +2179,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           ),
                         ),
                         Positioned(
-                          left: left,
-                          top: top,
+                          left: origin.dx,
+                          top: origin.dy,
                           width: (pageW * (1 - editing.pos.dx)).clamp(50.0, pageW),
                           child: InlineTextEditor(
                             annotation: editing,
@@ -2115,8 +2198,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
               )
             : null,
         documentViewport: EditorDocumentViewport(
-          panEnabled: _tool == EditTool.pan,
-          scaleEnabled: true,
+          panEnabled: _tool == EditTool.pan && !_redactionController.state.active,
+          scaleEnabled: !_redactionController.state.active,
+          pageAspect: _aspectFor(_current),
+          transformationController: _viewTransform,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
             tool: _tool,
@@ -2128,6 +2213,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             color: _color,
             stroke: _stroke,
             highlightPreview: false,
+            securePreview: _redactionController.state.active,
             markupPreview: _markupPreview,
             markupKind: _markupFactory.kindFor(_tool),
             findRects: _findRects(),

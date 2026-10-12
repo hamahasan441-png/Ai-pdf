@@ -165,6 +165,20 @@ class AnnotationDraw {
     }
   }
 
+  /// Opaque black cover. Painted into the page raster on export so deleting
+  /// a later object cannot reveal the pixels underneath.
+  static void secureCover(Canvas canvas, Size size, Offset a, Offset b) {
+    canvas.drawRect(
+      Rect.fromPoints(
+        Offset(a.dx * size.width, a.dy * size.height),
+        Offset(b.dx * size.width, b.dy * size.height),
+      ),
+      Paint()
+        ..color = const Color(0xFF000000)
+        ..style = PaintingStyle.fill,
+    );
+  }
+
   static void _arrowHead(Canvas canvas, Offset from, Offset to, Paint paint, double k) {
     final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
     final headLen = 18.0 * k;
