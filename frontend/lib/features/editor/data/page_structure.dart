@@ -45,3 +45,15 @@ class PageSourceMap {
     return next;
   }
 }
+
+/// Editor slots to write. [only] limits export to those pages.
+List<int> exportSlots({required int pageCount, List<int>? only}) {
+  if (only == null) return [for (var i = 0; i < pageCount; i++) i];
+  final seen = <int>{};
+  final slots = <int>[];
+  for (final i in only) {
+    if (i < 0 || i >= pageCount || !seen.add(i)) continue;
+    slots.add(i);
+  }
+  return slots;
+}
