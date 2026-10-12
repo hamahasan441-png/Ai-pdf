@@ -82,6 +82,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_chang
 import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_redaction_controller.dart';
 import 'package:ai_pdf/features/editor/data/redaction_service.dart';
+import 'package:ai_pdf/features/editor/domain/services/page_coordinate_transform.dart';
 import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
@@ -138,6 +139,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, double> _pageAspect = {};
   /// Clockwise quarter-turns applied to the on-screen page this session.
   final Map<int, int> _pageQuarterTurns = {};
+  final TransformationController _viewTransform = TransformationController();
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
   List<Rect> _markupPreview = const [];
@@ -254,6 +256,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   @override
   void initState() {
     super.initState();
+    _viewTransform.addListener(_onViewTransform);
     // Restore signatures saved in previous sessions (once per app run).
     if (!_signaturesLoaded) {
       _signaturesLoaded = true;
@@ -275,6 +278,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   @override
   void dispose() {
+    _viewTransform.removeListener(_onViewTransform);
+    _viewTransform.dispose();
     _doc?.close();
     _ocr.dispose();
     _imageRenderer.dispose();
@@ -622,6 +627,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _showError('Could not open file: $e');
       if (mounted) setState(() {});
     }
+  }
+
+  void _onViewTransform() {
+    if (_inlineEditing != null && mounted) setState(() {});
   }
 
   double _aspectFor(int index) {
@@ -2150,10 +2159,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       maxHeight: constraints.maxHeight,
                       aspect: _aspectFor(_current),
                     );
-                    final pageW = fitted.width;
-                    final pageH = fitted.height;
-                    final left = fitted.left + editing.pos.dx * pageW;
-                    final top = fitted.top + editing.pos.dy * pageH;
+                    final origin = PageCoordinateTransform.zoomedPagePoint(
+                      norm: editing.pos,
+                      pageLeft: fitted.left,
+                      pageTop: fitted.top,
+                      pageSize: Size(fitted.width, fitted.height),
+                      zoom: _viewTransform.value,
+                    );
+                    final scale = _viewTransform.value.storage[0];
+                    final pageW = fitted.width * scale;
+                    final pageH = fitted.height * scale;
                     return Stack(
                       children: [
                         // Tap outside to dismiss inline editor.
@@ -2164,8 +2179,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                           ),
                         ),
                         Positioned(
-                          left: left,
-                          top: top,
+                          left: origin.dx,
+                          top: origin.dy,
                           width: (pageW * (1 - editing.pos.dx)).clamp(50.0, pageW),
                           child: InlineTextEditor(
                             annotation: editing,
@@ -2186,6 +2201,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           panEnabled: _tool == EditTool.pan && !_redactionController.state.active,
           scaleEnabled: !_redactionController.state.active,
           pageAspect: _aspectFor(_current),
+          transformationController: _viewTransform,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
             tool: _tool,

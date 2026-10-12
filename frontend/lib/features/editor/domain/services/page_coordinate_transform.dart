@@ -46,6 +46,30 @@ class PageCoordinateTransform {
     Matrix4? zoomMatrix,
   }) : zoomMatrix = zoomMatrix ?? const _IdentityMatrix();
 
+  /// A point on the fitted page, after the same zoom/pan matrix the
+  /// [InteractiveViewer] applies to the whole viewport child.
+  ///
+  /// The page box is centered in the viewport, then the viewer scales and
+  /// translates that entire child. Applying the centering offset before the
+  /// matrix keeps an overlay outside the viewer on the same pixels.
+  static Offset zoomedPagePoint({
+    required Offset norm,
+    required double pageLeft,
+    required double pageTop,
+    required Size pageSize,
+    required Matrix4 zoom,
+  }) {
+    final local = Offset(
+      pageLeft + norm.dx * pageSize.width,
+      pageTop + norm.dy * pageSize.height,
+    );
+    final storage = zoom.storage;
+    return Offset(
+      local.dx * storage[0] + storage[12],
+      local.dy * storage[5] + storage[13],
+    );
+  }
+
   // ─── PDF → Canvas ───────────────────────────────────────────────────────
 
   /// Convert a normalised 0..1 offset to canvas-pixel coordinates.

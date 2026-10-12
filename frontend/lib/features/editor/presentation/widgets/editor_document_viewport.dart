@@ -22,6 +22,7 @@ class EditorDocumentViewport extends StatefulWidget {
   final bool panEnabled;
   final bool scaleEnabled;
   final double pageAspect;
+  final TransformationController? transformationController;
   final Widget child;
 
   const EditorDocumentViewport({
@@ -29,6 +30,7 @@ class EditorDocumentViewport extends StatefulWidget {
     required this.panEnabled,
     required this.scaleEnabled,
     this.pageAspect = PageFit.a4PortraitAspect,
+    this.transformationController,
     required this.child,
   });
 
@@ -37,11 +39,22 @@ class EditorDocumentViewport extends StatefulWidget {
 }
 
 class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
-  final TransformationController _controller = TransformationController();
+  TransformationController? _owned;
+
+  TransformationController get _controller =>
+      widget.transformationController ?? _owned!;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.transformationController == null) {
+      _owned = TransformationController();
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _owned?.dispose();
     super.dispose();
   }
 
