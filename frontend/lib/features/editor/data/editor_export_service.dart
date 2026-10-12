@@ -12,6 +12,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:ai_pdf/features/editor/data/annotation_draw.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
+import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
@@ -42,6 +43,7 @@ class EditorExportService {
     required int pageCount,
     Map<int, int> quarterTurns = const {},
     List<int>? sourcePages,
+    List<int>? onlyIndices,
   }) async {
     final pdf = pw.Document();
     final fonts = EditorPdfFonts();
@@ -52,7 +54,7 @@ class EditorExportService {
     const rtlDetect = RtlDetectionService();
     var rendered = 0;
 
-    for (var i = 0; i < pageCount; i++) {
+    for (final i in exportSlots(pageCount: pageCount, only: onlyIndices)) {
       final composed = await _composePagePng(
         index: i,
         doc: doc,

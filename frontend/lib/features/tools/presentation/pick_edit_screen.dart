@@ -950,7 +950,71 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _showPageOps() {
     _pageOpsController.show(pageCount: _pageCount);
+    _pageOpsController.selectCurrent(_current);
     setState(() {});
+  }
+
+  Future<void> _confirmPageOps() async {
+    final op = _pageOpsController.state;
+    final indices = List<int>.of(op.parsedIndices ?? const []);
+    if (indices.isEmpty) return;
+    _pageOpsController.hide();
+    setState(() {});
+    switch (op.operation) {
+      case PageOperation.delete:
+        final sorted = indices.toList()..sort((a, b) => b.compareTo(a));
+        for (final index in sorted) {
+          _deletePage(index);
+        }
+      case PageOperation.insertBlank:
+        _insertBlankPage(indices.first);
+      case PageOperation.rotateRight:
+        for (final index in indices) {
+          await _rotateSlot(index, clockwise: true);
+        }
+      case PageOperation.rotateLeft:
+        for (final index in indices) {
+          await _rotateSlot(index, clockwise: false);
+        }
+      case PageOperation.extract:
+        final path = await _renderToPdfFile(onlyIndices: indices, clearRecovery: false);
+        if (path != null && mounted) {
+          await _offerExportedFile(path);
+        }
+      case PageOperation.split:
+        final paths = <String>[];
+        for (final index in indices) {
+          final path = await _renderToPdfFile(onlyIndices: [index], clearRecovery: false);
+          if (path != null) paths.add(path);
+        }
+        if (paths.isNotEmpty && mounted) {
+          await Share.shareXFiles([for (final path in paths) XFile(path)]);
+        }
+    }
+  }
+
+  Future<void> _rotateSlot(int index, {required bool clockwise}) async {
+    final turns = clockwise ? 1 : 3;
+    final bytes = _pageCache[index];
+    if (bytes != null) {
+      var current = bytes;
+      for (var n = 0; n < turns; n++) {
+        final rotated = await _pageTransform.rotateClockwise(current);
+        if (rotated == null) return;
+        current = rotated;
+      }
+      _pageCache[index] = current;
+    }
+    if (!mounted) return;
+    setState(() {
+      var aspect = _pageAspect[index] ?? _aspectFor(index);
+      for (var n = 0; n < turns; n++) {
+        aspect = aspect == 0 ? aspect : 1 / aspect;
+      }
+      _pageAspect[index] = aspect;
+      _pageQuarterTurns[index] = ((_pageQuarterTurns[index] ?? 0) + turns) % 4;
+      _hasUnsavedChanges = true;
+    });
   }
 
   // ---- Page management (Phase 10) ----
@@ -2086,7 +2150,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   // for pages that aren't on screen, and keeps memory bounded (one page image
   // in flight at a time, disposed immediately).
 
-  Future<String?> _renderToPdfFile() async {
+  Future<String?> _renderToPdfFile({
+    List<int>? onlyIndices,
+    bool clearRecovery = true,
+  }) async {
     _editorController.beginExport();
     setState(() {});
     try {
@@ -2097,6 +2164,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCount: _pageCount,
         quarterTurns: _pageQuarterTurns,
         sourcePages: _sourcePages,
+        onlyIndices: onlyIndices,
       );
       if (outPath == null) {
         _editorController.finishExport(error: 'Nothing to export');
@@ -2109,7 +2177,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _editorController.finishExport();
         // Recovery data stays until the new file is actually on disk.
         final srcPath = _editorController.state.filePath;
-        if (srcPath != null) _persistence.delete(srcPath);
+        if (clearRecovery && srcPath != null) _persistence.delete(srcPath);
       }
       return outPath;
     } catch (e) {
@@ -2124,9 +2192,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Save the edited PDF, then — right there at save time — offer to share it
   /// or continue straight into another tool (compress, convert, …). The saved
   /// file is handed off so the next tool opens it automatically (no re-picking).
-  Future<void> _export() async {
-    final outPath = await _renderToPdfFile();
-    if (outPath == null || !mounted) return;
+  Future<void> _offerExportedFile(String outPath) async {
     final action = await showEditorExportActionsSheet(context, outPath: outPath);
     if (action == null || !mounted) return;
     if (action.kind == 'share') {
@@ -2137,6 +2203,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (action.handoffPath != null) ToolHandoff.instance.set(action.handoffPath!);
       context.push(action.route!);
     }
+  }
+
+  Future<void> _export() async {
+    final outPath = await _renderToPdfFile();
+    if (outPath == null || !mounted) return;
+    await _offerExportedFile(outPath);
   }
 
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
@@ -2397,6 +2469,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onUnderline: _toggleSelectionUnderline,
           onColor: _pickSelectionColor,
         ),
+        pageOpsDialog: _pageOpsController.state.visible
+            ? EditorPageOpsDialog(
+                pageOpsState: _pageOpsController.state,
+                onRangeChanged: (value) => setState(() => _pageOpsController.setRangeSpec(value)),
+                onOperationChanged: (op) => setState(() => _pageOpsController.setOperation(op)),
+                onSelectAll: () => setState(() => _pageOpsController.selectAll()),
+                onConfirm: _confirmPageOps,
+                onClose: () => setState(() => _pageOpsController.hide()),
+              )
+            : null,
         thumbnailStrip: _pageCount > 1
             ? EditorPageThumbnailStrip(
                 pageCount: _pageCount,

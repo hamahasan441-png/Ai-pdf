@@ -42,4 +42,9 @@ void main() {
     expect(layers[1]?.shapes, hasLength(1));
     expect(identical(layers[0]!.shapes.single, layers[1]!.shapes.single), isFalse);
   });
+
+  test('extract and split only keep the requested pages', () {
+    expect(exportSlots(pageCount: 5, only: [0, 4, 4, 9, -1]), [0, 4]);
+    expect(exportSlots(pageCount: 3), [0, 1, 2]);
+  });
 }
