@@ -63,6 +63,10 @@ class EditorPageThumbnailStrip extends StatelessWidget {
                         bytes,
                         fit: BoxFit.cover,
                         gaplessPlayback: true,
+                        // Thumbs are ~44px. Decoding the 2400px page bitmap
+                        // here blows the image cache and janks the editor.
+                        cacheWidth: 96,
+                        filterQuality: FilterQuality.low,
                       )
                     : Center(
                         child: Text(

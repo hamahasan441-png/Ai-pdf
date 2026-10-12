@@ -11,7 +11,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
-import 'package:ai_pdf/features/editor/data/background_page_renderer.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
@@ -116,10 +115,16 @@ class PickEditScreen extends StatefulWidget {
 
 class _PickEditScreenState extends State<PickEditScreen> {
   static const int _renderMaxEdge = 2400;
+  /// Shown immediately on a page turn. The sharp 2400px frame replaces it.
+  static const int _previewEdge = 1280;
   static const int _maxCachedPages = 3;
 
   pdfx.PdfDocument? _doc;
   final Map<int, Uint8List> _pageCache = {}; // page index -> jpeg bytes
+  /// Long-edge the cached JPEG was rendered at, so a preview cannot block
+  /// the sharp frame and a late preview cannot overwrite it.
+  final Map<int, int> _pageEdge = {};
+  int _navTicket = 0;
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
 
@@ -175,7 +180,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Bumped when an async image decode completes, to force a canvas repaint.
   int _canvasRevision = 0;
   final EditorPageRenderService _pageRender = const EditorPageRenderService();
-  final BackgroundPageRenderer _bgRenderer = const BackgroundPageRenderer();
   final AnnotationPersistenceService _persistence = const AnnotationPersistenceService();
   final PagePreloaderService _preloader = const PagePreloaderService();
   final PageReorderService _pageReorder = const PageReorderService();
@@ -517,6 +521,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _editorController.beginOpenFile(fileName: name, filePath: path);
     setState(() {
       _pageCache.clear();
+      _pageEdge.clear();
       _layers.clear();
       _fields.clear();
       _multi.clear();
@@ -528,10 +533,27 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final loaded = await _documentService.openDocument(path);
       _doc = loaded.document;
       _pageCount = loaded.pageCount;
-      if (loaded.isPdf) {
-        await _renderPage(0);
+      final ticket = ++_navTicket;
+      if (loaded.isPdf && _doc != null) {
+        await _preloader.renderFirstPageProgressive(
+          doc: _doc!,
+          index: 0,
+          pageCache: _pageCache,
+          resolution: _pageEdge,
+          stillCurrent: () => mounted && ticket == _navTicket,
+          onLowRes: (_) {
+            if (mounted && ticket == _navTicket) setState(() {});
+          },
+        );
+        _pageRender.evictFarPages(
+          pageCache: _pageCache,
+          keepIndex: 0,
+          maxCachedPages: _maxCachedPages,
+          resolution: _pageEdge,
+        );
       } else if (loaded.imageBytes != null) {
         _pageCache[0] = loaded.imageBytes!;
+        _pageEdge[0] = _renderMaxEdge;
       }
       _editorController.finishOpenFile(pageCount: _pageCount, currentPage: 0);
 
@@ -572,53 +594,72 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  Future<void> _renderPage(int index) async {
-    if (_pageCache.containsKey(index) || _doc == null) return;
+  Future<void> _renderPage(int index, {int? maxEdge}) async {
+    if (_doc == null) return;
+    final ticket = _navTicket;
     await _pageRender.renderPage(
       doc: _doc!,
       index: index,
       pageCache: _pageCache,
-      renderMaxEdge: _renderMaxEdge,
+      renderMaxEdge: maxEdge ?? _renderMaxEdge,
+      resolution: _pageEdge,
+      stillCurrent: () => mounted && ticket == _navTicket,
     );
+    if (!mounted || ticket != _navTicket) return;
     _pageRender.evictFarPages(
       pageCache: _pageCache,
       keepIndex: index,
       maxCachedPages: _maxCachedPages,
+      resolution: _pageEdge,
     );
   }
 
   Future<void> _goToPage(int index) async {
     if (index < 0 || index >= _pageCount) return;
+    final ticket = ++_navTicket;
     _editorController.beginPageChange();
+    final hadPreview = _pageCache.containsKey(index);
+    if (hadPreview) {
+      _editorController.finishPageChange(index);
+      setState(() {
+        _selected = null;
+        _multi.clear();
+        _showFields = false;
+        _showEditLines = false;
+      });
+    } else {
+      setState(() {});
+    }
+    // Paint a lighter bitmap first so the turn is not blocked on 2400px.
+    await _renderPage(index, maxEdge: _previewEdge);
+    if (!mounted || ticket != _navTicket) return;
+    if (!hadPreview) {
+      _editorController.finishPageChange(index);
+      setState(() {
+        _selected = null;
+        _multi.clear();
+        _showFields = false;
+        _showEditLines = false;
+      });
+    }
+    await _renderPage(index, maxEdge: _renderMaxEdge);
+    if (!mounted || ticket != _navTicket) return;
     setState(() {});
-    await _renderPage(index);
-    _editorController.finishPageChange(index);
-    setState(() {
-      _selected = null;
-      _multi.clear();
-      _showFields = false;
-      _showEditLines = false;
-    });
-    // Pre-render adjacent pages in the background (off-main-thread downscale)
-    // for instant page-switching without janking the UI.
-    if (_doc != null) {
-      for (final adj in [index - 1, index + 1]) {
-        if (adj >= 0 && adj < _pageCount) {
-          _bgRenderer.renderInBackground(
+    if (_doc == null) return;
+    for (final adj in [index - 1, index + 1]) {
+      if (adj < 0 || adj >= _pageCount) continue;
+      _pageRender
+          .renderPage(
             doc: _doc!,
             index: adj,
             pageCache: _pageCache,
-            renderMaxEdge: _renderMaxEdge,
-          ).then((_) {
-            if (mounted) setState(() {}); // refresh thumbnails
-          });
-        }
-      }
-      _bgRenderer.evictFarPages(
-        pageCache: _pageCache,
-        keepIndex: index,
-        maxCachedPages: _maxCachedPages,
-      );
+            renderMaxEdge: _previewEdge,
+            resolution: _pageEdge,
+            stillCurrent: () => mounted && ticket == _navTicket,
+          )
+          .then((_) {
+        if (mounted && ticket == _navTicket) setState(() {});
+      });
     }
   }
 
@@ -692,6 +733,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCache: _pageCache,
         layers: _layers,
         pageCount: _pageCount,
+        resolution: _pageEdge,
       );
       _pageCount = newCount;
       if (_current >= _pageCount) _current = _pageCount - 1;
@@ -708,6 +750,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCache: _pageCache,
         layers: _layers,
         pageCount: _pageCount,
+        resolution: _pageEdge,
       );
       _pageCount = newCount;
       _hasUnsavedChanges = true;
@@ -721,6 +764,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         pageCache: _pageCache,
         layers: _layers,
         pageCount: _pageCount,
+        resolution: _pageEdge,
       );
       _pageCount = newCount;
       _hasUnsavedChanges = true;

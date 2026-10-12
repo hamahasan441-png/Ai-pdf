@@ -30,7 +30,9 @@ class PagePreloaderService {
     required Map<int, Uint8List> pageCache,
     required int renderMaxEdge,
     Map<int, Uint8List>? lowResCache,
+    Map<int, int>? resolution,
     bool lowRamMode = false,
+    bool Function()? stillCurrent,
   }) async {
     if (lowRamMode) {
       // Low-RAM: only ±1 low-res, no high-res pre-render
@@ -43,6 +45,8 @@ class PagePreloaderService {
           index: idx,
           pageCache: pageCache,
           renderMaxEdge: _lowResEdge,
+          resolution: resolution,
+          stillCurrent: stillCurrent,
         );
       }
       return;
@@ -69,19 +73,23 @@ class PagePreloaderService {
         index: idx,
         pageCache: targetCache,
         renderMaxEdge: _lowResEdge,
+        resolution: identical(targetCache, pageCache) ? resolution : null,
+        stillCurrent: stillCurrent,
       );
     }
 
-    // Phase 2: high-res ±1 for next/prev instant paging
+    // Phase 2: high-res ±1. A low-res placeholder must not count as done.
     for (final delta in [1, -1]) {
       final idx = currentPage + delta;
       if (idx < 0 || idx >= pageCount) continue;
-      if (pageCache.containsKey(idx)) continue;
+      if (stillCurrent != null && !stillCurrent()) return;
       await _renderer.renderPage(
         doc: doc,
         index: idx,
         pageCache: pageCache,
         renderMaxEdge: renderMaxEdge,
+        resolution: resolution,
+        stillCurrent: stillCurrent,
       );
     }
   }
@@ -92,6 +100,8 @@ class PagePreloaderService {
     required int index,
     required Map<int, Uint8List> pageCache,
     required void Function(Uint8List lowRes) onLowRes,
+    Map<int, int>? resolution,
+    bool Function()? stillCurrent,
   }) async {
     // Low-res first (<1.5s target)
     await _renderer.renderPage(
@@ -99,24 +109,40 @@ class PagePreloaderService {
       index: index,
       pageCache: pageCache,
       renderMaxEdge: _lowResEdge,
+      resolution: resolution,
+      stillCurrent: stillCurrent,
     );
     final lowRes = pageCache[index];
-    if (lowRes != null) {
+    if (lowRes != null && (stillCurrent == null || stillCurrent())) {
       onLowRes(lowRes);
     }
-    // Then high-res upgrade in background
-    final highResCache = <int, Uint8List>{};
+    if (stillCurrent != null && !stillCurrent()) return lowRes;
+    if (resolution == null) {
+      // Without an edge map, any cached bytes look "done". Render the sharp
+      // frame into a side buffer so it can replace the placeholder.
+      final highResCache = <int, Uint8List>{};
+      await _renderer.renderPage(
+        doc: doc,
+        index: index,
+        pageCache: highResCache,
+        renderMaxEdge: _highResEdge,
+        stillCurrent: stillCurrent,
+      );
+      final highRes = highResCache[index];
+      if (highRes != null && (stillCurrent == null || stillCurrent())) {
+        pageCache[index] = highRes;
+        return highRes;
+      }
+      return lowRes;
+    }
     await _renderer.renderPage(
       doc: doc,
       index: index,
-      pageCache: highResCache,
+      pageCache: pageCache,
       renderMaxEdge: _highResEdge,
+      resolution: resolution,
+      stillCurrent: stillCurrent,
     );
-    final highRes = highResCache[index];
-    if (highRes != null) {
-      pageCache[index] = highRes;
-      return highRes;
-    }
-    return lowRes;
+    return pageCache[index] ?? lowRes;
   }
 }

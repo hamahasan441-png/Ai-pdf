@@ -158,13 +158,21 @@ class EditorCanvas extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.memory(
-                bytes,
-                fit: BoxFit.fill,
-                gaplessPlayback: true,
-                // Smoother resampling when the InteractiveViewer scales the
-                // page bitmap up on zoom (zero extra memory vs. the default).
-                filterQuality: FilterQuality.medium,
+              RepaintBoundary(
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.fill,
+                  gaplessPlayback: true,
+                  // Decode for the screen, plus headroom for a 2× pinch,
+                  // instead of the full 2400px bitmap on every frame.
+                  cacheWidth: (constraints.maxWidth *
+                          MediaQuery.devicePixelRatioOf(context) *
+                          2)
+                      .round()
+                      .clamp(64, 4096)
+                      .toInt(),
+                  filterQuality: FilterQuality.medium,
+                ),
               ),
               CustomPaint(
                 painter: EditorCanvasPainter(

@@ -39,7 +39,12 @@ dependencies:
   # pdfx: PDFium-based rendering with EXPLICIT width/height control, so page
   # rasters are capped in size -> bounded memory -> no OutOfMemoryError.
   # It also provides a memory-efficient pinch-zoom viewer (PdfViewPinch).
-  pdfx: ^2.6.0             # Render (capped) + pro pinch viewer
+  # Exact pin. pdfx 2.10+ calls Matrix4.translateByDouble / scaleByDouble,
+  # which need vector_math 2.2. Flutter 3.29 (CI) only ships vector_math
+  # 2.1.4, so a caret on 2.6 floats to 2.11 and assembleRelease fails.
+  # 2.9.2 is the last release that matches the Flutter pin in
+  # .github/workflows/build-apk.yml.
+  pdfx: 2.9.2             # Render (capped) + pro pinch viewer
   pdf: ^3.11.1             # Create output PDFs (JPG to PDF, merge, split)
   image: ^4.3.0            # Image compress/downscale (pure Dart, offline)
 
