@@ -99,60 +99,17 @@ class EditorToolbar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               child: Row(
                 children: [
-                  _actionBtn(Icons.auto_fix_high, l10n.autoFill, detecting ? () {} : onAutoFill, cs),
-                  _actionBtn(Icons.psychology, l10n.aiFill, detecting ? () {} : onAiFill, cs),
-                  _actionBtn(
-                    showEditLines ? Icons.text_fields : Icons.text_format,
-                    l10n.editTextTool,
-                    detecting ? () {} : onEditTextTool,
-                    cs,
-                  ),
-                  if (hasPageFields)
-                    _actionBtn(
-                      showFields ? Icons.visibility_off : Icons.visibility,
-                      showFields ? l10n.toolHide : l10n.toolFields,
-                      onToggleFields,
-                      cs,
-                    ),
                   _toolBtn(Icons.pan_tool_alt, l10n.toolMove, EditTool.pan, cs),
                   _toolBtn(Icons.near_me_outlined, l10n.toolSelect, EditTool.select, cs),
-                  _actionBtn(Icons.gesture, l10n.toolSign, onAddSignature, cs),
-                  _actionBtn(Icons.event_available, l10n.signatureDate, onPlaceSignatureDate, cs),
-                  _actionBtn(Icons.badge_outlined, l10n.myProfile, onInsertProfileField, cs),
-                  _actionBtn(Icons.approval, 'Stamp', onAddStamp, cs),
-                  _actionBtn(Icons.image_outlined, 'Image', onAddImage, cs),
-                  _toolBtn(Icons.check, l10n.markCheck, EditTool.check, cs),
-                  _toolBtn(Icons.close, l10n.markCross, EditTool.cross, cs),
-                  _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox, cs),
-                  _toolBtn(Icons.fiber_manual_record, l10n.markDot, EditTool.dot, cs),
-                  _toolBtn(Icons.remove, l10n.markDash, EditTool.dash, cs),
-                  _toolBtn(Icons.title, l10n.toolText, EditTool.text, cs),
-                  _toolBtn(Icons.sticky_note_2_outlined, l10n.toolNote, EditTool.note, cs),
-                  _toolBtn(Icons.edit, l10n.toolDraw, EditTool.draw, cs),
                   _toolBtn(Icons.highlight, l10n.toolHighlight, EditTool.highlight, cs),
                   _toolBtn(Icons.format_underlined, l10n.toolUnderline, EditTool.underline, cs),
-                  _toolBtn(Icons.format_strikethrough, l10n.toolStrikeout, EditTool.strikeout, cs),
-                  _toolBtn(Icons.waves, l10n.toolSquiggly, EditTool.squiggly, cs),
-                  _toolBtn(Icons.horizontal_rule, l10n.toolLine, EditTool.line, cs),
-                  _toolBtn(Icons.north_east, l10n.toolArrow, EditTool.arrow, cs),
-                  _toolBtn(Icons.crop_square, l10n.toolBox, EditTool.rect, cs),
-                  _toolBtn(Icons.circle_outlined, l10n.toolOval, EditTool.oval, cs),
-                  _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout, cs),
-                  _toolBtn(Icons.cleaning_services, l10n.toolEraser, EditTool.eraser, cs),
-                  _actionBtn(Icons.rotate_right, l10n.rotate, onRotatePage, cs),
-                  if (onSearch != null)
-                    _actionBtn(Icons.search, 'Find', onSearch!, cs),
-                  if (onRedact != null)
-                    _actionBtn(Icons.remove_red_eye_outlined, 'Redact', onRedact!, cs),
-                  if (onOutline != null)
-                    _actionBtn(Icons.menu_book, 'Outline', onOutline!, cs),
-                  if (onLayers != null)
-                    _actionBtn(Icons.layers, 'Layers', onLayers!, cs),
-                  if (onChat != null)
-                    _actionBtn(Icons.auto_awesome, 'AI Chat', onChat!, cs),
-                  if (onPageOps != null)
-                    _actionBtn(Icons.pages, 'Pages', onPageOps!, cs),
-                  _actionBtn(Icons.folder_open, l10n.toolOpen, onOpen, cs),
+                  _toolBtn(Icons.title, l10n.toolText, EditTool.text, cs),
+                  _toolBtn(Icons.edit, l10n.toolDraw, EditTool.draw, cs),
+                  _toolBtn(Icons.sticky_note_2_outlined, l10n.toolNote, EditTool.note, cs),
+                  _actionBtn(Icons.gesture, l10n.toolSign, onAddSignature, cs),
+                  if (onSearch != null) _actionBtn(Icons.search, l10n.toolFind, onSearch!, cs),
+                  if (!_isPrimary(tool)) _overflowTool(l10n, cs),
+                  _actionBtn(Icons.apps, l10n.toolMore, () => _openMore(context), cs),
                 ],
               ),
             ),
@@ -210,6 +167,151 @@ class EditorToolbar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  bool _isPrimary(EditTool value) {
+    return value == EditTool.pan ||
+        value == EditTool.select ||
+        value == EditTool.highlight ||
+        value == EditTool.underline ||
+        value == EditTool.text ||
+        value == EditTool.draw ||
+        value == EditTool.note;
+  }
+
+  Widget _overflowTool(AppLocalizations l10n, ColorScheme cs) {
+    switch (tool) {
+      case EditTool.strikeout:
+        return _toolBtn(Icons.format_strikethrough, l10n.toolStrikeout, tool, cs);
+      case EditTool.squiggly:
+        return _toolBtn(Icons.waves, l10n.toolSquiggly, tool, cs);
+      case EditTool.line:
+        return _toolBtn(Icons.horizontal_rule, l10n.toolLine, tool, cs);
+      case EditTool.arrow:
+        return _toolBtn(Icons.north_east, l10n.toolArrow, tool, cs);
+      case EditTool.rect:
+        return _toolBtn(Icons.crop_square, l10n.toolBox, tool, cs);
+      case EditTool.oval:
+        return _toolBtn(Icons.circle_outlined, l10n.toolOval, tool, cs);
+      case EditTool.whiteout:
+        return _toolBtn(Icons.format_color_fill, l10n.toolWhiteout, tool, cs);
+      case EditTool.eraser:
+        return _toolBtn(Icons.cleaning_services, l10n.toolEraser, tool, cs);
+      case EditTool.check:
+        return _toolBtn(Icons.check, l10n.markCheck, tool, cs);
+      case EditTool.cross:
+        return _toolBtn(Icons.close, l10n.markCross, tool, cs);
+      case EditTool.checkbox:
+        return _toolBtn(Icons.check_box_outlined, l10n.markCheckbox, tool, cs);
+      case EditTool.dot:
+        return _toolBtn(Icons.fiber_manual_record, l10n.markDot, tool, cs);
+      case EditTool.dash:
+        return _toolBtn(Icons.remove, l10n.markDash, tool, cs);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  void _openMore(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        void act(VoidCallback action) {
+          Navigator.pop(ctx);
+          action();
+        }
+
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            children: [
+              _moreLabel(l10n.toolHighlight, cs),
+              Wrap(
+                children: [
+                  _sheetTool(ctx, Icons.format_strikethrough, l10n.toolStrikeout, EditTool.strikeout),
+                  _sheetTool(ctx, Icons.waves, l10n.toolSquiggly, EditTool.squiggly),
+                ],
+              ),
+              _moreLabel(l10n.moreShapes, cs),
+              Wrap(
+                children: [
+                  _sheetTool(ctx, Icons.horizontal_rule, l10n.toolLine, EditTool.line),
+                  _sheetTool(ctx, Icons.north_east, l10n.toolArrow, EditTool.arrow),
+                  _sheetTool(ctx, Icons.crop_square, l10n.toolBox, EditTool.rect),
+                  _sheetTool(ctx, Icons.circle_outlined, l10n.toolOval, EditTool.oval),
+                  _sheetTool(ctx, Icons.format_color_fill, l10n.toolWhiteout, EditTool.whiteout),
+                  _sheetTool(ctx, Icons.cleaning_services, l10n.toolEraser, EditTool.eraser),
+                  _sheetTool(ctx, Icons.check, l10n.markCheck, EditTool.check),
+                  _sheetTool(ctx, Icons.close, l10n.markCross, EditTool.cross),
+                  _sheetTool(ctx, Icons.check_box_outlined, l10n.markCheckbox, EditTool.checkbox),
+                  _sheetTool(ctx, Icons.fiber_manual_record, l10n.markDot, EditTool.dot),
+                  _sheetTool(ctx, Icons.remove, l10n.markDash, EditTool.dash),
+                ],
+              ),
+              _moreLabel(l10n.moreInsert, cs),
+              Wrap(
+                children: [
+                  _actionBtn(Icons.approval, l10n.toolStamp, () => act(onAddStamp), cs),
+                  _actionBtn(Icons.image_outlined, l10n.toolImage, () => act(onAddImage), cs),
+                  _actionBtn(Icons.event_available, l10n.signatureDate, () => act(onPlaceSignatureDate), cs),
+                  _actionBtn(Icons.badge_outlined, l10n.myProfile, () => act(onInsertProfileField), cs),
+                ],
+              ),
+              _moreLabel(l10n.moreDocument, cs),
+              Wrap(
+                children: [
+                  _actionBtn(Icons.auto_fix_high, l10n.autoFill, () => act(detecting ? () {} : onAutoFill), cs),
+                  _actionBtn(Icons.psychology, l10n.aiFill, () => act(detecting ? () {} : onAiFill), cs),
+                  _actionBtn(
+                    showEditLines ? Icons.text_fields : Icons.text_format,
+                    l10n.editTextTool,
+                    () => act(detecting ? () {} : onEditTextTool),
+                    cs,
+                  ),
+                  if (hasPageFields)
+                    _actionBtn(
+                      showFields ? Icons.visibility_off : Icons.visibility,
+                      showFields ? l10n.toolHide : l10n.toolFields,
+                      () => act(onToggleFields),
+                      cs,
+                    ),
+                  _actionBtn(Icons.rotate_right, l10n.rotate, () => act(onRotatePage), cs),
+                  if (onRedact != null)
+                    _actionBtn(Icons.remove_red_eye_outlined, l10n.toolRedact, () => act(onRedact!), cs),
+                  if (onOutline != null)
+                    _actionBtn(Icons.menu_book, l10n.toolOutline, () => act(onOutline!), cs),
+                  if (onLayers != null)
+                    _actionBtn(Icons.layers, l10n.toolLayers, () => act(onLayers!), cs),
+                  if (onChat != null)
+                    _actionBtn(Icons.auto_awesome, l10n.toolChat, () => act(onChat!), cs),
+                  if (onPageOps != null)
+                    _actionBtn(Icons.pages, l10n.toolPages, () => act(onPageOps!), cs),
+                  _actionBtn(Icons.folder_open, l10n.toolOpen, () => act(onOpen), cs),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sheetTool(BuildContext ctx, IconData icon, String label, EditTool value) {
+    return _actionBtn(icon, label, () {
+      Navigator.pop(ctx);
+      onToolChanged(value);
+    }, Theme.of(ctx).colorScheme);
+  }
+
+  Widget _moreLabel(String text, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+      child: Text(text, style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
     );
   }
 

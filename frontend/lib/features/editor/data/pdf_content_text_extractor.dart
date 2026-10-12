@@ -293,7 +293,7 @@ class _PdfDoc {
     final type = d['/Type']?.name;
     final isPage = type == '/Page' || (type != '/Pages' && d.containsKey('/Contents'));
     if (isPage && type != '/Pages') {
-      out.add(_PageInfo(d, res, box ?? const [0, 0, 612, 792]));
+      out.add(_PageInfo(d, res, box ?? const <double>[0, 0, 612, 792]));
       return;
     }
     final kids = d['/Kids']?.array;
@@ -325,8 +325,8 @@ class _PdfDoc {
     final box = page.box;
     final llx = box[0];
     final lly = box[1];
-    final urx = box.length > 2 ? box[2] : 612;
-    final ury = box.length > 3 ? box[3] : 792;
+    final urx = (box.length > 2 ? box[2] : 612).toDouble();
+    final ury = (box.length > 3 ? box[3] : 792).toDouble();
     final pw = ((urx - llx).abs() < 1 ? 612.0 : (urx - llx)).toDouble();
     final ph = ((ury - lly).abs() < 1 ? 792.0 : (ury - lly)).toDouble();
     final out = <PdfTextElement>[];
