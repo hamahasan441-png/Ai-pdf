@@ -41,6 +41,7 @@ class EditorExportService {
     required Map<int, PageLayer> layers,
     required int pageCount,
     Map<int, int> quarterTurns = const {},
+    List<int>? sourcePages,
   }) async {
     final pdf = pw.Document();
     final fonts = EditorPdfFonts();
@@ -59,6 +60,7 @@ class EditorExportService {
         layers: layers,
         uni: uni,
         quarterTurns: (quarterTurns[i] ?? 0) % 4,
+        sourcePage: sourcePages != null && i < sourcePages.length ? sourcePages[i] : i,
       );
       if (composed == null) {
         await Future<void>.delayed(Duration.zero);
@@ -129,6 +131,23 @@ class EditorExportService {
     }
     await partial.rename(outPath);
     return outPath;
+  }
+
+  Future<Uint8List> _blankPagePng() async {
+    const width = 612.0;
+    const height = 792.0;
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(
+      const Rect.fromLTWH(0, 0, width, height),
+      Paint()..color = const Color(0xFFFFFFFF),
+    );
+    final image = await recorder.endRecording().toImage(width.toInt(), height.toInt());
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List() ?? Uint8List(0);
+    } finally {
+      image.dispose();
+    }
   }
 
   /// Whether [t] can be exported as real (searchable) vector text: Latin-1 is
@@ -321,12 +340,18 @@ class EditorExportService {
     required Map<int, PageLayer> layers,
     required PdfUnicodeFonts uni,
     int quarterTurns = 0,
+    int? sourcePage,
   }) async {
     Uint8List? baseBytes;
     double? sourceWidth;
     double? sourceHeight;
-    if (doc != null) {
-      final page = await doc.getPage(index + 1);
+    final pdfPage = sourcePage ?? index;
+    if (pdfPage < 0) {
+      baseBytes = pageCache[index] ?? await _blankPagePng();
+      sourceWidth = 612;
+      sourceHeight = 792;
+    } else if (doc != null) {
+      final page = await doc.getPage(pdfPage + 1);
       try {
         sourceWidth = page.width;
         sourceHeight = page.height;

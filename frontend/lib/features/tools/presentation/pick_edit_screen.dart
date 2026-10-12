@@ -21,6 +21,7 @@ import 'package:ai_pdf/features/editor/domain/services/text_selection_service.da
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
+import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
@@ -140,6 +141,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, double> _pageHeightPt = {};
   /// Clockwise quarter-turns applied to the on-screen page this session.
   final Map<int, int> _pageQuarterTurns = {};
+  List<int> _sourcePages = const [];
   final TransformationController _viewTransform = TransformationController();
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
@@ -559,6 +561,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageAspect.clear();
       _pageHeightPt.clear();
       _pageQuarterTurns.clear();
+      _sourcePages = const [];
       _textLayer.clear();
       _markupPreview = const [];
       _wordSelection = null;
@@ -573,6 +576,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final loaded = await _documentService.openDocument(path);
       _doc = loaded.document;
       _pageCount = loaded.pageCount;
+      _sourcePages = [for (var i = 0; i < loaded.pageCount; i++) i];
       final ticket = ++_navTicket;
       final textGen = ++_textGen;
       if (loaded.isPdf && _doc != null) {
@@ -977,6 +981,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
         resolution: _pageEdge,
       );
       _reindexTextOnDelete(index, oldCount);
+      if (index >= 0 && index < _sourcePages.length) {
+        _sourcePages = List<int>.of(_sourcePages)..removeAt(index);
+      }
+      _applyShift(PageSourceMap.afterDelete, index, oldCount);
       _pageCount = newCount;
       if (_current >= _pageCount) _current = _pageCount - 1;
       _hasUnsavedChanges = true;
@@ -987,6 +995,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _duplicatePage(int index) {
     setState(() {
+      final oldCount = _pageCount;
       final newCount = _pageReorder.duplicatePage(
         index: index,
         pageCache: _pageCache,
@@ -999,11 +1008,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _reindexTextOnInsert(index + 1);
       final words = _textLayer[index];
       if (words != null) _textLayer[index + 1] = List<PdfTextElement>.of(words);
+      if (index >= 0 && index < _sourcePages.length) {
+        _sourcePages = List<int>.of(_sourcePages)..insert(index + 1, _sourcePages[index]);
+      }
+      _applyShift(PageSourceMap.afterInsert, index + 1, oldCount);
+      final turns = _pageQuarterTurns[index];
+      if (turns != null) _pageQuarterTurns[index + 1] = turns;
+      final aspect = _pageAspect[index];
+      if (aspect != null) _pageAspect[index + 1] = aspect;
+      final height = _pageHeightPt[index];
+      if (height != null) _pageHeightPt[index + 1] = height;
     });
   }
 
   void _insertBlankPage(int index) {
     setState(() {
+      final oldCount = _pageCount;
       final newCount = _pageReorder.insertBlankPage(
         index: index,
         pageCache: _pageCache,
@@ -1014,8 +1034,30 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageCount = newCount;
       _hasUnsavedChanges = true;
       _reindexTextOnInsert(index);
+      final at = index.clamp(0, _sourcePages.length);
+      _sourcePages = List<int>.of(_sourcePages)..insert(at, -1);
+      _applyShift(PageSourceMap.afterInsert, index, oldCount);
     });
     _goToPage(index);
+  }
+
+  void _applyShift(
+    Map<int, T> Function<T>(Map<int, T> map, int index, int oldCount) shift,
+    int index,
+    int oldCount,
+  ) {
+    final turns = shift(Map<int, int>.of(_pageQuarterTurns), index, oldCount);
+    final aspects = shift(Map<int, double>.of(_pageAspect), index, oldCount);
+    final heights = shift(Map<int, double>.of(_pageHeightPt), index, oldCount);
+    _pageQuarterTurns
+      ..clear()
+      ..addAll(turns);
+    _pageAspect
+      ..clear()
+      ..addAll(aspects);
+    _pageHeightPt
+      ..clear()
+      ..addAll(heights);
   }
 
   // ---- Gesture handling (coordinates normalized to canvas) ----
@@ -2054,6 +2096,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         layers: _layers,
         pageCount: _pageCount,
         quarterTurns: _pageQuarterTurns,
+        sourcePages: _sourcePages,
       );
       if (outPath == null) {
         _editorController.finishExport(error: 'Nothing to export');
