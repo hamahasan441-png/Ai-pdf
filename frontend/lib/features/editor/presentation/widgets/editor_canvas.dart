@@ -12,8 +12,11 @@ import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
 
 class EditorCanvas extends StatelessWidget {
   final Uint8List bytes;
@@ -26,6 +29,11 @@ class EditorCanvas extends StatelessWidget {
   final Color color;
   final double stroke;
   final bool highlightPreview;
+  final List<Rect> markupPreview;
+  final TextMarkupKind? markupKind;
+  final List<Rect> findRects;
+  final int activeFind;
+  final List<Rect> wordSelection;
   final bool showFields;
   final List<DetectedField> pageFields;
   final bool showEditLines;
@@ -79,6 +87,8 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDuplicateMulti;
   final VoidCallback onDeleteMulti;
   final VoidCallback onDeselectMulti;
+  final void Function(StickyNoteAnnotation note)? onNoteTap;
+  final void Function(StickyNoteAnnotation note)? onNoteDelete;
   final IconData Function(FieldType type) resolveTypeIcon;
 
   const EditorCanvas({
@@ -93,6 +103,11 @@ class EditorCanvas extends StatelessWidget {
     required this.color,
     required this.stroke,
     required this.highlightPreview,
+    this.markupPreview = const [],
+    this.markupKind,
+    this.findRects = const [],
+    this.activeFind = -1,
+    this.wordSelection = const [],
     required this.showFields,
     required this.pageFields,
     required this.showEditLines,
@@ -140,6 +155,8 @@ class EditorCanvas extends StatelessWidget {
     required this.onDuplicateMulti,
     required this.onDeleteMulti,
     required this.onDeselectMulti,
+    this.onNoteTap,
+    this.onNoteDelete,
     required this.resolveTypeIcon,
   });
 
@@ -189,9 +206,30 @@ class EditorCanvas extends StatelessWidget {
                   color,
                   stroke,
                   highlightPreview,
+                  markups: layer.markups,
+                  markupPreview: markupPreview,
+                  markupKind: markupKind,
+                  findRects: findRects,
+                  activeFind: activeFind,
+                  wordSelection: wordSelection,
                   revision: canvasRevision,
                 ),
               ),
+              ...layer.notes.where((n) => n.visible).map(
+                    (note) {
+                      final maxX = size.width > 28 ? size.width - 28 : 0.0;
+                      final maxY = size.height > 28 ? size.height - 28 : 0.0;
+                      return Positioned(
+                        left: (note.pos.dx * size.width).clamp(0.0, maxX).toDouble(),
+                        top: (note.pos.dy * size.height).clamp(0.0, maxY).toDouble(),
+                        child: StickyNoteWidget(
+                          note: note,
+                          onTap: () => onNoteTap?.call(note),
+                          onDelete: onNoteDelete == null ? null : () => onNoteDelete!(note),
+                        ),
+                      );
+                    },
+                  ),
               if (showFields) ...pageFields.map((f) {
                 final isCheckbox = f.type == FieldType.checkbox;
                 final isRadio = f.type == FieldType.radio;

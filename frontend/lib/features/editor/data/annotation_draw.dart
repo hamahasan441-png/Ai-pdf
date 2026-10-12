@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
@@ -18,6 +19,80 @@ class AnnotationDraw {
   /// Detects base text direction from content for text annotations that have
   /// no explicit [TextAnnotation.textDirection] override.
   static const RtlDetectionService _rtlDetect = RtlDetectionService();
+
+  /// Paint a PDF text mark (highlight / underline / strikeout / squiggly).
+  /// Highlight uses multiply so the glyphs stay dark, the same way Acrobat
+  /// and pdf.js draw a highlight annotation.
+  static void markup(
+    Canvas canvas,
+    Size size,
+    TextMarkupAnnotation m, {
+    bool multiply = true,
+  }) {
+    if (!m.visible || m.rects.isEmpty) return;
+    final fade = (m.color.a * m.opacity).clamp(0.0, 1.0);
+    final color = m.color.withValues(alpha: fade);
+    for (final r in m.rects) {
+      final rect = Rect.fromLTWH(
+        r.left * size.width,
+        r.top * size.height,
+        r.width * size.width,
+        r.height * size.height,
+      );
+      switch (m.kind) {
+        case TextMarkupKind.highlight:
+          // Multiply only when the page image is on this same canvas (export).
+          // The on-screen painter is a transparent overlay, where multiply
+          // would erase the mark.
+          final paint = Paint()
+            ..color = color.withValues(alpha: multiply ? 0.45 * fade : 0.38)
+            ..blendMode = multiply ? BlendMode.multiply : BlendMode.srcOver
+            ..style = PaintingStyle.fill;
+          canvas.drawRect(rect, paint);
+          break;
+        case TextMarkupKind.underline:
+          final paint = Paint()
+            ..color = color
+            ..strokeWidth = math.max(1.2, size.height * 0.004)
+            ..strokeCap = StrokeCap.round;
+          final y = rect.bottom - paint.strokeWidth;
+          canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+          break;
+        case TextMarkupKind.strikeout:
+          final paint = Paint()
+            ..color = color
+            ..strokeWidth = math.max(1.1, size.height * 0.003)
+            ..strokeCap = StrokeCap.round;
+          final y = rect.center.dy;
+          canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), paint);
+          break;
+        case TextMarkupKind.squiggly:
+          final paint = Paint()
+            ..color = color
+            ..strokeWidth = math.max(1.0, size.height * 0.0025)
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round;
+          final y = rect.bottom - 1;
+          final path = Path()..moveTo(rect.left, y);
+          final step = math.max(3.0, rect.height * 0.22);
+          var x = rect.left;
+          var up = true;
+          while (x < rect.right - 0.5) {
+            final nx = math.min(x + step, rect.right);
+            path.quadraticBezierTo(
+              (x + nx) / 2,
+              up ? y - step * 0.65 : y + step * 0.3,
+              nx,
+              y,
+            );
+            x = nx;
+            up = !up;
+          }
+          canvas.drawPath(path, paint);
+          break;
+      }
+    }
+  }
 
   static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
     if (pts.length < 2) return;
@@ -146,6 +221,9 @@ class AnnotationDraw {
   /// Paint an entire page layer (strokes, shapes, text) onto [canvas].
   static void layer(Canvas canvas, Size size, PageLayer? layer) {
     if (layer == null) return;
+    for (final m in layer.items.whereType<TextMarkupAnnotation>()) {
+      markup(canvas, size, m);
+    }
     for (final s in layer.strokes) {
       stroke(canvas, size, s.points, s.color, s.width);
     }
