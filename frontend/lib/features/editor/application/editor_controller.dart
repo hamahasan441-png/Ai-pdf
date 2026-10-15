@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/widgets.dart' show Axis;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_pdf/features/editor/data/annotation_serialization.dart';
 import 'package:ai_pdf/features/editor/data/editor_hit_test_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
@@ -170,10 +172,22 @@ class EditorController extends StateNotifier<EditorState> {
     _txn = null;
   }
 
+  /// Copy the before-snapshot back onto the live objects and drop the
+  /// transaction. Used when an edit is abandoned (for example the user cleared
+  /// a text box and the box itself should be deleted in its original form).
+  void revertOpenEdit() {
+    final txn = _txn;
+    _txn = null;
+    if (txn == null) return;
+    for (var i = 0; i < txn.targets.length; i++) {
+      txn.targets[i].restoreFrom(txn.before[i]);
+    }
+  }
+
   /// Commit the open edit transaction. Pushes a [RestoreStateCommand] when the
-  /// state actually changed (bounds differ) or when [force] is set (for style
-  /// edits that don't move the bounding box, e.g. colour / bold). No-op if no
-  /// transaction is open.
+  /// serialized annotation changed, not only when the bounding box moved.
+  /// Style, runs, rotation, and colour are included. [force] still records a
+  /// step even if the snapshot compares equal. No-op if no transaction is open.
   void commitEdit(PageLayer layer, {bool force = false}) {
     final txn = _txn;
     _txn = null;
@@ -182,7 +196,7 @@ class EditorController extends StateNotifier<EditorState> {
     var changed = force;
     if (!changed) {
       for (var i = 0; i < txn.targets.length; i++) {
-        if (txn.before[i].bounds != after[i].bounds) {
+        if (_snapshotChanged(txn.before[i], after[i])) {
           changed = true;
           break;
         }
@@ -194,6 +208,14 @@ class EditorController extends StateNotifier<EditorState> {
       layer,
     );
     markDirty();
+  }
+
+  bool _snapshotChanged(EditorAnnotation before, EditorAnnotation after) {
+    try {
+      return jsonEncode(annotationToJson(before)) != jsonEncode(annotationToJson(after));
+    } catch (_) {
+      return before.bounds != after.bounds;
+    }
   }
 
   /// Remove the ink stroke under [point]. Does not delete text, images, or shapes.

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -54,5 +56,69 @@ void main() {
     );
     expect(zoomed.dx, closeTo(148, 0.001));
     expect(zoomed.dy, closeTo(130, 0.001));
+  });
+
+  test('zoom levels 1x 2x 3x and 5x stay on the page point', () {
+    const page = Size(100, 200);
+    const norm = Offset(0.25, 0.5);
+    for (final scale in [1.0, 2.0, 3.0, 5.0]) {
+      final zoom = Matrix4.identity()..scale(scale);
+      final screen = PageCoordinateTransform.zoomedPagePoint(
+        norm: norm,
+        pageLeft: 0,
+        pageTop: 0,
+        pageSize: page,
+        zoom: zoom,
+      );
+      expect(screen.dx, closeTo(25 * scale, 0.001));
+      expect(screen.dy, closeTo(100 * scale, 0.001));
+      final back = PageCoordinateTransform.invertPoint(zoom, screen);
+      expect(back.dx, closeTo(25, 0.001));
+      expect(back.dy, closeTo(100, 0.001));
+    }
+  });
+
+  test('a rotated matrix round-trips and is not the diagonal-only formula', () {
+    final zoom = Matrix4.rotationZ(math.pi / 2);
+    const local = Offset(10, 0);
+    final mapped = PageCoordinateTransform.mapPoint(zoom, local);
+    expect(mapped.dx, closeTo(0, 0.001));
+    expect(mapped.dy, closeTo(10, 0.001));
+    final back = PageCoordinateTransform.invertPoint(zoom, mapped);
+    expect(back.dx, closeTo(10, 0.001));
+    expect(back.dy, closeTo(0, 0.001));
+
+    final transform = PageCoordinateTransform(
+      canvasSize: const Size(200, 400),
+      viewportOffset: const Offset(8, 12),
+      zoomMatrix: zoom,
+    );
+    const norm = Offset(0.3, 0.4);
+    final screen = transform.pdfOffsetToScreen(norm);
+    final recovered = transform.screenToPdf(screen);
+    expect(recovered.dx, closeTo(norm.dx, 1e-6));
+    expect(recovered.dy, closeTo(norm.dy, 1e-6));
+  });
+
+  test('pan in each direction moves the overlay by that translation', () {
+    const page = Size(80, 80);
+    for (final pan in const [
+      Offset(30, 0),
+      Offset(-20, 0),
+      Offset(0, 15),
+      Offset(0, -12),
+      Offset(-4, 9),
+    ]) {
+      final zoom = Matrix4.identity()..translate(pan.dx, pan.dy);
+      final p = PageCoordinateTransform.zoomedPagePoint(
+        norm: const Offset(0, 0),
+        pageLeft: 10,
+        pageTop: 20,
+        pageSize: page,
+        zoom: zoom,
+      );
+      expect(p.dx, closeTo(10 + pan.dx, 0.001));
+      expect(p.dy, closeTo(20 + pan.dy, 0.001));
+    }
   });
 }

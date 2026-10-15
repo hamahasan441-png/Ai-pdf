@@ -12,6 +12,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:ai_pdf/features/editor/data/annotation_draw.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
+import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
@@ -21,6 +22,20 @@ import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
+
+/// Searchable vector export is only used when it matches the preview.
+/// Rotated text and multi-style runs are painted into the page image,
+/// because the PDF text widget would drop the rotation and the extra runs.
+bool textExportsAsSearchableVector({
+  required int runCount,
+  required double rotation,
+  required bool latin1,
+  required bool unicodeFontAvailable,
+}) {
+  if (rotation != 0) return false;
+  if (runCount > 1) return false;
+  return latin1 || unicodeFontAvailable;
+}
 
 /// Off-screen export compositor for the editor.
 ///
@@ -152,17 +167,16 @@ class EditorExportService {
     }
   }
 
-  /// Whether [t] can be exported as real (searchable) vector text: Latin-1 is
-  /// always vectorizable (standard PDF fonts); other scripts require a bundled
-  /// Unicode font. Multi-run rich text is kept as raster (see [_richText]) so
-  /// the preview and export stay pixel-identical.
+  /// Whether [t] can be exported as real (searchable) vector text.
+  /// Rotated and multi-run text stay in the page image so they match preview.
   bool _canVectorize(TextAnnotation t, PdfUnicodeFonts uni) {
-    if (_richText(t)) return false;
-    return _isLatin1(t.text) || uni.pick(t) != null;
+    return textExportsAsSearchableVector(
+      runCount: t.runs?.length ?? 0,
+      rotation: t.rotation,
+      latin1: _isLatin1(t.text),
+      unicodeFontAvailable: uni.pick(t) != null,
+    );
   }
-
-  /// True when the annotation carries more than one style run.
-  bool _richText(TextAnnotation t) => (t.runs?.length ?? 0) > 1;
 
   /// Build a positioned vector-text widget, choosing a standard PDF font for
   /// Latin text and a bundled Unicode font for RTL scripts, with the correct
@@ -357,11 +371,14 @@ class EditorExportService {
       try {
         sourceWidth = page.width;
         sourceHeight = page.height;
-        final longEdge = page.width > page.height ? page.width : page.height;
-        final scale = longEdge > exportMaxEdge ? exportMaxEdge / longEdge : 1.0;
+        final planned = planPageRenderSize(
+          pageWidth: page.width,
+          pageHeight: page.height,
+          renderMaxEdge: exportMaxEdge,
+        );
         final img = await page.render(
-          width: page.width * scale,
-          height: page.height * scale,
+          width: planned.width,
+          height: planned.height,
           format: pdfx.PdfPageImageFormat.jpeg,
           backgroundColor: '#FFFFFF',
         );

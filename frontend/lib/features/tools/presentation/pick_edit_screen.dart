@@ -1483,7 +1483,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (_editorController.eraseStrokeAt(_layer, n)) {
       _selected = null;
       _multi.clear();
+      _hasUnsavedChanges = true;
       setState(() {});
+      _schedulePersist();
     }
   }
 
@@ -1651,7 +1653,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _editorController.deleteMulti(_layer, _multi);
       _multi.clear();
+      _hasUnsavedChanges = true;
     });
+    _schedulePersist();
   }
 
   void _duplicateMulti() {
@@ -1663,7 +1667,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       for (final c in copies) {
         _prepareIfImage(c);
       }
+      _hasUnsavedChanges = true;
     });
+    _schedulePersist();
   }
 
   /// Add an annotation and reset the redo stack.
@@ -2008,9 +2014,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() {
       _inlineEditing = null;
       if (editing.text.isEmpty) {
-        // Empty text → remove the annotation (user cleared it).
-        _layer.items.remove(editing);
-        if (_inlineEditTxnOpen) _editorController.cancelEdit();
+        if (_inlineEditTxnOpen) {
+          // Put the original text back, then delete that object so one undo
+          // restores the box the user had before this edit.
+          _editorController.revertOpenEdit();
+          _editorController.deleteSelected(_layer, editing);
+        } else if (_layer.items.contains(editing)) {
+          // A brand-new box that was cleared should undo the add, not leave
+          // an empty annotation stranded off the undo stack.
+          _editorController.undo(_layer);
+        }
       } else if (_inlineEditTxnOpen) {
         _editorController.commitEdit(_layer, force: true);
       }
@@ -2023,7 +2036,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _onInlineTextChanged(String newText) {
     final editing = _inlineEditing;
     if (editing == null) return;
-    editing.text = newText;
+    if (editing.text != newText) {
+      editing.runs = _richText.retarget(editing, newText);
+      editing.text = newText;
+    }
     _hasUnsavedChanges = true;
   }
 
@@ -2131,6 +2147,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         final aspect = _aspectFor(_current);
         _pageAspect[_current] = 1 / aspect;
         _pageQuarterTurns[_current] = ((_pageQuarterTurns[_current] ?? 0) + 1) % 4;
+        // Quarter-turns live on the in-memory page cache. They are not in the
+        // annotation sidecar, so a reopen shows the original PDF orientation.
+        _hasUnsavedChanges = true;
       }
     } catch (e) {
       _editorController.setError('Rotate failed: $e');
@@ -2341,7 +2360,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                       pageSize: Size(fitted.width, fitted.height),
                       zoom: _viewTransform.value,
                     );
-                    final scale = _viewTransform.value.storage[0];
+                    final scale = PageCoordinateTransform.uniformScale(_viewTransform.value);
                     final pageW = fitted.width * scale;
                     final pageH = fitted.height * scale;
                     return Stack(

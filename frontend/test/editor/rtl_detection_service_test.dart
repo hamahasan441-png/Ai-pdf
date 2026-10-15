@@ -10,6 +10,13 @@ void main() {
   const svc = RtlDetectionService();
 
   group('RtlDetectionService.isRtl (first-strong rule)', () {
+    test('Kurdish Sorani letters are RTL', () {
+      for (final letter in ['ڕ', 'ڵ', 'ێ', 'ە', 'ۆ', 'ۊ']) {
+        expect(svc.isRtl(letter), isTrue, reason: letter);
+      }
+      expect(svc.isRtl('ڕەوشی کوردی'), isTrue);
+    });
+
     test('pure LTR / RTL scripts', () {
       expect(svc.isRtl('Hello'), isFalse);
       expect(svc.isRtl('مرحبا'), isTrue); // Arabic

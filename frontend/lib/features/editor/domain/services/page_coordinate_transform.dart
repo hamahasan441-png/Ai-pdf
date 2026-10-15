@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data' show Float64List;
 import 'dart:ui' show Offset, Rect, Size;
 
@@ -63,11 +64,44 @@ class PageCoordinateTransform {
       pageLeft + norm.dx * pageSize.width,
       pageTop + norm.dy * pageSize.height,
     );
+    return mapPoint(zoom, local);
+  }
+
+  /// Uniform scale of a zoom/pan/rotate matrix. `storage[0]` is only the
+  /// X component and is 0 for a 90° rotation, which collapsed overlay text.
+  static double uniformScale(Matrix4 zoom) {
     final storage = zoom.storage;
+    final sx = math.sqrt(storage[0] * storage[0] + storage[1] * storage[1]);
+    final sy = math.sqrt(storage[4] * storage[4] + storage[5] * storage[5]);
+    if (sx == 0 && sy == 0) return 1;
+    if (sx == 0) return sy;
+    if (sy == 0) return sx;
+    return (sx + sy) / 2;
+  }
+
+  /// Full 2D affine map. Uses the off-diagonal terms, not only scale and
+  /// translation, so a rotated viewer matrix stays invertible.
+  static Offset mapPoint(Matrix4 zoom, Offset point) {
+    final s = zoom.storage;
     return Offset(
-      local.dx * storage[0] + storage[12],
-      local.dy * storage[5] + storage[13],
+      s[0] * point.dx + s[4] * point.dy + s[12],
+      s[1] * point.dx + s[5] * point.dy + s[13],
     );
+  }
+
+  static Offset invertPoint(Matrix4 zoom, Offset point) {
+    final s = zoom.storage;
+    final a = s[0];
+    final b = s[1];
+    final c = s[4];
+    final d = s[5];
+    final tx = s[12];
+    final ty = s[13];
+    final det = a * d - c * b;
+    if (det.abs() < 1e-12) return point;
+    final x = point.dx - tx;
+    final y = point.dy - ty;
+    return Offset((d * x - c * y) / det, (-b * x + a * y) / det);
   }
 
   // ─── PDF → Canvas ───────────────────────────────────────────────────────
@@ -143,35 +177,32 @@ class PageCoordinateTransform {
   // ─── Internal helpers ───────────────────────────────────────────────────
 
   Rect _applyZoomAndOffset(Rect canvasRect) {
-    final tl = _transformPoint(canvasRect.topLeft) + viewportOffset;
-    final br = _transformPoint(canvasRect.bottomRight) + viewportOffset;
-    return Rect.fromPoints(tl, br);
+    final corners = [
+      canvasRect.topLeft,
+      canvasRect.topRight,
+      canvasRect.bottomLeft,
+      canvasRect.bottomRight,
+    ];
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = -double.infinity;
+    var maxY = -double.infinity;
+    for (final corner in corners) {
+      final p = _transformPoint(corner) + viewportOffset;
+      if (p.dx < minX) minX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    if (!minX.isFinite || !minY.isFinite) return Rect.zero;
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
-  /// Apply the zoom matrix to a point (handles translation + scale).
-  Offset _transformPoint(Offset point) {
-    final m = zoomMatrix;
-    // Matrix4 storage: column-major. For a 2D affine:
-    // [0]=scaleX, [4]=0, [12]=translateX
-    // [1]=0, [5]=scaleY, [13]=translateY
-    final storage = m.storage;
-    return Offset(
-      point.dx * storage[0] + storage[12],
-      point.dy * storage[5] + storage[13],
-    );
-  }
+  /// Apply the zoom matrix to a point, including rotation and skew.
+  Offset _transformPoint(Offset point) => mapPoint(zoomMatrix, point);
 
-  /// Inverse-transform: screen → canvas (undo zoom/pan).
-  Offset _inverseTransformPoint(Offset point) {
-    final storage = zoomMatrix.storage;
-    final scaleX = storage[0];
-    final scaleY = storage[5];
-    if (scaleX == 0 || scaleY == 0) return point;
-    return Offset(
-      (point.dx - storage[12]) / scaleX,
-      (point.dy - storage[13]) / scaleY,
-    );
-  }
+  /// Inverse-transform: screen → canvas (undo zoom/pan/rotation).
+  Offset _inverseTransformPoint(Offset point) => invertPoint(zoomMatrix, point);
 }
 
 /// Placeholder for the identity matrix when none is provided (const-friendly).

@@ -3,6 +3,7 @@ import 'dart:ui' show Offset, TextAlign, TextDirection;
 import 'package:flutter/material.dart' show Colors;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
@@ -20,6 +21,36 @@ import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dar
 /// Masterplan P1 #9: "Export golden tests (lock fidelity)".
 void main() {
   const rtlDetect = RtlDetectionService();
+
+  test('rotated text is not exported as upright searchable vector text', () {
+    expect(
+      textExportsAsSearchableVector(
+        runCount: 1,
+        rotation: 0.4,
+        latin1: true,
+        unicodeFontAvailable: true,
+      ),
+      isFalse,
+    );
+    expect(
+      textExportsAsSearchableVector(
+        runCount: 1,
+        rotation: 0,
+        latin1: true,
+        unicodeFontAvailable: false,
+      ),
+      isTrue,
+    );
+    expect(
+      textExportsAsSearchableVector(
+        runCount: 2,
+        rotation: 0,
+        latin1: true,
+        unicodeFontAvailable: true,
+      ),
+      isFalse,
+    );
+  });
 
   /// Mirrors the export service's direction resolution logic:
   ///   isRtl = t.textDirection == TextDirection.rtl ||

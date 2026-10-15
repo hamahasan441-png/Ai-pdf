@@ -5,6 +5,7 @@ import 'package:image/image.dart' as img;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
+import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 
 /// Background page renderer that schedules heavy JPEG-decode work on an
 /// isolate via [compute], keeping the UI thread smooth during page transitions
@@ -39,9 +40,16 @@ class BackgroundPageRenderer {
     Map<int, int>? resolution,
     bool Function()? stillCurrent,
   }) async {
-    if (pageCache.containsKey(index) && resolution == null) return;
+    if (PageCachePolicy.shouldSkip(
+      hasBytes: pageCache.containsKey(index),
+      cachedEdge: resolution?[index],
+      requestedEdge: renderMaxEdge,
+      tracksResolution: resolution != null,
+    )) {
+      // Already at least this sharp. Do not downscale it into a placeholder.
+      return;
+    }
 
-    // Step 1: render via pdfx (native async, serialized per document).
     await _renderer.renderPage(
       doc: doc,
       index: index,
