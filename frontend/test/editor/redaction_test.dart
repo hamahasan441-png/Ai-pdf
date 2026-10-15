@@ -39,7 +39,7 @@ void main() {
       expect(r.remainingText.length, 1);
     });
 
-    test('redacted text is truly gone (not recoverable)', () {
+    test('covered text is dropped from the in-memory list only', () {
       final elements = [
         _el('password123', const Rect.fromLTWH(0.1, 0.1, 0.3, 0.05)),
       ];

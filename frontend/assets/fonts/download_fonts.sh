@@ -9,9 +9,9 @@ echo "Downloading fonts into: $FONT_DIR"
 
 # --- Noto Sans (Latin/Cyrillic/Greek) ---
 echo "→ NotoSans-Regular.ttf"
-curl -sL "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf" \
-  -o "$FONT_DIR/NotoSans-Regular.ttf" 2>/dev/null || \
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf" \
+# Static hinted face. The google/fonts variable file (NotoSans[wdth,wght].ttf)
+# is not a Regular instance and must not be saved under this name.
+curl -fsSL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf" \
   -o "$FONT_DIR/NotoSans-Regular.ttf"
 
 echo "→ NotoSans-Bold.ttf"

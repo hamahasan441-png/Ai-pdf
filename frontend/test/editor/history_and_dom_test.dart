@@ -177,6 +177,39 @@ void main() {
       c.undo(layer);
       expect(t.color, Colors.black);
     });
+
+    test('commitEdit records a run change even when the box did not move', () {
+      final c = EditorController();
+      final layer = PageLayer();
+      final t = TextAnnotation(const Offset(0.1, 0.1), 'Hello', Colors.black, 0.05, false);
+      c.pushAnnotation(layer, t);
+
+      c.beginEdit([t], label: 'Bold');
+      t.runs = const [TextRun('Hello', bold: true)];
+      c.commitEdit(layer);
+
+      c.undo(layer);
+      expect(t.runs, isNull);
+      c.redo(layer);
+      expect(t.runs, isNotNull);
+      expect(t.runs!.single.bold, isTrue);
+    });
+
+    test('revertOpenEdit restores text before a delete so undo brings it back', () {
+      final c = EditorController();
+      final layer = PageLayer();
+      final t = TextAnnotation(const Offset(0.1, 0.1), 'Keep me', Colors.black, 0.05, false);
+      c.pushAnnotation(layer, t);
+      c.beginEdit([t], label: 'Edit text');
+      t.text = '';
+      c.revertOpenEdit();
+      expect(t.text, 'Keep me');
+      c.deleteSelected(layer, t);
+      expect(layer.items, isEmpty);
+      c.undo(layer);
+      expect(layer.items, [t]);
+      expect(t.text, 'Keep me');
+    });
   });
 
   group('Serialization base props', () {

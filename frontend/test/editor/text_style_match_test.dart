@@ -85,6 +85,86 @@ void main() {
     expect(draft.whiteout.type, ShapeType.whiteout);
   });
 
+  test('a subset prefix still names the exact bundled face', () {
+    final word = PdfTextElement(
+      text: 'کوردی',
+      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
+      fontSize: 14,
+      fontName: 'ABCDEF+NotoSansArabic-Bold',
+    );
+    final style = matcher.match(word, pageHeightPt: 792);
+    expect(style.kind, FontMatchKind.exactFamily);
+    expect(style.editorFamily, 'NotoSansArabic');
+  });
+
+  test('a name that merely contains Noto Sans Arabic is not an exact face', () {
+    final word = PdfTextElement(
+      text: 'کوردی',
+      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
+      fontSize: 14,
+      fontName: 'MyNotoSansArabicClone',
+    );
+    final style = matcher.match(word, pageHeightPt: 792);
+    expect(style.kind, FontMatchKind.namedSubstitute);
+    expect(style.editorFamily, 'NotoSansArabic');
+  });
+
+  test('LiberationMono is monospace, not serif', () {
+    final word = PdfTextElement(
+      text: 'code',
+      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.02),
+      fontSize: 10,
+      fontName: 'LiberationMono',
+    );
+    final style = matcher.match(word, pageHeightPt: 792);
+    expect(style.kind, FontMatchKind.namedSubstitute);
+    expect(style.editorFamily, 'monospace');
+  });
+
+  test('a large point size is not silently clamped', () {
+    final word = PdfTextElement(
+      text: 'Title',
+      rect: const Rect.fromLTWH(0.1, 0.1, 0.5, 0.3),
+      fontSize: 200,
+      fontName: 'Times-Roman',
+    );
+    final style = matcher.match(word, pageHeightPt: 400);
+    expect(style.sizeIsEstimate, isFalse);
+    expect(style.normalizedSize, closeTo(0.5, 0.0001));
+    expect(style.fontSizePt, 200);
+  });
+
+  test('different sizes in one selection stay separate runs', () {
+    final words = [
+      PdfTextElement(
+        text: 'PDF',
+        rect: const Rect.fromLTWH(0.1, 0.1, 0.1, 0.02),
+        fontSize: 18,
+        fontName: 'NotoSansArabic-Regular',
+      ),
+      PdfTextElement(
+        text: 'و',
+        rect: const Rect.fromLTWH(0.22, 0.1, 0.04, 0.015),
+        fontSize: 10,
+      ),
+    ];
+    final draft = const EditorExistingTextService().draftForWords(words, pageHeightPt: 800);
+    expect(draft.textBox.text, 'PDF و');
+    expect(draft.textBox.runs, isNotNull);
+    expect(draft.textBox.runs!.map((r) => r.text).join(), 'PDF و');
+    final scaled = draft.textBox.runs!.last.sizeScale;
+    expect(scaled, isNotNull);
+    expect(scaled!, closeTo(10 / 18, 0.02));
+  });
+
+  test('missing fontSize in JSON is unknown, not a fake 12pt', () {
+    final parsed = const TextLayerExtractionService().parseFromJson([
+      {'text': 'Hi', 'x': 0.1, 'y': 0.1, 'w': 0.2, 'h': 0.02},
+    ]);
+    expect(parsed.single.fontSize, 0);
+    expect(parsed.single.source, TextGeometrySource.native);
+  });
+
   test('a tiny PDF reports the BaseFont name and point size', () {
     final pdf = _miniPdf();
     final pages = const PdfContentTextExtractor().extract(pdf);

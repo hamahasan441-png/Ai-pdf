@@ -32,7 +32,16 @@ class RedactionResult {
   int get removedCount => removedIndices.length;
 }
 
-/// True redaction service — Phase 17 + E1.7 Phase 6 true backend via PyMuPDF.
+/// In-memory preview of which text boxes a redaction rectangle covers.
+///
+/// [apply] only filters a Dart list used for search and hit-testing. It does
+/// not open a PDF, does not edit a content stream, and is not secure
+/// redaction. The on-canvas tool paints a black rectangle. Deleting that
+/// rectangle, or reading the original file, still reveals the text.
+///
+/// [redactViaBackend] can ask the server to run PyMuPDF `apply_redactions`,
+/// which does remove content, but that uploads the document and nothing in
+/// the editor calls it. Do not describe the black cover as secure.
 class RedactionService {
   const RedactionService();
 
