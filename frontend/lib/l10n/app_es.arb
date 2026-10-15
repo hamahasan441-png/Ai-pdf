@@ -335,6 +335,8 @@
   "speed": "Velocidad",
   "editTextTool": "Editar texto",
   "tapLineToEdit": "Toca una línea para editar su texto",
+  "overlayEditNotice": "Toca una línea para cubrirla con un cuadro de texto nuevo. El texto PDF original sigue en el archivo.",
+  "visualCoverNotice": "Cobertura negra en la imagen exportada. El texto original no se eliminó y todavía se puede extraer del PDF.",
   "convert": "Convertir",
   "convertDesc": "PDF a Word, Excel, PPT",
   "convertToWord": "PDF a Word",

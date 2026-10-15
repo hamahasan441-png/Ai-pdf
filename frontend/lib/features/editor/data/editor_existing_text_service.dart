@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/core/services/ocr_service.dart';
+import 'package:ai_pdf/features/editor/data/edit_capability.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 import 'package:ai_pdf/features/editor/data/text_style_match.dart';
@@ -21,11 +22,22 @@ class ExistingLineEditDraft {
 class EditorExistingTextService {
   const EditorExistingTextService();
 
-  ExistingLineEditDraft draftForLine(OcrLine line) {
+  ExistingLineEditDraft draftForLine(
+    OcrLine line, {
+    Set<String> loadedFamilies = const {},
+  }) {
     final size = line.h * 0.72;
     final rtl = PdfUnicodeFonts.scriptOf(line.text) == EmbeddedScript.arabic ||
         PdfUnicodeFonts.scriptOf(line.text) == EmbeddedScript.hebrew;
-    return ExistingLineEditDraft(
+    final family = rtl
+        ? (PdfUnicodeFonts.scriptOf(line.text) == EmbeddedScript.hebrew
+            ? 'NotoSansHebrew'
+            : 'NotoSansArabic')
+        : null;
+    final kind = family != null && loadedFamilies.contains(family)
+        ? FontMatchKind.exactFamily
+        : (family == null ? FontMatchKind.unknown : FontMatchKind.namedSubstitute);
+    final draft = ExistingLineEditDraft(
       whiteout: ShapeAnnotation(
         ShapeType.whiteout,
         Offset(line.x, line.y),
@@ -39,13 +51,24 @@ class EditorExistingTextService {
         Colors.black,
         size.isFinite && size > 0 ? size : 0.04,
         false,
-        fontFamily: rtl
-            ? (PdfUnicodeFonts.scriptOf(line.text) == EmbeddedScript.hebrew
-                ? 'NotoSansHebrew'
-                : 'NotoSansArabic')
-            : null,
+        fontFamily: family,
         textDirection: rtl ? TextDirection.rtl : null,
       ),
+    );
+    _labelOverlay(draft, fontKind: kind, bundledFaceLoaded: kind == FontMatchKind.exactFamily);
+    return draft;
+  }
+
+  /// Overlay-only. [PdfEditCapability.nativeContentRewrite] is false on this
+  /// stack even when the family name matches a bundled face.
+  PdfEditCapability capabilityForLine(
+    OcrLine line, {
+    Set<String> loadedFamilies = const {},
+  }) {
+    final draft = draftForLine(line, loadedFamilies: loadedFamilies);
+    return PdfEditCapability(
+      fontKind: _kindOf(draft),
+      bundledFaceLoaded: draft.textBox.metadata['fontFileLoaded'] == true,
     );
   }
 
@@ -57,9 +80,10 @@ class EditorExistingTextService {
   ExistingLineEditDraft draftForWords(
     List<PdfTextElement> words, {
     double pageHeightPt = 0,
+    Set<String> loadedFamilies = const {},
   }) {
     if (words.isEmpty) {
-      return ExistingLineEditDraft(
+      final draft = ExistingLineEditDraft(
         whiteout: ShapeAnnotation(
           ShapeType.whiteout,
           Offset.zero,
@@ -69,10 +93,13 @@ class EditorExistingTextService {
         ),
         textBox: TextAnnotation(Offset.zero, '', Colors.black, 0.04, false),
       );
+      _labelOverlay(draft, fontKind: FontMatchKind.unknown, bundledFaceLoaded: false);
+      return draft;
     }
     const matcher = TextStyleMatcher();
     final styles = [
-      for (final word in words) matcher.match(word, pageHeightPt: pageHeightPt),
+      for (final word in words)
+        matcher.match(word, pageHeightPt: pageHeightPt, loadedFamilies: loadedFamilies),
     ];
     final base = styles.first;
     final multi = styles.any((style) => !_sameStyle(base, style));
@@ -110,7 +137,7 @@ class EditorExistingTextService {
       if (word.rect.right.isFinite && word.rect.right > right) right = word.rect.right;
       if (word.rect.bottom.isFinite && word.rect.bottom > bottom) bottom = word.rect.bottom;
     }
-    return ExistingLineEditDraft(
+    final draft = ExistingLineEditDraft(
       whiteout: ShapeAnnotation(
         ShapeType.whiteout,
         Offset(left, top),
@@ -131,6 +158,49 @@ class EditorExistingTextService {
         runs: multi ? runs : null,
       ),
     );
+    _labelOverlay(
+      draft,
+      fontKind: base.kind,
+      bundledFaceLoaded: base.kind == FontMatchKind.exactFamily,
+    );
+    return draft;
+  }
+
+  PdfEditCapability capabilityForWords(
+    List<PdfTextElement> words, {
+    double pageHeightPt = 0,
+    Set<String> loadedFamilies = const {},
+  }) {
+    final draft = draftForWords(
+      words,
+      pageHeightPt: pageHeightPt,
+      loadedFamilies: loadedFamilies,
+    );
+    return PdfEditCapability(
+      fontKind: _kindOf(draft),
+      bundledFaceLoaded: draft.textBox.metadata['fontFileLoaded'] == true,
+    );
+  }
+
+  void _labelOverlay(
+    ExistingLineEditDraft draft, {
+    required FontMatchKind fontKind,
+    required bool bundledFaceLoaded,
+  }) {
+    for (final item in [draft.whiteout, draft.textBox]) {
+      item.metadata['editMode'] = PdfEditMode.overlayReplacement.name;
+      item.metadata['nativeContentRewrite'] = false;
+      item.metadata['fontMatch'] = fontKind.name;
+      item.metadata['fontFileLoaded'] = bundledFaceLoaded;
+    }
+  }
+
+  FontMatchKind _kindOf(ExistingLineEditDraft draft) {
+    final name = draft.textBox.metadata['fontMatch'];
+    for (final kind in FontMatchKind.values) {
+      if (kind.name == name) return kind;
+    }
+    return FontMatchKind.unknown;
   }
 
   bool _sameStyle(RecognizedTextStyle a, RecognizedTextStyle b) {

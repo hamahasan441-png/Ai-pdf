@@ -81,7 +81,7 @@ class EditorCanvasPainter extends CustomPainter {
     }
     for (final s in shapes) {
       if (!s.visible) continue;
-      if (s.isSecureRedaction) {
+      if (s.burnsBlackCover) {
         AnnotationDraw.secureCover(canvas, size, s.start, s.end);
       } else {
         AnnotationDraw.shape(
