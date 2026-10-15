@@ -693,12 +693,23 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {});
       return;
     }
+    final outcome = const RedactionService().secureRedact(
+      regions: [RedactionRegion(rect, pageIndex: _current)],
+    );
+    if (outcome.accepted) {
+      if (mounted) setState(() {});
+      return;
+    }
     final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
-      ..metadata[secureRedactionKey] = true;
+      ..metadata[visualCoverKey] = true;
     setState(() {
       _pushItem(cover);
-      _maskRedactedText();
+      // Search still finds these words. They remain in the source PDF.
     });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.visualCoverNotice)),
+    );
   }
 
   Future<void> _loadTextLayer(String path, int gen) async {
@@ -1805,7 +1816,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showError(l10n.noTextFound);
       } else {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.tapLineToEdit)));
+            .showSnackBar(SnackBar(content: Text(l10n.overlayEditNotice)));
       }
     } catch (e) {
       _showError(l10n.operationFailed(e.toString()));

@@ -335,6 +335,8 @@
   "speed": "Geschwindigkeit",
   "editTextTool": "Text bearbeiten",
   "tapLineToEdit": "Tippe auf eine Zeile, um ihren Text zu bearbeiten",
+  "overlayEditNotice": "Tippe auf eine Zeile, um sie mit einem neuen Textfeld zu überdecken. Der ursprüngliche PDF-Text bleibt in der Datei.",
+  "visualCoverNotice": "Schwarze Abdeckung im exportierten Bild. Der Originaltext wurde nicht entfernt und kann weiter aus dem PDF gelesen werden.",
   "convert": "Konvertieren",
   "convertDesc": "PDF zu Word, Excel, PPT",
   "convertToWord": "PDF zu Word",

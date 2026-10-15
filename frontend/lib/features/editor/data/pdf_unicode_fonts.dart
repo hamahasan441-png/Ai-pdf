@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 
+import 'package:ai_pdf/features/editor/data/font_file_validator.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 
 /// Script buckets that map to a bundled Unicode font.
@@ -43,9 +46,11 @@ class PdfUnicodeFonts {
   Future<pw.Font?> _tryLoad(String assetPath) async {
     try {
       final data = await rootBundle.load(assetPath);
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      if (!validateTrueType(bytes).ok) return null;
       return pw.Font.ttf(data);
     } catch (_) {
-      // Asset not bundled / not found — feature stays dormant, no crash.
+      // Missing, truncated, or not a TrueType font. Export stays raster.
       return null;
     }
   }

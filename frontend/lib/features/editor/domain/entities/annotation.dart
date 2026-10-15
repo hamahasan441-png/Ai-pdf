@@ -17,9 +17,13 @@ Offset clampOffset01(Offset o, [double max = 1.0]) =>
 /// Shape kinds for the vector shape tools.
 enum ShapeType { line, arrow, rect, oval, whiteout }
 
-/// Metadata key for a black cover that is burned into the exported page image.
-/// Unlike [ShapeType.whiteout], it is not a separate removable object.
+/// Legacy metadata key. A true value only means "paint a black cover".
+/// It does not mean PDF content, images, or metadata were deleted.
 const String secureRedactionKey = 'secureRedaction';
+
+/// Black cover burned into the exported page image. The source PDF text
+/// is not removed. This is not secure redaction.
+const String visualCoverKey = 'visualCover';
 
 /// Base type for anything drawn on a page — the editor's unified Document
 /// Object Model (DOM) node.
@@ -171,8 +175,12 @@ class ShapeAnnotation extends EditorAnnotation {
   double width;
   bool filled;
 
-  /// True when this box is a secure cover, burned into the page bitmap on export.
+  /// True for the legacy key only. Not proof that content was removed.
   bool get isSecureRedaction => metadata[secureRedactionKey] == true;
+
+  /// Black rectangle painted into the preview and the exported page image.
+  bool get burnsBlackCover =>
+      isSecureRedaction || metadata[visualCoverKey] == true;
 
   ShapeAnnotation(
     this.type,

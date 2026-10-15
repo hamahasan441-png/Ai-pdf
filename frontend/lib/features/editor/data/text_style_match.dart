@@ -5,11 +5,12 @@ import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
 /// How sure we are about the font used for a replacement box.
 enum FontMatchKind {
-  /// The PDF BaseFont, after removing a subset tag, is exactly a face this
-  /// editor ships. This is a name match, not a byte-identical embedded font.
+  /// The subset-stripped BaseFont names a bundled face, and that face's
+  /// TrueType file was loaded and passed validation. This is still not a
+  /// byte-identical copy of an embedded subset.
   exactFamily,
 
-  /// A different installed family was chosen. It is not the original font.
+  /// A different family was chosen, or the named face is not actually loaded.
   namedSubstitute,
 
   /// No trustworthy family. Size may still come from the PDF.
@@ -70,7 +71,11 @@ class TextStyleMatcher {
     return name;
   }
 
-  RecognizedTextStyle match(PdfTextElement word, {double pageHeightPt = 0}) {
+  RecognizedTextStyle match(
+    PdfTextElement word, {
+    double pageHeightPt = 0,
+    Set<String> loadedFamilies = const {},
+  }) {
     final source = word.fontName;
     final normalizedName = normalizeFontName(source);
     final lower = normalizedName.toLowerCase();
@@ -82,7 +87,10 @@ class TextStyleMatcher {
     final exact = exactFaces[lower];
     if (exact != null) {
       family = exact;
-      kind = FontMatchKind.exactFamily;
+      // A name in the map is not an exact face until the file is loaded.
+      kind = loadedFamilies.contains(exact)
+          ? FontMatchKind.exactFamily
+          : FontMatchKind.namedSubstitute;
     } else if (lower.contains('vazir')) {
       family = 'Vazirmatn';
       kind = FontMatchKind.namedSubstitute;
