@@ -18,6 +18,20 @@ class RedactionRegion {
   const RedactionRegion(this.rect, {this.label, this.pageIndex = 0});
 }
 
+class SecureRedactionOutcome {
+  /// True only when the PDF bytes no longer contain the targeted content.
+  /// This build never sets it: the libraries cannot delete existing operators.
+  final bool contentRemoved;
+  final String reason;
+
+  const SecureRedactionOutcome({
+    required this.contentRemoved,
+    required this.reason,
+  });
+
+  bool get accepted => contentRemoved;
+}
+
 class RedactionResult {
   final List<PdfTextElement> remainingText;
   final List<int> removedIndices;
@@ -112,6 +126,54 @@ class RedactionService {
 
   bool _overlapsOrTouches(Rect a, Rect b) {
     return a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom;
+  }
+
+  /// Fail closed. `pdf` 3.11 and `pdfx` 2.9 cannot delete existing content
+  /// streams, images under a rectangle, or document metadata.
+  ///
+  /// [pdfBytes] is not modified. A secret that is still present is reported
+  /// in [SecureRedactionOutcome.reason]. Absence of the ASCII secret is still
+  /// not success, because a compressed or encoded copy would not be visible
+  /// to this check.
+  SecureRedactionOutcome secureRedact({
+    required List<RedactionRegion> regions,
+    List<int>? pdfBytes,
+    String? secret,
+  }) {
+    if (regions.isEmpty) {
+      return const SecureRedactionOutcome(
+        contentRemoved: false,
+        reason: 'Refused. No redaction region.',
+      );
+    }
+    final stillThere = pdfBytes != null &&
+        secret != null &&
+        secret.isNotEmpty &&
+        bytesContainAscii(pdfBytes, secret);
+    final reason = stillThere
+        ? 'Refused. "$secret" is still in the PDF bytes. pdf 3.11 and pdfx 2.9 cannot delete existing content.'
+        : 'Refused. This build cannot prove content removal, so the file is not marked redacted.';
+    return SecureRedactionOutcome(contentRemoved: false, reason: reason);
+  }
+
+  /// ASCII search only. Used to show that a refused redaction left the bytes
+  /// untouched. Not a PDF text extractor.
+  static bool bytesContainAscii(List<int> pdfBytes, String secret) {
+    if (secret.isEmpty) return false;
+    final needle = secret.codeUnits;
+    if (needle.any((unit) => unit > 127)) return false;
+    if (needle.length > pdfBytes.length) return false;
+    for (var i = 0; i <= pdfBytes.length - needle.length; i++) {
+      var match = true;
+      for (var j = 0; j < needle.length; j++) {
+        if (pdfBytes[i + j] != needle[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+    return false;
   }
 
   /// True redaction via backend — E1.7 Phase 6

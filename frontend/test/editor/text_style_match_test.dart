@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/data/edit_capability.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
@@ -13,7 +14,7 @@ import 'package:ai_pdf/features/editor/data/text_style_match.dart';
 void main() {
   const matcher = TextStyleMatcher();
 
-  test('an embedded Noto name is exact, and the size is real points', () {
+  test('a bundled Noto name is a substitute until that font file is loaded', () {
     final word = PdfTextElement(
       text: 'کوردی',
       rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
@@ -22,12 +23,19 @@ void main() {
       isBold: true,
     );
     final style = matcher.match(word, pageHeightPt: 792);
-    expect(style.kind, FontMatchKind.exactFamily);
+    expect(style.kind, FontMatchKind.namedSubstitute);
     expect(style.editorFamily, 'NotoSansArabic');
     expect(style.bold, isTrue);
     expect(style.sizeIsEstimate, isFalse);
     expect(style.normalizedSize, closeTo(14 / 792, 0.0001));
     expect(style.direction, TextDirection.rtl);
+
+    final loaded = matcher.match(
+      word,
+      pageHeightPt: 792,
+      loadedFamilies: const {'NotoSansArabic'},
+    );
+    expect(loaded.kind, FontMatchKind.exactFamily);
   });
 
   test('Times-Bold is a substitute, not the original font', () {
@@ -62,6 +70,16 @@ void main() {
     expect(draft.textBox.fontFamily, 'NotoSansArabic');
     expect(draft.textBox.textDirection, TextDirection.rtl);
     expect(draft.textBox.text, 'کوردستان');
+    expect(draft.textBox.metadata['editMode'], 'overlayReplacement');
+    expect(draft.textBox.metadata['nativeContentRewrite'], isFalse);
+    expect(draft.whiteout.metadata['nativeContentRewrite'], isFalse);
+    final loaded = const EditorExistingTextService().capabilityForLine(
+      const OcrLine('کوردستان', 0.1, 0.2, 0.4, 0.05),
+      loadedFamilies: const {'NotoSansArabic'},
+    );
+    expect(loaded.nativeContentRewrite, isFalse);
+    expect(loaded.mode, PdfEditMode.overlayReplacement);
+    expect(loaded.bundledFaceLoaded, isTrue);
   });
 
   test('selected words keep the first size and do not average a second size', () {
@@ -85,7 +103,7 @@ void main() {
     expect(draft.whiteout.type, ShapeType.whiteout);
   });
 
-  test('a subset prefix still names the exact bundled face', () {
+  test('a subset prefix names the bundled face only after the file loads', () {
     final word = PdfTextElement(
       text: 'کوردی',
       rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
@@ -93,8 +111,14 @@ void main() {
       fontName: 'ABCDEF+NotoSansArabic-Bold',
     );
     final style = matcher.match(word, pageHeightPt: 792);
-    expect(style.kind, FontMatchKind.exactFamily);
+    expect(style.kind, FontMatchKind.namedSubstitute);
     expect(style.editorFamily, 'NotoSansArabic');
+    final loaded = matcher.match(
+      word,
+      pageHeightPt: 792,
+      loadedFamilies: const {'NotoSansArabic'},
+    );
+    expect(loaded.kind, FontMatchKind.exactFamily);
   });
 
   test('a name that merely contains Noto Sans Arabic is not an exact face', () {

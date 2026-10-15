@@ -377,6 +377,8 @@
   "speed": "Speed",
   "editTextTool": "Edit Text",
   "tapLineToEdit": "Tap a line to edit its text",
+  "overlayEditNotice": "Tap a line to cover it with a new text box. The original PDF text stays in the file.",
+  "visualCoverNotice": "Black cover added to the export image. The original text was not removed and can still be extracted from the PDF.",
   "convert": "Convert",
   "convertDesc": "PDF to Word, Excel, PPT",
   "convertToWord": "PDF to Word",

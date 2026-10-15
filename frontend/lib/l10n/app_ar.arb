@@ -335,6 +335,8 @@
   "speed": "السرعة",
   "editTextTool": "تحرير النص",
   "tapLineToEdit": "اضغط على سطر لتحرير نصه",
+  "overlayEditNotice": "اضغط على سطر لتغطيته بمربع نص جديد. يبقى نص PDF الأصلي داخل الملف.",
+  "visualCoverNotice": "أُضيف غطاء أسود إلى صورة التصدير. لم يُحذف النص الأصلي ولا يزال يمكن استخراجه من ملف PDF.",
   "convert": "تحويل",
   "convertDesc": "PDF إلى Word وExcel وPPT",
   "convertToWord": "PDF إلى Word",

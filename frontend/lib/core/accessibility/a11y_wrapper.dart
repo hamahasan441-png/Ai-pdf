@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 /// Accessibility helpers and semantic wrappers for the app.
 ///

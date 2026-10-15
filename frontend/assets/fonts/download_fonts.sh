@@ -1,50 +1,69 @@
 #!/bin/bash
-# Downloads the open-source Unicode TrueType fonts needed for searchable RTL export.
-# Run this once from the project root: bash frontend/assets/fonts/download_fonts.sh
-# All fonts are SIL Open Font License 1.1.
+# Downloads SIL OFL 1.1 TrueType fonts for searchable RTL export.
+# Run once: bash frontend/assets/fonts/download_fonts.sh
+# This does not run at app startup. A successful download is not glyph-coverage proof.
 
 set -euo pipefail
 FONT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "Downloading fonts into: $FONT_DIR"
 
-# --- Noto Sans (Latin/Cyrillic/Greek) ---
-echo "→ NotoSans-Regular.ttf"
-# Static hinted face. The google/fonts variable file (NotoSans[wdth,wght].ttf)
-# is not a Regular instance and must not be saved under this name.
-curl -fsSL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf" \
-  -o "$FONT_DIR/NotoSans-Regular.ttf"
+validate_ttf() {
+  local file="$1"
+  if [[ ! -s "$file" ]]; then
+    echo "Rejected empty file: $file" >&2
+    exit 1
+  fi
+  local first
+  first=$(od -An -t u1 -N 1 "$file" | tr -d ' ')
+  if [[ "$first" == "60" || "$first" == "123" ]]; then
+    echo "Rejected non-font (HTML or JSON): $file" >&2
+    rm -f "$file"
+    exit 1
+  fi
+  local sig
+  sig=$(od -An -t x1 -N 4 "$file" | tr -d ' \n')
+  case "$sig" in
+    00010000|74727565) ;;
+    *)
+      echo "Rejected bad TrueType signature $sig: $file" >&2
+      rm -f "$file"
+      exit 1
+      ;;
+  esac
+  local size
+  size=$(wc -c < "$file")
+  if [[ "$size" -lt 10000 ]]; then
+    echo "Rejected truncated font ($size bytes): $file" >&2
+    rm -f "$file"
+    exit 1
+  fi
+}
 
-echo "→ NotoSans-Bold.ttf"
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf" \
-  -o "$FONT_DIR/NotoSans-Bold.ttf"
+fetch() {
+  local name="$1"
+  local url="$2"
+  echo "→ $name"
+  curl -fsSL "$url" -o "$FONT_DIR/$name"
+  validate_ttf "$FONT_DIR/$name"
+}
 
-# --- Noto Sans Arabic (Arabic/Kurdish/Persian) ---
-echo "→ NotoSansArabic-Regular.ttf"
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Regular.ttf" \
-  -o "$FONT_DIR/NotoSansArabic-Regular.ttf"
-
-echo "→ NotoSansArabic-Bold.ttf"
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Bold.ttf" \
-  -o "$FONT_DIR/NotoSansArabic-Bold.ttf"
-
-# --- Vazirmatn (Persian/Kurdish alternative with excellent readability) ---
-echo "→ Vazirmatn-Regular.ttf"
-curl -sL "https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Regular.ttf" \
-  -o "$FONT_DIR/Vazirmatn-Regular.ttf"
-
-echo "→ Vazirmatn-Bold.ttf"
-curl -sL "https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Bold.ttf" \
-  -o "$FONT_DIR/Vazirmatn-Bold.ttf"
-
-# --- Noto Sans Hebrew ---
-echo "→ NotoSansHebrew-Regular.ttf"
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansHebrew/hinted/ttf/NotoSansHebrew-Regular.ttf" \
-  -o "$FONT_DIR/NotoSansHebrew-Regular.ttf"
-
-echo "→ NotoSansHebrew-Bold.ttf"
-curl -sL "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansHebrew/hinted/ttf/NotoSansHebrew-Bold.ttf" \
-  -o "$FONT_DIR/NotoSansHebrew-Bold.ttf"
+fetch "NotoSans-Regular.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf"
+fetch "NotoSans-Bold.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf"
+fetch "NotoSansArabic-Regular.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Regular.ttf"
+fetch "NotoSansArabic-Bold.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Bold.ttf"
+fetch "Vazirmatn-Regular.ttf" \
+  "https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Regular.ttf"
+fetch "Vazirmatn-Bold.ttf" \
+  "https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Bold.ttf"
+fetch "NotoSansHebrew-Regular.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansHebrew/hinted/ttf/NotoSansHebrew-Regular.ttf"
+fetch "NotoSansHebrew-Bold.ttf" \
+  "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSansHebrew/hinted/ttf/NotoSansHebrew-Bold.ttf"
 
 echo ""
-echo "Done! All fonts downloaded. Rebuild the app and RTL text will export as searchable vector PDF."
-echo "These fonts are SIL Open Font License 1.1. Keep this license notice if redistributing."
+echo "Signature checks passed. Glyph coverage was not measured."
+echo "These fonts are SIL Open Font License 1.1. Rebuild before export can embed them."

@@ -39,10 +39,11 @@ bool textExportsAsSearchableVector({
 
 /// Off-screen export compositor for the editor.
 ///
-/// Re-renders each page at a high pixel cap, composites editor annotations onto
-/// an off-screen canvas, then writes a flattened PDF. Latin-1 text is overlaid
-/// as real vector text; non-Latin text and special mark glyphs are rasterized
-/// into the page image so they always render correctly.
+/// Each page is rendered to a bitmap and the marks are painted on that bitmap,
+/// then the bitmap is wrapped in a new PDF. This is not an incremental edit of
+/// the source file: the original content stream, links, and vector objects are
+/// not preserved. Searchable vector text is added only for new annotations
+/// that [textExportsAsSearchableVector] accepts.
 class EditorExportService {
   static const double exportMaxEdge = 1800;
 
@@ -104,7 +105,7 @@ class EditorExportService {
       final shapes = (layers[i]?.shapes ?? const <ShapeAnnotation>[])
           .where((s) =>
               s.visible &&
-              !s.isSecureRedaction &&
+              !s.burnsBlackCover &&
               (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
           .toList();
       final texts = (layers[i]?.texts ?? const <TextAnnotation>[])
@@ -431,7 +432,7 @@ class EditorExportService {
         }
         for (final s in layer.shapes) {
           if (!s.visible) continue;
-          if (s.isSecureRedaction) {
+          if (s.burnsBlackCover) {
             // Burn the cover into the bitmap. A separate PDF object could be
             // deleted and would reveal the page underneath.
             AnnotationDraw.secureCover(canvas, size, s.start, s.end);
