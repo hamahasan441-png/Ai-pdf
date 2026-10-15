@@ -24,7 +24,7 @@ class _BatchProcessScreenState extends State<BatchProcessScreen> {
   BatchOperation _operation = BatchOperation.compress;
   bool _processing = false;
   int _progress = 0;
-  final BatchWorkManager _workManager = const BatchWorkManager();
+  final BatchWorkManager _workManager = BatchWorkManager();
   List<_BatchV2Result> _v2Results = [];
 
   @override

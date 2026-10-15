@@ -23,7 +23,7 @@ class BatchWorkManager {
   bool _cancelRequested = false;
   Completer<void>? _currentJob;
 
-  const BatchWorkManager();
+  BatchWorkManager();
 
   Future<void> initialize() async {
     // No-op for pure Dart version — previously initialized WorkManager + notifications
