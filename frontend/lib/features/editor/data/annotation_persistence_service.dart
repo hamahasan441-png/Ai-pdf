@@ -15,7 +15,11 @@ class AnnotationLoadResult {
   /// treated as an empty document.
   final bool corrupt;
 
-  const AnnotationLoadResult({required this.layers, this.corrupt = false});
+  /// Page order and rotations the marks belong to. Null for files saved
+  /// before structure was recorded, or when nothing was saved.
+  final SavedPageStructure? structure;
+
+  const AnnotationLoadResult({required this.layers, this.corrupt = false, this.structure});
 }
 
 /// Persists editor annotations to disk so work is never lost.
@@ -34,9 +38,10 @@ class AnnotationPersistenceService {
   Future<void> save({
     required String filePath,
     required Map<int, PageLayer> layers,
+    SavedPageStructure? structure,
   }) async {
     final savePath = await _savePath(filePath);
-    final content = jsonEncode(layersToJson(layers));
+    final content = jsonEncode(layersToJson(layers, structure: structure));
     final tmp = File('$savePath.tmp');
     await tmp.writeAsString(content, flush: true);
     await tmp.rename(savePath);
@@ -67,7 +72,13 @@ class AnnotationPersistenceService {
       if (version != 1) {
         throw FormatException('unsupported annotation schema: $version');
       }
-      return AnnotationLoadResult(layers: layersFromJson(json));
+      final structure = json.containsKey('structure')
+          ? SavedPageStructure.fromJson(json['structure'])
+          : null;
+      if (json.containsKey('structure') && structure == null) {
+        throw const FormatException('malformed page structure');
+      }
+      return AnnotationLoadResult(layers: layersFromJson(json), structure: structure);
     } catch (_) {
       final backup = File('$savePath.corrupt');
       if (backup.existsSync()) {
@@ -76,6 +87,18 @@ class AnnotationPersistenceService {
       await file.rename(backup.path);
       return const AnnotationLoadResult(layers: {}, corrupt: true);
     }
+  }
+
+  /// Move the save file aside without reading it again. Used when its marks
+  /// do not fit the document that was opened (for example the PDF at that
+  /// path was replaced by one with fewer pages).
+  Future<void> quarantine(String filePath) async {
+    final savePath = await _savePath(filePath);
+    final file = File(savePath);
+    if (!file.existsSync()) return;
+    final backup = File('$savePath.corrupt');
+    if (backup.existsSync()) backup.deleteSync();
+    await file.rename(backup.path);
   }
 
   /// Check whether a save file exists for [filePath].

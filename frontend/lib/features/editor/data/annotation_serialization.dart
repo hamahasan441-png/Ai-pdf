@@ -363,7 +363,10 @@ StampAnnotation _stampFromJson(Map<String, dynamic> j) {
 // ---------------------------------------------------------------------------
 
 /// Serialize all pages' annotations into a JSON-compatible map.
-Map<String, dynamic> layersToJson(Map<int, PageLayer> layers) {
+Map<String, dynamic> layersToJson(
+  Map<int, PageLayer> layers, {
+  SavedPageStructure? structure,
+}) {
   final pages = <String, dynamic>{};
   for (final entry in layers.entries) {
     if (entry.value.items.isEmpty) continue;
@@ -373,7 +376,72 @@ Map<String, dynamic> layersToJson(Map<int, PageLayer> layers) {
   return {
     'version': 1,
     'pages': pages,
+    if (structure != null) 'structure': structure.toJson(),
   };
+}
+
+/// Page order and rotations the marks were placed on.
+///
+/// Page keys in `pages` are positions in the edited document, not PDF page
+/// numbers. After a page was deleted, inserted or duplicated they only make
+/// sense together with this structure. Files written before it existed have
+/// none and are read as the PDF's own order.
+class SavedPageStructure {
+  /// PDF page (0-based) shown at each position; -1 is an inserted blank page.
+  final List<int> sources;
+
+  /// Clockwise quarter turns per position, 1..3. Positions not listed are 0.
+  final Map<int, int> quarterTurns;
+
+  const SavedPageStructure({required this.sources, this.quarterTurns = const {}});
+
+  Map<String, dynamic> toJson() => {
+        'sources': sources,
+        'turns': {
+          for (final e in quarterTurns.entries)
+            if (e.value % 4 != 0) e.key.toString(): e.value % 4,
+        },
+      };
+
+  /// Null when [json] is missing or malformed.
+  static SavedPageStructure? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final rawSources = json['sources'];
+    if (rawSources is! List || rawSources.isEmpty) return null;
+    final sources = <int>[];
+    for (final v in rawSources) {
+      if (v is! int || v < -1) return null;
+      sources.add(v);
+    }
+    final turns = <int, int>{};
+    final rawTurns = json['turns'];
+    if (rawTurns is Map) {
+      for (final e in rawTurns.entries) {
+        final key = int.tryParse('${e.key}');
+        final value = e.value;
+        if (key == null || key < 0 || key >= sources.length || value is! int) return null;
+        if (value % 4 != 0) turns[key] = value % 4;
+      }
+    } else if (rawTurns != null) {
+      return null;
+    }
+    return SavedPageStructure(sources: sources, quarterTurns: turns);
+  }
+
+  /// Whether this structure can be applied to a PDF with [pdfPageCount]
+  /// pages and still hold every page key in [layers].
+  bool fits(int pdfPageCount, Iterable<int> layerPages) {
+    if (sources.any((s) => s >= pdfPageCount)) return false;
+    return layerPages.every((p) => p >= 0 && p < sources.length);
+  }
+
+  bool get isIdentity {
+    if (quarterTurns.isNotEmpty) return false;
+    for (var i = 0; i < sources.length; i++) {
+      if (sources[i] != i) return false;
+    }
+    return true;
+  }
 }
 
 /// Restore annotation layers from a saved JSON map. Gracefully skips corrupt entries.

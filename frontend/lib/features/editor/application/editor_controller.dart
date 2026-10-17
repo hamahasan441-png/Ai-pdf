@@ -38,12 +38,12 @@ class EditorController extends StateNotifier<EditorState> {
   /// Current page's history.
   EditorHistory get _currentHistory => _historyFor(state.currentPage);
 
-  /// Whether the current page has an undoable / redoable action. These drive
-  /// the toolbar button states and reflect the *real* command history (not a
-  /// proxy such as "the layer has items").
   /// The working file. After a server redaction this is the redacted copy.
   String? get filePath => state.filePath;
 
+  /// Whether the current page has an undoable / redoable action. These drive
+  /// the toolbar button states and reflect the *real* command history (not a
+  /// proxy such as "the layer has items").
   bool get canUndo => _currentHistory.canUndo;
   bool get canRedo => _currentHistory.canRedo;
   String? get nextUndoLabel => _currentHistory.nextUndoLabel;
@@ -240,9 +240,25 @@ class EditorController extends StateNotifier<EditorState> {
 
   // ─── Annotation mutations (all go through history) ──────────────────────
 
-  void pushAnnotation(PageLayer layer, EditorAnnotation annotation) {
-    _currentHistory.push(AddCommand(annotation), layer);
+  /// Add [annotation] to [layer]. [page] is the page that owns [layer]; it
+  /// defaults to the current page. An add recorded on another page's history
+  /// could not be undone there, because undo runs against that page's layer.
+  void pushAnnotation(PageLayer layer, EditorAnnotation annotation, {int? page}) {
+    _historyFor(page ?? state.currentPage).push(AddCommand(annotation), layer);
     markDirty();
+  }
+
+  /// Move per-page histories along with the pages after a delete or insert.
+  ///
+  /// [shift] is the same function the screen applies to its other per-page
+  /// maps (see PageSourceMap.afterDelete / afterInsert). Without this, the
+  /// commands of a deleted page's neighbour would replay on the wrong page,
+  /// and undo could insert an annotation from one page into another.
+  void shiftHistories(Map<int, EditorHistory> Function(Map<int, EditorHistory>) shift) {
+    final next = shift(Map<int, EditorHistory>.of(_histories));
+    _histories
+      ..clear()
+      ..addAll(next);
   }
 
   EditorAnnotation? deleteSelected(PageLayer layer, EditorAnnotation? selected) {

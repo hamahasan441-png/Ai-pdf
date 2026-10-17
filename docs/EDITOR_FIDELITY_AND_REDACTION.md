@@ -119,11 +119,38 @@ not searchable. Exported vector Arabic is stored as presentation forms; it
 extracts, and matches after NFKC normalisation, but plain PyMuPDF
 `search_for` with base letters does not find it.
 
+## Undo, redo and recovery
+
+History is per page (`EditorController`, `EditorHistory`). Fixed:
+
+- Deleting, inserting or duplicating a page now moves each page's history
+  with it (`shiftHistories`). Before, history stayed on the old index: after
+  deleting page 1, undo on the new page 2 replayed the old page 2's commands
+  against what had been page 3 and could insert one page's annotation into
+  another.
+- An annotation added to a page other than the current one (the redaction
+  cover after an upload) is recorded on that page's history.
+- The recovery file now stores the page order and rotations with the marks.
+  Its page keys are positions in the edited document, so after a page edit
+  and a crash the marks used to reopen on the wrong pages and rotations were
+  lost. On open, the structure is restored with the marks; a recovery file
+  whose structure or page keys do not fit the opened PDF is moved aside
+  (`.corrupt`) instead of being applied. Files written before this change
+  have no structure and are read in the PDF's own order.
+
+Evidence: `frontend/test/editor/history_workflow_test.dart` (edit, restyle,
+annotate, undo, redo, new edit clears redo, save, reopen, no duplicates;
+empty history; repeated cycles; page isolation; history after page delete and
+insert, which fails without the fix; structure round-trip, legacy files,
+malformed and non-fitting structures). The screen's open path that applies the
+structure has no widget test.
+
 ## Not done
 
 - Native editing of existing PDF text. Edits are overlays (a box covering the
   old text plus new text) and the UI says so.
 - Preserving source PDF objects on export (see above).
-- A full open → edit → undo/redo → save → reopen widget test.
+- A widget test of the editor screen itself (the workflow is tested at the
+  controller and recovery-file level).
 - Translations for the new redaction strings (English only; other locales fall
   back to English).

@@ -34,6 +34,7 @@ import 'package:ai_pdf/features/editor/data/editor_annotation_edit_service.dart'
 import 'package:ai_pdf/features/editor/data/editor_profile_auto_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_profile_insert_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_tap_tool_service.dart';
+import 'package:ai_pdf/features/editor/data/annotation_serialization.dart' show SavedPageStructure;
 import 'package:ai_pdf/features/editor/data/editor_document_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_file_picker_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
@@ -611,7 +612,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (saved.corrupt) {
         _showError('Saved marks could not be read. A backup was kept.');
       }
-      final savedLayers = saved.layers;
+      var savedLayers = saved.layers;
+      // Marks are keyed by position in the edited document. Restore them only
+      // together with the page order they were placed on, and only if that
+      // order fits this file; otherwise they would land on the wrong pages.
+      final savedStructure = saved.structure ??
+          SavedPageStructure(sources: [for (var i = 0; i < loaded.pageCount; i++) i]);
+      if (!savedStructure.fits(loaded.pageCount, savedLayers.keys)) {
+        await _persistence.quarantine(path);
+        savedLayers = const {};
+        _showError('Saved marks do not match this file. A backup was kept.');
+      } else if (!savedStructure.isIdentity) {
+        _applySavedStructure(savedStructure);
+      }
       if (savedLayers.isNotEmpty) {
         _layers.addAll(savedLayers);
         _hasUnsavedChanges = true;
@@ -723,7 +736,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
         ..metadata[visualCoverKey] = true;
       setState(() {
-        _pushItem(cover, layer: _layers.putIfAbsent(page, () => PageLayer()));
+        _pushItem(cover, page: page);
         // Search still finds these words. They remain in the source PDF.
       });
       _showError(l10n.visualCoverNotice);
@@ -771,7 +784,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
         ..metadata[serverRedactedKey] = true;
       setState(() {
-        _pushItem(cover, layer: _layers.putIfAbsent(page, () => PageLayer()));
+        _pushItem(cover, page: page);
         _hasUnsavedChanges = true;
       });
       _showError(l10n.redactSecureDone);
@@ -806,18 +819,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     await previous.close();
     // Recovery data follows the working file.
     if (oldPath != null && _layers.isNotEmpty) {
-      _persistence.save(filePath: path, layers: _layers);
+      _persistence.save(filePath: path, layers: _layers, structure: _pageStructure);
     }
 
     final gen = ++_textGen;
     try {
       final bySource = await compute(extractPdfTextLayerFromPath, path);
       if (mounted && gen == _textGen) {
-        _textLayer.clear();
-        for (var i = 0; i < _sourcePages.length; i++) {
-          final words = bySource[_sourcePages[i]];
-          if (words != null) _textLayer[i] = List<PdfTextElement>.of(words);
-        }
+        _setTextLayerFromSource(bySource);
         _searchController.setPages(_textLayer);
       }
     } catch (_) {
@@ -827,15 +836,43 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return true;
   }
 
+  /// Restore a saved page order and rotations before the marks that were
+  /// placed on them. Called while opening, before the marks are added.
+  void _applySavedStructure(SavedPageStructure structure) {
+    _sourcePages = List<int>.of(structure.sources);
+    _pageCount = structure.sources.length;
+    _pageQuarterTurns
+      ..clear()
+      ..addAll(structure.quarterTurns);
+    // Page 0 was rendered for the PDF's own order; render it again.
+    _navTicket++;
+    _pageCache.clear();
+    _pageEdge.clear();
+    _pageAspect.clear();
+    _pageHeightPt.clear();
+    _hasUnsavedChanges = true;
+    unawaited(_goToPage(0));
+  }
+
+  SavedPageStructure get _pageStructure => SavedPageStructure(
+        sources: List<int>.of(_sourcePages),
+        quarterTurns: Map<int, int>.of(_pageQuarterTurns),
+      );
+
+  /// Place PDF text by shown position. Text is extracted per PDF page.
+  void _setTextLayerFromSource(Map<int, List<PdfTextElement>> bySource) {
+    _textLayer.clear();
+    for (var i = 0; i < _sourcePages.length; i++) {
+      final words = bySource[_sourcePages[i]];
+      if (words != null) _textLayer[i] = List<PdfTextElement>.of(words);
+    }
+  }
+
   Future<void> _loadTextLayer(String path, int gen) async {
     try {
       final map = await compute(extractPdfTextLayerFromPath, path);
       if (!mounted || gen != _textGen) return;
-      setState(() {
-        _textLayer
-          ..clear()
-          ..addAll(map);
-      });
+      setState(() => _setTextLayerFromSource(map));
       _searchController.setPages(_textLayer);
       _maskRedactedText();
       if (_searchController.state.active && _searchController.state.hasMatches) {
@@ -1149,6 +1186,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _pageQuarterTurns[index] = ((_pageQuarterTurns[index] ?? 0) + turns) % 4;
       _hasUnsavedChanges = true;
     });
+    _schedulePersist();
   }
 
   // ---- Page management (Phase 10) ----
@@ -1244,6 +1282,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     int index,
     int oldCount,
   ) {
+    _editorController.shiftHistories((h) => shift(h, index, oldCount));
+    _schedulePersist();
     final turns = shift(Map<int, int>.of(_pageQuarterTurns), index, oldCount);
     final aspects = shift(Map<int, double>.of(_pageAspect), index, oldCount);
     final heights = shift(Map<int, double>.of(_pageHeightPt), index, oldCount);
@@ -1807,8 +1847,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   /// Add an annotation and reset the redo stack.
-  void _pushItem(EditorAnnotation a, {PageLayer? layer}) {
-    _editorController.pushAnnotation(layer ?? _layer, a);
+  void _pushItem(EditorAnnotation a, {int? page}) {
+    final layer = page == null ? _layer : _layers.putIfAbsent(page, () => PageLayer());
+    _editorController.pushAnnotation(layer, a, page: page);
     _schedulePersist();
     // Log to revision history for cross-session undo / version tracking.
     final path = _editorController.state.filePath;
@@ -1829,8 +1870,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
     Future.microtask(() {
       _persistScheduled = false;
       final path = _editorController.state.filePath;
-      if (path != null && _layers.isNotEmpty) {
-        _persistence.save(filePath: path, layers: _layers);
+      final structure = _pageStructure;
+      if (path != null && (_layers.isNotEmpty || !structure.isIdentity)) {
+        _persistence.save(filePath: path, layers: _layers, structure: structure);
       }
     });
   }
@@ -2281,9 +2323,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         final aspect = _aspectFor(_current);
         _pageAspect[_current] = 1 / aspect;
         _pageQuarterTurns[_current] = ((_pageQuarterTurns[_current] ?? 0) + 1) % 4;
-        // Quarter-turns live on the in-memory page cache. They are not in the
-        // annotation sidecar, so a reopen shows the original PDF orientation.
+        // Saved with the marks, so recovery reopens the page turned.
         _hasUnsavedChanges = true;
+        _schedulePersist();
       }
     } catch (e) {
       _editorController.setError('Rotate failed: $e');
