@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show LicenseEntry, LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/ads/ads_service.dart';
@@ -25,6 +27,9 @@ void main() {
           reason: details.context?.toString(), fatal: true);
     };
     ErrorWidget.builder = (details) => const _FriendlyErrorWidget();
+
+    // SIL OFL 1.1 requires the licence to travel with the bundled fonts.
+    LicenseRegistry.addLicense(_bundledFontLicenses);
 
     // Load persisted settings (AI server URL, theme, language) before start.
     await AppSettings.instance.load();
@@ -100,5 +105,23 @@ class _FriendlyErrorWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+const _fontLicenseFiles = {
+  'Noto Sans': 'assets/fonts/licenses/OFL-NotoSans.txt',
+  'Noto Sans Arabic': 'assets/fonts/licenses/OFL-NotoSansArabic.txt',
+  'Noto Sans Hebrew': 'assets/fonts/licenses/OFL-NotoSansHebrew.txt',
+  'Vazirmatn': 'assets/fonts/licenses/OFL-Vazirmatn.txt',
+};
+
+Stream<LicenseEntry> _bundledFontLicenses() async* {
+  for (final entry in _fontLicenseFiles.entries) {
+    try {
+      final text = await rootBundle.loadString(entry.value);
+      yield LicenseEntryWithLineBreaks([entry.key], text);
+    } catch (_) {
+      // A build without the licence file still starts.
+    }
   }
 }

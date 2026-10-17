@@ -25,6 +25,12 @@ const String secureRedactionKey = 'secureRedaction';
 /// is not removed. This is not secure redaction.
 const String visualCoverKey = 'visualCover';
 
+/// The content under this box was removed from the working PDF by the
+/// server's PyMuPDF redaction, and the server's re-check of the output
+/// passed. The editor then swapped in that redacted file. Undoing the box
+/// only hides the black cover; the removed content does not come back.
+const String serverRedactedKey = 'serverRedacted';
+
 /// Base type for anything drawn on a page — the editor's unified Document
 /// Object Model (DOM) node.
 ///
@@ -178,9 +184,12 @@ class ShapeAnnotation extends EditorAnnotation {
   /// True for the legacy key only. Not proof that content was removed.
   bool get isSecureRedaction => metadata[secureRedactionKey] == true;
 
+  /// Set only after a verified server redaction. See [serverRedactedKey].
+  bool get isServerRedacted => metadata[serverRedactedKey] == true;
+
   /// Black rectangle painted into the preview and the exported page image.
   bool get burnsBlackCover =>
-      isSecureRedaction || metadata[visualCoverKey] == true;
+      isSecureRedaction || isServerRedacted || metadata[visualCoverKey] == true;
 
   ShapeAnnotation(
     this.type,

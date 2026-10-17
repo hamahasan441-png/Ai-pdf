@@ -14,10 +14,15 @@ Security:
 - Requires X-Entitlement-Token for Pro bypass
 - Logs redaction to team audit if X-Team-Id header present and user is member
 
-This is irreversible. An out-of-range page, an empty rectangle, or a failed
-apply_redactions call rejects the whole request and returns no PDF.
-The Flutter editor does not call this endpoint: it cannot re-check the
-bytes with PyMuPDF, so a black cover in the app is not this operation.
+This is irreversible. An out-of-range page, an empty or non-finite
+rectangle, a failed apply_redactions call, or a failed post-redaction check
+rejects the whole request and returns no PDF. Coordinates are normalized
+against the page as displayed (after /Rotate), the same space the editor uses.
+
+The Flutter editor calls this endpoint only after the user agrees to upload the
+file for that one redaction (see RedactionService.redactViaBackend). The
+response carries X-Redaction-Verified only when every check in
+secure_redact.verify_redaction passed.
 """
 
 import io
@@ -36,7 +41,7 @@ from app.models.user import User
 from app.services.ai.usage_limiter import UNLIMITED, check_and_increment_tiered, identity_for
 from app.services.billing.quota_tiers import get_quota_with_team
 
-from app.services.pdf.secure_redact import RedactionRejected, redact_pdf_bytes
+from app.services.pdf.secure_redact import RedactionRejected, redact_pdf
 
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
 
@@ -119,12 +124,17 @@ async def redact_document(
 
     await _meter(request, user, db)
 
-    # Parse areas
+    # Parse areas. The error text never echoes the request back.
     try:
         areas_data = json.loads(areas_json)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid areas_json: not JSON")
+    if not isinstance(areas_data, list):
+        raise HTTPException(status_code=422, detail="Invalid areas_json: expected a list")
+    try:
         areas = [RedactArea(**a) for a in areas_data]
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid areas_json: {e}")
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid areas_json: each area needs page, x0, y0, x1, y1 in 0..1")
 
     if not areas:
         raise HTTPException(status_code=422, detail="No redaction areas provided")
@@ -138,14 +148,13 @@ async def redact_document(
             raise HTTPException(status_code=413, detail=f"File too large > {settings.MAX_UPLOAD_SIZE_MB}MB")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to read file")
 
-    # Open with PyMuPDF and apply redactions. Any invalid page, empty
-    # rectangle, or apply_redactions failure rejects the whole request.
-    # The previous loop skipped bad pages and still returned a PDF.
+    # Open with PyMuPDF, apply redactions, then reopen the output and verify
+    # each region. Any failure rejects the whole request.
     try:
-        out_bytes = redact_pdf_bytes(
+        report = redact_pdf(
             pdf_bytes,
             [
                 {
@@ -162,6 +171,8 @@ async def redact_document(
     except RedactionRejected as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
+    out_bytes = report.pdf
+
     team_id_header = request.headers.get("X-Team-Id")
     if team_id_header and user:
         try:
@@ -175,7 +186,7 @@ async def redact_document(
                 team_id=team_uuid,
                 actor_id=user.id,
                 action="document.redact",
-                target=file.filename,
+                target=_safe_filename(file.filename),
                 detail=f"Redacted {len(areas)} areas",
             )
         except Exception:
@@ -185,7 +196,20 @@ async def redact_document(
         io.BytesIO(out_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="redacted_{file.filename or "document.pdf"}"',
-            "X-Redacted-Areas": str(len(areas)),
+            "Content-Disposition": f'attachment; filename="redacted_{_safe_filename(file.filename)}"',
+            "X-Redacted-Areas": str(report.regions),
+            "X-Redaction-Verified": ",".join(report.checks),
+            "X-Redaction-Objects-Removed": (
+                f"annotations={report.annotations_removed};"
+                f"links={report.links_removed};widgets={report.widgets_removed}"
+            ),
         },
     )
+
+
+def _safe_filename(name: Optional[str]) -> str:
+    """ASCII-only name for headers and audit logs; drops quotes and paths."""
+    base = (name or "").replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = "".join(ch for ch in base if ch.isascii() and (ch.isalnum() or ch in "._- "))
+    cleaned = cleaned.strip(" .")[:120]
+    return cleaned or "document.pdf"

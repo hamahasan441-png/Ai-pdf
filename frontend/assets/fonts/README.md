@@ -1,36 +1,50 @@
-# Editor fonts (searchable RTL export)
+# Editor fonts
 
-Drop Unicode TrueType (`.ttf`) fonts into this folder to make exported Arabic,
-Kurdish (Sorani/Kurmanji), Persian, and Hebrew text **real, selectable, and
-searchable** vector text in the PDF instead of a rasterized image.
+These SIL Open Font License 1.1 fonts are committed and bundled with the app.
+`PdfUnicodeFonts` loads them by path for vector text in exported PDFs, and
+`pubspec.yaml` registers `NotoSansArabic`, `Vazirmatn` and `NotoSansHebrew` as
+font families so the on-screen preview uses the same faces.
 
-The export pipeline (`EditorExportService` + `PdfUnicodeFonts`) loads these
-files **by name at runtime**. Because this whole directory is declared in
-`pubspec.yaml`, simply adding the files below and rebuilding activates the
-feature — no code or pubspec changes required.
-
-## Expected file names
-
-| Purpose | Regular | Bold |
+| File | Family | Licence |
 | --- | --- | --- |
-| Latin / Cyrillic / Greek | `NotoSans-Regular.ttf` | `NotoSans-Bold.ttf` |
-| Arabic / Kurdish (Arabic script) | `NotoSansArabic-Regular.ttf` | `NotoSansArabic-Bold.ttf` |
-| Kurdish / Persian (alt.) | `Vazirmatn-Regular.ttf` | `Vazirmatn-Bold.ttf` |
-| Hebrew | `NotoSansHebrew-Regular.ttf` | `NotoSansHebrew-Bold.ttf` |
+| `NotoSans-Regular.ttf`, `NotoSans-Bold.ttf` | Noto Sans (Latin, Greek, Cyrillic) | `licenses/OFL-NotoSans.txt` |
+| `NotoSansArabic-Regular.ttf`, `NotoSansArabic-Bold.ttf` | Noto Sans Arabic | `licenses/OFL-NotoSansArabic.txt` |
+| `Vazirmatn-Regular.ttf`, `Vazirmatn-Bold.ttf` | Vazirmatn | `licenses/OFL-Vazirmatn.txt` |
+| `NotoSansHebrew-Regular.ttf`, `NotoSansHebrew-Bold.ttf` | Noto Sans Hebrew | `licenses/OFL-NotoSansHebrew.txt` |
 
-These names match `FontRegistry` and `PdfUnicodeFonts`. Missing files are simply
-skipped (that script falls back to the rasterized export path).
+`SHA256SUMS` holds the checksums of the committed files. `main.dart` registers
+the licences with `LicenseRegistry`, so they appear on the app's licence page.
 
-## Where to get them (all SIL Open Font License 1.1)
+## Verifying or restoring
 
-- Noto Sans / Noto Sans Arabic / Noto Sans Hebrew — Google Noto Fonts.
-- Vazirmatn — an open Persian/Arabic-script family.
+```
+bash frontend/assets/fonts/download_fonts.sh
+```
 
-Fetch them once and place the `.ttf` files here. Keep the OFL license text
-alongside them if you redistribute the app, per the license terms.
+The script downloads from `raw.githubusercontent.com` with `curl -f`, rejects
+HTML/JSON error pages, non-TrueType signatures and truncated files, then runs
+`sha256sum -c SHA256SUMS`. A mismatch means upstream changed a file: review it
+before updating `SHA256SUMS`.
 
-## Behaviour when this folder has no fonts
+## What the tests prove
 
-Everything still works: RTL text is rasterized into the page image (correct
-visual order via `RtlTextRenderer`), it just isn't selectable/searchable in the
-exported PDF. Adding the fonts upgrades that to vector text automatically.
+`test/editor/pdf_unicode_fonts_test.dart` parses each file's `cmap` and checks:
+
+- Noto Sans Arabic and Vazirmatn contain the Sorani letters ڕ ڵ ێ ە ۆ ۊ, a
+  Sorani paragraph, Arabic, Arabic-Indic digits, ، and ؟.
+- Noto Sans contains German and Kurmanji Latin letters.
+
+## What vector export can and cannot do
+
+`pdf` 3.11 shapes Arabic by substituting Unicode presentation forms; it does
+not run the font's GSUB table. It has no forms for ڕ ڵ ێ ە ۊ, so text with
+those letters (almost every Sorani sentence) would export with broken joins.
+`PdfUnicodeFonts.pick` therefore refuses such text, and text that mixes RTL and
+Latin letters, and the export paints it with Flutter's shaper into the page
+image instead. It looks right (see `test/golden/goldens/export_page_rtl.png`)
+but it is not selectable or searchable in the exported PDF.
+
+Plain Arabic (letters `pdf` can shape) is exported as vector text. Its text
+layer holds presentation forms (for example U+FEE3 instead of U+0645): PyMuPDF
+`get_text()` returns them and a reader that applies NFKC normalisation finds
+the words, but PyMuPDF `search_for("مرحبا")` does not.

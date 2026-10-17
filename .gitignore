@@ -16,5 +16,6 @@ frontend/android/key.properties
 **/*.keystore
 
 
-# Unicode font files (large binaries, downloaded via download_fonts.sh)
-frontend/assets/fonts/*.ttf
+# Unicode font files are committed (SIL OFL 1.1, ~2 MB, checked by
+# frontend/assets/fonts/SHA256SUMS): pubspec.yaml registers them as font
+# families, so the build needs them in the checkout.

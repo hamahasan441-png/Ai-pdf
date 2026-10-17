@@ -41,6 +41,9 @@ class EditorController extends StateNotifier<EditorState> {
   /// Whether the current page has an undoable / redoable action. These drive
   /// the toolbar button states and reflect the *real* command history (not a
   /// proxy such as "the layer has items").
+  /// The working file. After a server redaction this is the redacted copy.
+  String? get filePath => state.filePath;
+
   bool get canUndo => _currentHistory.canUndo;
   bool get canRedo => _currentHistory.canRedo;
   String? get nextUndoLabel => _currentHistory.nextUndoLabel;
