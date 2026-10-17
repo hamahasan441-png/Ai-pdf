@@ -28,15 +28,36 @@ text. This is not redaction.
    deleted fields' values from `/AcroForm`), then runs PyMuPDF
    `apply_redactions` with image pixels blanked under the area and touched line
    art removed.
-4. The output is reopened from its bytes and checked: same page count, no
+4. Copies of the redacted text outside the page content follow a fixed
+   policy. The "redacted text" is the phrase under each area plus distinctive
+   tokens (digits, `@`, `-`, `_`, or 10+ characters).
+   - Scrubbed: document info metadata, XMP, bookmark titles, alternate or
+     actual text (`/Alt`, `/ActualText`, `/E`), and attachments whose name,
+     description or content contain it.
+   - Counted, not changed: visible copies the user did not select (page
+     text, other annotations, form values elsewhere). The count is returned in
+     `X-Redaction-Occurrences-Elsewhere` and shown to the user.
+5. The output is reopened from its bytes and checked: same page count, no
    character centre inside any area, no annotation, link or widget overlapping
-   it, no new off-page form field holding a value, and the rendered area shows
-   the fill colour. Any failure returns an error and no PDF.
-5. The response lists the passed checks in `X-Redaction-Verified`. The app
+   it, no new off-page form field holding a value, the rendered area shows the
+   fill colour, and no hidden copy remains. Any failure returns an error and no
+   PDF.
+6. The response lists the passed checks in `X-Redaction-Verified`. The app
    accepts the file only if it starts with `%PDF-` and lists every check in
-   `RedactionService.requiredServerChecks`, then swaps it in as the working
-   document (same page count required) and keeps all marks, page order and
-   rotations. The original file is not modified.
+   `RedactionService.requiredServerChecks` (an older server without the
+   hidden-copy check is not trusted), then swaps it in as the working document
+   (same page count required) and keeps all marks, page order and rotations.
+   The original file is not modified. If another file was opened or the pages
+   changed during the upload, the result is discarded.
+7. After the swap, page images and the text layer are rebuilt from the
+   redacted file, recovery data moves to it, and any earlier redacted copy this
+   session wrote is deleted. Undo hides the black box but cannot bring the
+   removed content back: it is no longer in the working file.
+
+The endpoint reads the upload in chunks and stops at `MAX_UPLOAD_SIZE_MB`,
+refuses non-PDF bodies (415) and more than 500 areas, and runs the engine in a
+threadpool so it does not block other requests. Errors never include document
+text or library exception text.
 
 Inserted blank pages and image documents have no source PDF page, so only the
 visual cover is offered there. There is no on-device secure redaction: `pdf`
@@ -54,6 +75,10 @@ visual cover is offered there. There is no on-device secure redaction: `pdf`
 - Run against the previous engine, 14 of these fail, including the rotated
   pages (the old code redacted the wrong rectangle and returned 200 with the
   secret intact).
+- Hidden copies: a fixture with the secret in the title, XMP, a bookmark,
+  `/Alt` text and an attachment, plus a visible copy on another page. All hidden
+  copies are gone, the visible one is counted and left, unrelated metadata
+  stays, and skipping the scrub makes verification reject the file.
 - Passes on PyMuPDF 1.24.10 / Python 3.11 (the CI pins) and 1.28.2 / 3.13.
 - `frontend/test/editor/secure_redaction_client_test.dart`: the client's
   acceptance rules, coordinate mapping for 0–3 quarter turns, and refusal of
@@ -63,7 +88,10 @@ visual cover is offered there. There is no on-device secure redaction: `pdf`
 
 - The checks cover ordinary text extraction, search, annotations, links, form
   fields and the rendered area. They are not a forensic guarantee.
-- Document metadata, XMP, bookmarks and attachments are not scrubbed.
+- Hidden-copy matching is textual. A copy stored in another encoding, inside
+  an image, or split across strings is not found.
+- The policy errs towards removal: a short phrase under the box (for example
+  one word) also removes that word from the title.
 - A value stored on a parent form field shared by widgets outside the area is
   kept, because it is still shown there.
 - The UI flow (dialog → upload → swap) has no widget test; the parts are tested
@@ -71,22 +99,48 @@ visual cover is offered there. There is no on-device secure redaction: `pdf`
 
 ## Export
 
-`EditorExportService` renders every page to a bitmap, paints the marks on it
-and wraps the bitmaps in a new PDF. The output therefore loses the source's
-text layer (original text is not selectable or searchable), vector objects,
-links, annotations, form fields, bookmarks and metadata. `pdf` 3.11 can only
-create documents and `pdfx` can only render them, so there is no way to carry
-source objects across with the current engines. Preserving them needs a PDF
-engine that edits existing files (for example a PDFium or MuPDF binding);
-that is not done.
+There are two export paths.
 
-Because the source text is not copied, a visual cover in an export does hide
-the covered text in that exported file. It does not touch the original.
+**Keep original (default for PDFs).** `EditorExportService.renderPreservingPdfFile`
+parses the working PDF (`pdf_source/pdf_object_store.dart`: classic xref,
+xref streams with predictors, object streams, `/Prev` chains, inherited page
+attributes, repair by scanning) and writes a new file
+(`pdf_source/preserving_pdf_writer.dart`):
 
-Fixed in this pass:
+- Every kept page keeps its original objects: searchable text, vectors,
+  images, links, annotations, form fields and their values. Bookmarks,
+  metadata and the rest of the catalog are kept too.
+- The user's marks are drawn on top as a Form XObject, mapped through the
+  page's CropBox and `/Rotate`. Marks that are vector in the image export
+  (searchable text, rectangles) stay vector.
+- The page tree is rebuilt for deletes, inserts, duplicates, reordering and
+  rotations.
+- This is a full rewrite, not an incremental update. Only objects reachable
+  from the new catalog are written, so deleted pages and earlier revisions are
+  not in the file.
+- References to removed pages become null or are dropped from lists.
+  Bookmarks to a removed page lose their destination. A field whose widgets
+  were all on removed pages is dropped with its value.
+- Duplicated pages get copies of the original's annotations except form
+  widgets. Page labels are dropped when the page order changed.
+- Pages whose marks hide content (a whiteout, which overlay text edits use,
+  or a visual cover without server redaction) are saved as images, so the text
+  under the mark is not in the file. The app lists those pages and asks first.
+  Bookmarks and links to such a page point at its image replacement.
+- Encrypted or unreadable PDFs are reported; the app asks before saving an
+  image-only file instead. It never switches silently.
+- The output is parsed again before success is reported, and is written to a
+  `.partial` file that is renamed only when complete.
+
+**Image only.** `renderToPdfFile` renders every page to a bitmap and wraps the
+bitmaps in a new PDF. The source's text layer, vectors, links, annotations,
+form fields, bookmarks and metadata are lost. It is used for image documents
+and when the user chooses it after a keep-original export was not possible.
+
+Also fixed:
 
 - A page that cannot be rendered, rotated, or composited (including an
-  undecodable inserted image) now stops the export with `ExportPageException`
+  undecodable inserted image) stops the export with `ExportPageException`
   naming the page. It used to be skipped, giving a shorter PDF.
 - Vector text is placed in the same box as the preview and the raster path
   (anchored at its position, shrink-wrapped until it wraps). A one-line RTL
@@ -94,6 +148,8 @@ Fixed in this pass:
 - On-screen re-renders use the source page and the session rotation. After a
   delete, duplicate, insert or rotate, a page evicted from the 3-page cache
   used to come back as the wrong PDF page or unrotated.
+- The in-app text extractor reads text inside Form XObjects, so Find works on
+  marks in a keep-original export reopened in the app.
 
 ### Evidence
 
@@ -103,7 +159,21 @@ Fixed in this pass:
   background, a table and both kinds of black box, plus a rotated page.
   Removing the black-box burn-in fails both goldens (3.0–3.4 % difference).
 - The source page in these goldens is a synthetic bitmap: `pdfx` cannot open a
-  PDF under `flutter test`. Rendering real PDFs end to end is not covered.
+  PDF under `flutter test`.
+- `frontend/test/editor/pdf_source/preserving_export_test.dart` runs against
+  synthetic PDFs from `frontend/test/fixtures/pdf/make_fixtures.py`: classic
+  and object-stream xrefs, an incremental file, inherited attributes, an
+  encrypted and a truncated file. It checks that original content streams are
+  unchanged byte for byte, that deleted and flattened pages' content is not in
+  the output, form field pruning, bookmark retargeting, overlay placement for
+  all rotations, refusal of encrypted input, and that truncated or randomly
+  corrupted input only ever parses or is refused (never crashes). A
+  600-page document parses and is rewritten in reverse order in about 30 ms
+  here.
+- In CI the same tests keep their output, and
+  `frontend/tool/verify_preserving_export.py` reopens it with MuPDF and qpdf. It
+  checks syntax, text extraction and search, links, form widgets, rotation,
+  bookmarks, metadata, and the rendered position of the marks.
 
 ## RTL and Unicode text
 
@@ -149,8 +219,14 @@ structure has no widget test.
 
 - Native editing of existing PDF text. Edits are overlays (a box covering the
   old text plus new text) and the UI says so.
-- Preserving source PDF objects on export (see above).
+- Keep-original export of encrypted PDFs (the app asks before an image-only
+  export instead).
+- Removing the original text under an overlay edit while keeping the rest of
+  the page as text: such pages are saved as images.
 - A widget test of the editor screen itself (the workflow is tested at the
   controller and recovery-file level).
-- Translations for the new redaction strings (English only; other locales fall
-  back to English).
+- Pre-existing translation gaps: 12 keys each in Arabic, German and Spanish,
+  and most keys in Persian and Kurdish fall back to English. Every string added
+  for redaction and export is translated in all six locales.
+- Rendering and memory benchmarks on a device. Only the PDF parser and writer
+  were timed, on this development machine.

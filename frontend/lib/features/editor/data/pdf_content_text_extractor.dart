@@ -333,7 +333,7 @@ class _PdfDoc {
     final out = <PdfTextElement>[];
     for (final stream in streams) {
       try {
-        _readContent(stream, fonts, llx, lly, ury, pw, ph, out);
+        _readContent(stream, fonts, llx, lly, ury, pw, ph, out, resources: page.resources);
       } catch (_) {}
       if (out.length > 20000) break;
     }
@@ -490,13 +490,53 @@ class _PdfDoc {
     double ury,
     double pw,
     double ph,
-    List<PdfTextElement> out,
-  ) {
+    List<PdfTextElement> out, {
+    Map<String, _V>? resources,
+    _M? initialCtm,
+    int depth = 0,
+    Set<int>? formsInUse,
+  }) {
     final text = String.fromCharCodes(data);
     final c = _C(text, 0);
     final stack = <_Tok>[];
     final ctmStack = <_M>[];
-    var ctm = _M.identity();
+    var ctm = initialCtm?.copy() ?? _M.identity();
+    final activeForms = formsInUse ?? <int>{};
+
+    // Text inside a Form XObject (`/Name Do`), such as the overlay a
+    // source-preserving export adds, is part of the page's text too.
+    void drawForm(String name) {
+      if (depth >= 8) return;
+      final xobjects = _asDict(resources?['/XObject']);
+      final ref = xobjects?[name]?.ref;
+      if (ref == null || !activeForms.add(ref)) return;
+      try {
+        final obj = _load(ref);
+        if (obj.dict['/Subtype']?.name != '/Form' || obj.stream == null) return;
+        final formResources = _asDict(obj.dict['/Resources']) ?? resources;
+        final m = _nums6(obj.dict['/Matrix']);
+        final formCtm = m == null ? ctm.copy() : _mul(_M(m[0], m[1], m[2], m[3], m[4], m[5]), ctm);
+        _readContent(
+          _decodeStream(obj.dict, obj.stream!),
+          _fonts(formResources),
+          llx,
+          lly,
+          ury,
+          pw,
+          ph,
+          out,
+          resources: formResources,
+          initialCtm: formCtm,
+          depth: depth + 1,
+          formsInUse: activeForms,
+        );
+      } catch (_) {
+        // A broken form hides only its own text.
+      } finally {
+        activeForms.remove(ref);
+      }
+    }
+
     var tm = _M.identity();
     var lm = _M.identity();
     var inText = false;
@@ -723,10 +763,21 @@ class _PdfDoc {
           }
           stack.clear();
           break;
+        case 'Do':
+          final name = stack.isEmpty ? null : stack.last.name;
+          stack.clear();
+          if (name != null && !inText) drawForm(name);
+          break;
         default:
           stack.clear();
       }
     }
+  }
+
+  List<double>? _nums6(_V? v) {
+    final a = v?.array ?? (v?.ref != null ? _load(v!.ref!).value.array : null);
+    if (a == null || a.length != 6) return null;
+    return [for (final n in a) n.number ?? 0];
   }
 
   void _advanceTm(_M tm, double tx) {

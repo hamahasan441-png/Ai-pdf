@@ -188,6 +188,7 @@ class RedactionService {
     'links',
     'form_fields',
     'rendered_fill',
+    'hidden_copies',
   ];
 
   /// Map a rectangle drawn on the editor page back to the source page.
@@ -233,7 +234,7 @@ class RedactionService {
     Future<Directory> Function()? outputDirectory,
   }) async {
     if (regions.isEmpty) {
-      return const BackendRedactionResult.failure('No redaction region.');
+      return const BackendRedactionResult.failure('No redaction region.', RedactionFailure.invalidArea);
     }
     final areas = <Map<String, Object>>[];
     for (final r in regions) {
@@ -243,7 +244,7 @@ class RedactionService {
           values.any((v) => !v.isFinite || v < 0 || v > 1) ||
           rect.width <= 0 ||
           rect.height <= 0) {
-        return const BackendRedactionResult.failure('A redaction region is outside the page.');
+        return const BackendRedactionResult.failure('A redaction region is outside the page.', RedactionFailure.invalidArea);
       }
       areas.add({
         'page': r.pageIndex,
@@ -257,7 +258,7 @@ class RedactionService {
 
     final file = File(filePath);
     if (!await file.exists()) {
-      return const BackendRedactionResult.failure('The source PDF is no longer on this device.');
+      return const BackendRedactionResult.failure('The source PDF is no longer on this device.', RedactionFailure.missingFile);
     }
 
     final client = dio ??
@@ -284,18 +285,18 @@ class RedactionService {
         ),
       );
     } on DioException catch (e) {
-      return BackendRedactionResult.failure(_networkMessage(e));
+      return BackendRedactionResult.failure(_networkMessage(e), _networkFailure(e));
     } catch (_) {
-      return const BackendRedactionResult.failure('The redaction server could not be reached.');
+      return const BackendRedactionResult.failure('The redaction server could not be reached.', RedactionFailure.network);
     }
 
     final status = resp.statusCode ?? 0;
     final body = resp.data ?? const <int>[];
     if (status != 200) {
-      return BackendRedactionResult.failure(_serverMessage(status, body));
+      return BackendRedactionResult.failure(_serverMessage(status, body), _serverFailure(status), detail: _serverDetail(body));
     }
     if (!_looksLikePdf(body)) {
-      return const BackendRedactionResult.failure('The server did not return a PDF. Nothing was redacted.');
+      return const BackendRedactionResult.failure('The server did not return a PDF. Nothing was redacted.', RedactionFailure.badResponse);
     }
     final verified = (resp.headers.value('x-redaction-verified') ?? '')
         .split(',')
@@ -305,6 +306,7 @@ class RedactionService {
     if (missing.isNotEmpty) {
       return const BackendRedactionResult.failure(
         'The server did not confirm the content was removed. The file was not used.',
+        RedactionFailure.unverified,
       );
     }
 
@@ -314,9 +316,14 @@ class RedactionService {
       final partial = File('$outPath.partial');
       await partial.writeAsBytes(body, flush: true);
       await partial.rename(outPath);
-      return BackendRedactionResult.success(outPath, verified.toList()..sort());
+      final elsewhere = int.tryParse(resp.headers.value('x-redaction-occurrences-elsewhere') ?? '') ?? 0;
+      return BackendRedactionResult.success(
+        outPath,
+        verified.toList()..sort(),
+        occurrencesElsewhere: elsewhere < 0 ? 0 : elsewhere,
+      );
     } catch (_) {
-      return const BackendRedactionResult.failure('The redacted PDF could not be saved on this device.');
+      return const BackendRedactionResult.failure('The redacted PDF could not be saved on this device.', RedactionFailure.saveFailed);
     }
   }
 
@@ -338,16 +345,44 @@ class RedactionService {
   }
 
   static String _serverMessage(int status, List<int> body) {
-    String? detail;
-    try {
-      final decoded = jsonDecode(utf8.decode(body, allowMalformed: true));
-      if (decoded is Map && decoded['detail'] is String) detail = decoded['detail'] as String;
-    } catch (_) {}
+    final detail = _serverDetail(body);
+    if (status == 401 || status == 403) {
+      return 'The server did not accept this request. Sign in again and retry. Nothing was redacted.';
+    }
+    if (status == 415) return 'The file is not a PDF. Nothing was redacted.';
     if (status == 429) return detail ?? 'Daily limit reached.';
     if (status == 413) return 'The PDF is too large for the redaction server.';
-    if (detail != null && detail.length <= 200) return 'Redaction refused: $detail';
+    if (detail != null) return 'Redaction refused: $detail';
     return 'Redaction failed on the server (HTTP $status). Nothing was redacted.';
   }
+
+  static RedactionFailure _serverFailure(int status) => switch (status) {
+        401 || 403 => RedactionFailure.auth,
+        413 => RedactionFailure.tooLarge,
+        415 => RedactionFailure.notPdf,
+        422 => RedactionFailure.refused,
+        429 => RedactionFailure.limit,
+        _ => RedactionFailure.server,
+      };
+
+  /// The server's short reason (never document text), for a 422.
+  static String? _serverDetail(List<int> body) {
+    try {
+      final decoded = jsonDecode(utf8.decode(body, allowMalformed: true));
+      final d = decoded is Map ? decoded['detail'] : null;
+      return d is String && d.length <= 200 ? d : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static RedactionFailure _networkFailure(DioException e) => switch (e.type) {
+        DioExceptionType.connectionTimeout ||
+        DioExceptionType.receiveTimeout ||
+        DioExceptionType.sendTimeout =>
+          RedactionFailure.timeout,
+        _ => RedactionFailure.network,
+      };
 
   static String _networkMessage(DioException e) {
     switch (e.type) {
@@ -361,6 +396,25 @@ class RedactionService {
   }
 }
 
+/// Why a secure redaction did not happen. The screen shows a translated
+/// message for each; [BackendRedactionResult.error] keeps English text for
+/// logs and tests.
+enum RedactionFailure {
+  invalidArea,
+  missingFile,
+  network,
+  timeout,
+  auth,
+  notPdf,
+  tooLarge,
+  limit,
+  refused,
+  server,
+  badResponse,
+  unverified,
+  saveFailed,
+}
+
 /// Outcome of [RedactionService.redactViaBackend]. [path] is set only when
 /// the server returned a PDF and confirmed every required check.
 class BackendRedactionResult {
@@ -368,11 +422,30 @@ class BackendRedactionResult {
   final String? error;
   final List<String> checks;
 
-  const BackendRedactionResult.success(String this.path, this.checks) : error = null;
+  /// Visible copies of the redacted text elsewhere in the document that the
+  /// user did not select. The server counts them and leaves them as they are.
+  final int occurrencesElsewhere;
 
-  const BackendRedactionResult.failure(String this.error)
-      : path = null,
-        checks = const [];
+  final RedactionFailure? failure;
+
+  /// Server-provided reason for a refused request.
+  final String? detail;
+
+  const BackendRedactionResult.success(
+    String this.path,
+    this.checks, {
+    this.occurrencesElsewhere = 0,
+  })  : error = null,
+        failure = null,
+        detail = null;
+
+  const BackendRedactionResult.failure(
+    String this.error,
+    RedactionFailure this.failure, {
+    this.detail,
+  })  : path = null,
+        checks = const [],
+        occurrencesElsewhere = 0;
 
   bool get ok => path != null;
 }

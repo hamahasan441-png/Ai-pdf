@@ -385,6 +385,36 @@
   "redactVisualOnly": "Visual cover only",
   "redactWorking": "Removing content on the server…",
   "redactSecureDone": "Content removed. The server re-opened the file and found no text, links or annotations in the area.",
+  "redactSecureDoneElsewhere": "Content removed. The same text still appears {count} more time(s) elsewhere in the document; it was not redacted.",
+  "@redactSecureDoneElsewhere": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "redactErrInvalidArea": "The box is outside the page.",
+  "redactErrMissingFile": "The PDF is no longer on this device.",
+  "redactErrNetwork": "The redaction server could not be reached.",
+  "redactErrTimeout": "The redaction server did not answer in time.",
+  "redactErrAuth": "The server did not accept this request. Sign in again and retry.",
+  "redactErrNotPdf": "The server did not accept the file as a PDF.",
+  "redactErrTooLarge": "The PDF is too large for the redaction server.",
+  "redactErrLimit": "The daily limit for this feature has been reached.",
+  "redactErrRefused": "The server refused the request: {detail}",
+  "@redactErrRefused": {
+    "placeholders": {
+      "detail": {"type": "String"}
+    }
+  },
+  "redactErrServer": "The redaction server failed.",
+  "redactErrBadResponse": "The server's reply was not a PDF.",
+  "redactErrUnverified": "The server did not confirm the content was removed, so the file was not used.",
+  "redactErrSaveFailed": "The redacted PDF could not be saved on this device.",
+  "redactErrDocumentChanged": "The document changed during the upload. Draw the box again.",
+  "redactErrOpenFailed": "The redacted PDF could not be opened.",
+  "exportErrUnreadable": "The original PDF could not be read from this device.",
+  "exportErrEncrypted": "The PDF is encrypted.",
+  "exportErrDamaged": "The PDF's structure could not be read.",
+  "exportErrWriteFailed": "The PDF could not be written with its original content.",
   "redactSecureUnavailable": "Secure redaction needs a page from the original PDF. Use a visual cover on this page.",
   "redactSecureFailed": "Secure redaction failed: {reason}",
   "@redactSecureFailed": {
@@ -392,6 +422,22 @@
       "reason": {"type": "String"}
     }
   },
+  "exportFlattenTitle": "Some pages will be saved as images",
+  "exportFlattenBody": "Pages {pages} have a cover or whiteout. So that the text under it is not in the file, these pages are saved as images and their text will not be searchable. Every other page keeps its original text, links and form fields.",
+  "@exportFlattenBody": {
+    "placeholders": {
+      "pages": {"type": "String"}
+    }
+  },
+  "exportFlattenContinue": "Save",
+  "exportImageFallbackTitle": "The original content can't be kept",
+  "exportImageFallbackBody": "{reason}\n\nSave every page as an image instead? Text in that file will not be searchable or selectable, and links, form fields and bookmarks will be lost.",
+  "@exportImageFallbackBody": {
+    "placeholders": {
+      "reason": {"type": "String"}
+    }
+  },
+  "exportImageFallbackConfirm": "Save as images",
   "convert": "Convert",
   "convertDesc": "PDF to Word, Excel, PPT",
   "convertToWord": "PDF to Word",

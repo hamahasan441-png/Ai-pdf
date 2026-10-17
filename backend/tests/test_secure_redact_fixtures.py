@@ -290,3 +290,82 @@ def test_cropbox_offset_page():
     out = redact_pdf(original, [area]).pdf
     _assert_secret_gone(out)
     assert KEEP in _all_text(out)
+
+
+def _pdf_with_hidden_copies() -> tuple[bytes, dict]:
+    """The secret on page 1, plus hidden copies and one visible copy on page 2."""
+    doc = fitz.open()
+    area = _visual_area(_page_with_secret(doc), SECRET)
+    p2 = doc.new_page(width=W, height=H)
+    p2.insert_text((30, 40), f"copy {SECRET}", fontsize=12)
+    doc.set_metadata({"title": f"Case {SECRET}", "subject": "unrelated subject", "author": "Pdoczy"})
+    doc.set_xml_metadata(f"<x:xmpmeta xmlns:x='adobe:ns:meta/'><s>{SECRET}</s></x:xmpmeta>")
+    doc.set_toc([[1, f"Section {SECRET}", 1], [1, "Other", 2]])
+    doc.embfile_add("notes.txt", f"attachment {SECRET}".encode(), filename="notes.txt")
+    doc.embfile_add("keep.txt", b"nothing secret here", filename="keep.txt")
+    # Alternate text on a structure element that points at page 1.
+    alt = doc.get_new_xref()
+    doc.update_object(alt, f"<< /Type /StructElem /S /Figure /Alt {fitz.get_pdf_str('photo of ' + SECRET)} >>")
+    doc.xref_set_key(doc.pdf_catalog(), "StructTreeRoot", f"<< /Type /StructTreeRoot /K {alt} 0 R >>")
+    data = doc.tobytes()
+    doc.close()
+    return data, area
+
+
+def test_hidden_copies_are_scrubbed_and_visible_copies_reported():
+    original, area = _pdf_with_hidden_copies()
+    report = redact_pdf(original, [area])
+    assert "hidden_copies" in report.checks
+    assert report.scrubbed["metadata"] >= 1
+    assert report.scrubbed["xmp"] == 1
+    assert report.scrubbed["bookmarks"] == 1
+    assert report.scrubbed["alt_text"] == 1
+    assert report.scrubbed["attachments"] == 1
+    assert report.occurrences_elsewhere == 1, "page 2 copy is counted, not changed"
+
+    out = fitz.open(stream=report.pdf, filetype="pdf")
+    try:
+        assert SECRET not in out[0].get_text()
+        assert SECRET in out[1].get_text(), "text the user did not select stays"
+        assert SECRET not in (out.metadata.get("title") or "")
+        assert out.metadata.get("subject") == "unrelated subject"
+        assert SECRET not in (out.get_xml_metadata() or "")
+        assert all(SECRET not in t for _, t, _ in out.get_toc())
+        assert out.embfile_names() == ["keep.txt"]
+        for xref in range(1, out.xref_length()):
+            kind, value = out.xref_get_key(xref, "Alt")
+            if kind == "string":
+                assert SECRET not in value
+    finally:
+        out.close()
+
+
+def test_common_words_under_the_box_do_not_rewrite_metadata():
+    doc = fitz.open()
+    page = doc.new_page(width=W, height=H)
+    page.insert_text((30, 40), "Annual", fontsize=12)
+    page.insert_text((30, 360), KEEP, fontsize=12)
+    doc.set_metadata({"title": "Annual Report"})
+    area = _visual_area(page, "Annual")
+    data = doc.tobytes()
+    doc.close()
+    report = redact_pdf(data, [area])
+    out = fitz.open(stream=report.pdf, filetype="pdf")
+    try:
+        # The whole phrase under the box is "Annual" and does match; a longer
+        # title that merely contains one common word would also match. The
+        # policy errs on the side of removing the copy.
+        assert out.metadata.get("title") == "[redacted] Report"
+    finally:
+        out.close()
+
+
+def test_skipped_scrub_is_caught_by_verification(monkeypatch):
+    import app.services.pdf.secure_redact as engine
+
+    monkeypatch.setattr(engine, "_scrub_residual_copies", lambda doc, needles: {})
+    original, area = _pdf_with_hidden_copies()
+    with pytest.raises(RedactionRejected) as info:
+        redact_pdf(original, [area])
+    assert info.value.status == 500
+    assert SECRET not in str(info.value)
