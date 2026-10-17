@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_pdf/features/editor/data/document_identity.dart';
 
-/// Pixel golden comparisons still need the corpus PDFs under test/golden/corpus.
-/// This file no longer passes on an empty assertion.
+/// Not a pixel test. The pixel goldens for exported pages are in
+/// test/golden/export_page_golden_test.dart.
 void main() {
   test('a document id does not depend on String.hashCode', () {
     const path = '/storage/emulated/0/Download/sample.pdf';

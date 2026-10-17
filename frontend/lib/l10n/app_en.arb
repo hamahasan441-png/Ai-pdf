@@ -379,6 +379,19 @@
   "tapLineToEdit": "Tap a line to edit its text",
   "overlayEditNotice": "Tap a line to cover it with a new text box. The original PDF text stays in the file.",
   "visualCoverNotice": "Black cover added to the export image. The original text was not removed and can still be extracted from the PDF.",
+  "redactChoiceTitle": "Redact this area",
+  "redactChoiceBody": "Secure redaction removes the text, images, links and form fields under the box. It uploads this PDF to the Pdoczy server for this one request, and it cannot be undone.\n\nA visual cover only draws a black box. The text under it stays in the original PDF.",
+  "redactSecureUpload": "Upload and redact",
+  "redactVisualOnly": "Visual cover only",
+  "redactWorking": "Removing content on the server…",
+  "redactSecureDone": "Content removed. The server re-opened the file and found no text, links or annotations in the area.",
+  "redactSecureUnavailable": "Secure redaction needs a page from the original PDF. Use a visual cover on this page.",
+  "redactSecureFailed": "Secure redaction failed: {reason}",
+  "@redactSecureFailed": {
+    "placeholders": {
+      "reason": {"type": "String"}
+    }
+  },
   "convert": "Convert",
   "convertDesc": "PDF to Word, Excel, PPT",
   "convertToWord": "PDF to Word",

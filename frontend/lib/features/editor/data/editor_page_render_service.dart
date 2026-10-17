@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
+import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 
 /// Identity of one in-flight render. Two callers that do not share a cache
@@ -13,8 +14,10 @@ String renderFlightKey({
   required int cacheId,
   required int pageIndex,
   required int edge,
+  int? sourcePage,
+  int quarterTurns = 0,
 }) =>
-    '$docId:$cacheId:$pageIndex:$edge';
+    '$docId:$cacheId:$pageIndex:$edge:${sourcePage ?? pageIndex}:${quarterTurns % 4}';
 
 /// Gates for one shared render. The render proceeds while any caller still
 /// wants it, so a cancelled neighbour cannot abort a live page.
@@ -61,10 +64,14 @@ class EditorPageRenderService {
     Map<int, double>? aspects,
     Map<int, double>? pageHeights,
     bool Function()? stillCurrent,
+    int? sourcePage,
+    int quarterTurns = 0,
   }) {
     if (_freshEnough(pageCache, resolution, index, renderMaxEdge)) {
       return Future<void>.value();
     }
+    // An inserted blank page has no source page; it stays uncached (white).
+    if (sourcePage != null && sourcePage < 0) return Future<void>.value();
 
     final docId = identityHashCode(doc);
     final key = renderFlightKey(
@@ -72,6 +79,8 @@ class EditorPageRenderService {
       cacheId: identityHashCode(pageCache),
       pageIndex: index,
       edge: renderMaxEdge,
+      sourcePage: sourcePage,
+      quarterTurns: quarterTurns,
     );
     final slot = _slots.putIfAbsent(key, _RenderSlot.new);
     bool callerWants() => stillCurrent == null || stillCurrent();
@@ -95,6 +104,8 @@ class EditorPageRenderService {
           aspects: aspects,
           pageHeights: pageHeights,
           stillCurrent: callerWants,
+          sourcePage: sourcePage,
+          quarterTurns: quarterTurns,
         );
       });
     }
@@ -109,6 +120,8 @@ class EditorPageRenderService {
       aspects: aspects,
       pageHeights: pageHeights,
       stillCurrent: () => slot.gates.anyStillCurrent,
+      sourcePage: sourcePage,
+      quarterTurns: quarterTurns,
     );
     slot.flight = flight;
     return flight.whenComplete(() {
@@ -128,6 +141,8 @@ class EditorPageRenderService {
     Map<int, double>? aspects,
     Map<int, double>? pageHeights,
     required bool Function() stillCurrent,
+    int? sourcePage,
+    int quarterTurns = 0,
   }) {
     final previous = _docChain[docId] ?? Future<void>.value();
     final flight = previous.catchError((Object _) {}).then((_) async {
@@ -142,6 +157,8 @@ class EditorPageRenderService {
         aspects: aspects,
         pageHeights: pageHeights,
         stillCurrent: stillCurrent,
+        sourcePage: sourcePage,
+        quarterTurns: quarterTurns,
       );
     });
     _docChain[docId] = flight;
@@ -173,12 +190,18 @@ class EditorPageRenderService {
     Map<int, double>? aspects,
     Map<int, double>? pageHeights,
     bool Function()? stillCurrent,
+    int? sourcePage,
+    int quarterTurns = 0,
   }) async {
-    final page = await doc.getPage(index + 1);
+    // [index] is the page as shown. After a delete, duplicate or insert it
+    // is not the PDF page number, so the caller passes [sourcePage].
+    final page = await doc.getPage((sourcePage ?? index) + 1);
+    final turns = quarterTurns % 4;
     try {
       if (stillCurrent != null && !stillCurrent()) return;
       if (aspects != null && page.width > 0 && page.height > 0) {
-        aspects.putIfAbsent(index, () => page.width / page.height);
+        final aspect = page.width / page.height;
+        aspects.putIfAbsent(index, () => turns.isOdd ? 1 / aspect : aspect);
       }
       if (pageHeights != null && page.height > 0) {
         pageHeights.putIfAbsent(index, () => page.height);
@@ -203,7 +226,17 @@ class EditorPageRenderService {
       )) {
         return;
       }
-      pageCache[index] = rendered.bytes;
+      // The user's session rotation lives on the cached bitmap. A fresh
+      // render must carry it, or the page would snap back while the marks
+      // stay placed for the turned page.
+      var bytes = rendered.bytes;
+      for (var i = 0; i < turns; i++) {
+        final turned = await const EditorPageTransformService().rotateClockwise(bytes);
+        if (turned == null) return;
+        bytes = turned;
+      }
+      if (stillCurrent != null && !stillCurrent()) return;
+      pageCache[index] = bytes;
       if (resolution != null) resolution[index] = planned.edge;
     } finally {
       await page.close();

@@ -79,6 +79,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.d
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnail_strip.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_redaction_choice_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_redaction_controller.dart';
@@ -693,23 +694,137 @@ class _PickEditScreenState extends State<PickEditScreen> {
       setState(() {});
       return;
     }
-    final outcome = const RedactionService().secureRedact(
-      regions: [RedactionRegion(rect, pageIndex: _current)],
-    );
-    if (outcome.accepted) {
-      if (mounted) setState(() {});
+    setState(() {});
+    unawaited(_chooseRedaction(start, end, rect, _current));
+  }
+
+  bool _redacting = false;
+
+  /// Ask whether to upload for secure redaction or only draw a cover.
+  /// Nothing is uploaded unless the user picks the upload button.
+  Future<void> _chooseRedaction(Offset start, Offset end, Rect rect, int page) async {
+    if (_redacting) {
+      _showError(AppLocalizations.of(context)!.redactWorking);
       return;
     }
-    final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
-      ..metadata[visualCoverKey] = true;
-    setState(() {
-      _pushItem(cover);
-      // Search still finds these words. They remain in the source PDF.
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context)!.visualCoverNotice)),
+    final sourcePath = _editorController.filePath;
+    final sourcePage = _sourcePageFor(page);
+    final secureAvailable = _doc != null &&
+        sourcePath != null &&
+        sourcePath.toLowerCase().endsWith('.pdf') &&
+        sourcePage >= 0;
+    final choice = await showEditorRedactionChoiceDialog(
+      context,
+      secureAvailable: secureAvailable,
     );
+    if (!mounted || choice == null) return;
+    final l10n = AppLocalizations.of(context)!;
+    if (choice == RedactionChoice.visualCover) {
+      final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
+        ..metadata[visualCoverKey] = true;
+      setState(() {
+        _pushItem(cover, layer: _layers.putIfAbsent(page, () => PageLayer()));
+        // Search still finds these words. They remain in the source PDF.
+      });
+      _showError(l10n.visualCoverNotice);
+      return;
+    }
+
+    final mapped = RedactionService.toSourcePageRect(
+      rect,
+      quarterTurns: _pageQuarterTurns[page] ?? 0,
+    );
+    if (mapped == null || sourcePath == null) {
+      _showError(l10n.redactSecureFailed('the area is outside the page'));
+      return;
+    }
+    _redacting = true;
+    _showError(l10n.redactWorking);
+    final doc = _doc;
+    final structure = List<int>.of(_sourcePages);
+    final turns = Map<int, int>.of(_pageQuarterTurns);
+    try {
+      final result = await const RedactionService().redactViaBackend(
+        filePath: sourcePath,
+        regions: [RedactionRegion(mapped, pageIndex: sourcePage)],
+      );
+      if (!mounted) return;
+      final path = result.path;
+      if (path == null) {
+        _showError(l10n.redactSecureFailed(result.error ?? 'unknown error'));
+        return;
+      }
+      // Another file, or a page added, removed or turned while uploading,
+      // would put the result on the wrong page.
+      if (!identical(doc, _doc) ||
+          _editorController.filePath != sourcePath ||
+          !listEquals(structure, _sourcePages) ||
+          !mapEquals(turns, _pageQuarterTurns)) {
+        _showError(l10n.redactSecureFailed('the document changed during upload; draw the box again'));
+        return;
+      }
+      if (!await _replaceSourceDocument(path)) {
+        if (mounted) _showError(l10n.redactSecureFailed('the redacted PDF could not be opened'));
+        return;
+      }
+      if (!mounted) return;
+      final cover = ShapeAnnotation(ShapeType.rect, start, end, Colors.black, 1, true)
+        ..metadata[serverRedactedKey] = true;
+      setState(() {
+        _pushItem(cover, layer: _layers.putIfAbsent(page, () => PageLayer()));
+        _hasUnsavedChanges = true;
+      });
+      _showError(l10n.redactSecureDone);
+    } finally {
+      _redacting = false;
+    }
+  }
+
+  /// Swap the working PDF for [path] and keep every mark, page order and
+  /// rotation. Used after a verified server redaction, so the page count must
+  /// match. The original file on disk is not touched.
+  Future<bool> _replaceSourceDocument(String path) async {
+    final previous = _doc;
+    if (previous == null) return false;
+    final EditorDocumentLoadResult loaded;
+    try {
+      loaded = await _documentService.openDocument(path);
+    } catch (_) {
+      return false;
+    }
+    final next = loaded.document;
+    if (next == null || loaded.pageCount != previous.pagesCount) {
+      await next?.close();
+      return false;
+    }
+    final oldPath = _editorController.filePath;
+    _doc = next;
+    _navTicket++;
+    _pageCache.clear();
+    _pageEdge.clear();
+    _editorController.setFile(filePath: path, fileName: _fileName);
+    await previous.close();
+    // Recovery data follows the working file.
+    if (oldPath != null && _layers.isNotEmpty) {
+      _persistence.save(filePath: path, layers: _layers);
+    }
+
+    final gen = ++_textGen;
+    try {
+      final bySource = await compute(extractPdfTextLayerFromPath, path);
+      if (mounted && gen == _textGen) {
+        _textLayer.clear();
+        for (var i = 0; i < _sourcePages.length; i++) {
+          final words = bySource[_sourcePages[i]];
+          if (words != null) _textLayer[i] = List<PdfTextElement>.of(words);
+        }
+        _searchController.setPages(_textLayer);
+      }
+    } catch (_) {
+      // The pages still show; Find just has no words for them.
+    }
+    if (mounted) await _goToPage(_current);
+    return true;
   }
 
   Future<void> _loadTextLayer(String path, int gen) async {
@@ -841,6 +956,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _syncSearchPages();
   }
 
+  /// PDF page behind the page shown at [index]; -1 for an inserted blank.
+  int _sourcePageFor(int index) =>
+      index >= 0 && index < _sourcePages.length ? _sourcePages[index] : index;
+
   Future<void> _renderPage(int index, {int? maxEdge}) async {
     if (_doc == null) return;
     final ticket = _navTicket;
@@ -853,6 +972,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       aspects: _pageAspect,
       pageHeights: _pageHeightPt,
       stillCurrent: () => mounted && ticket == _navTicket,
+      sourcePage: _sourcePageFor(index),
+      quarterTurns: _pageQuarterTurns[index] ?? 0,
     );
     if (!mounted || ticket != _navTicket) return;
     _pageRender.evictFarPages(
@@ -909,8 +1030,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
             renderMaxEdge: _previewEdge,
             resolution: _pageEdge,
             aspects: _pageAspect,
-      pageHeights: _pageHeightPt,
+            pageHeights: _pageHeightPt,
             stillCurrent: () => mounted && ticket == _navTicket,
+            sourcePage: _sourcePageFor(adj),
+            quarterTurns: _pageQuarterTurns[adj] ?? 0,
           )
           .then((_) {
         if (mounted && ticket == _navTicket) setState(() {});
@@ -1684,8 +1807,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   /// Add an annotation and reset the redo stack.
-  void _pushItem(EditorAnnotation a) {
-    _editorController.pushAnnotation(_layer, a);
+  void _pushItem(EditorAnnotation a, {PageLayer? layer}) {
+    _editorController.pushAnnotation(layer ?? _layer, a);
     _schedulePersist();
     // Log to revision history for cross-session undo / version tracking.
     final path = _editorController.state.filePath;

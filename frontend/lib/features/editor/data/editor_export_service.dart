@@ -37,13 +37,34 @@ bool textExportsAsSearchableVector({
   return latin1 || unicodeFontAvailable;
 }
 
+/// A page the export needed could not be produced.
+///
+/// The export stops instead of writing a PDF with that page missing. The
+/// message names the 1-based page and never includes document text.
+class ExportPageException implements Exception {
+  final int pageIndex;
+  final String reason;
+
+  const ExportPageException(this.pageIndex, this.reason);
+
+  @override
+  String toString() => 'Page ${pageIndex + 1}: $reason';
+}
+
 /// Off-screen export compositor for the editor.
 ///
 /// Each page is rendered to a bitmap and the marks are painted on that bitmap,
 /// then the bitmap is wrapped in a new PDF. This is not an incremental edit of
-/// the source file: the original content stream, links, and vector objects are
-/// not preserved. Searchable vector text is added only for new annotations
-/// that [textExportsAsSearchableVector] accepts.
+/// the source file. The exported pages lose the source's text layer (so the
+/// original text is not searchable or selectable), vector objects, links,
+/// annotations, form fields, bookmarks and metadata. `pdf` 3.11 can only
+/// create documents and `pdfx` can only render them, so neither can carry the
+/// source objects across. Searchable vector text is added only for new
+/// annotations that [textExportsAsSearchableVector] accepts.
+///
+/// A page that fails to render, rotate, or composite throws
+/// [ExportPageException]; no file is written. Earlier builds skipped such a
+/// page and saved a shorter document.
 class EditorExportService {
   static const double exportMaxEdge = 1800;
 
@@ -81,8 +102,7 @@ class EditorExportService {
         sourcePage: sourcePages != null && i < sourcePages.length ? sourcePages[i] : i,
       );
       if (composed == null) {
-        await Future<void>.delayed(Duration.zero);
-        continue;
+        throw ExportPageException(i, 'the page could not be rendered');
       }
 
       final image = pw.MemoryImage(composed.bytes);
@@ -151,6 +171,34 @@ class EditorExportService {
     return outPath;
   }
 
+  /// The vector text widget [renderToPdfFile] places for [t].
+  @visibleForTesting
+  pw.Widget buildPdfTextForTest(TextAnnotation t, double pageW, double pageH, PdfUnicodeFonts uni) =>
+      _buildPdfText(t, pageW, pageH, EditorPdfFonts(), uni, const RtlDetectionService());
+
+  /// The page image [renderToPdfFile] would embed for [index], without the
+  /// vector text it adds on top. Used by the golden tests.
+  @visibleForTesting
+  Future<Uint8List?> composePageImageForTest({
+    required int index,
+    required Map<int, Uint8List> pageCache,
+    required Map<int, PageLayer> layers,
+    int quarterTurns = 0,
+  }) async {
+    final uni = PdfUnicodeFonts();
+    await uni.load();
+    final composed = await _composePagePng(
+      index: index,
+      doc: null,
+      pageCache: pageCache,
+      layers: layers,
+      uni: uni,
+      quarterTurns: quarterTurns,
+      sourcePage: index,
+    );
+    return composed?.bytes;
+  }
+
   Future<Uint8List> _blankPagePng() async {
     const width = 612.0;
     const height = 792.0;
@@ -197,11 +245,14 @@ class EditorExportService {
         (t.textDirection == null && rtlDetect.isRtl(t.text));
     // RTL text with no explicit alignment defaults to right-aligned.
     final align = (t.textAlign == TextAlign.left && isRtl) ? TextAlign.right : t.textAlign;
+    // Same box as RtlTextRenderer and the on-screen Text: anchored at pos,
+    // as wide as the text until it wraps at the page edge. A fixed-width box
+    // would push a one-line RTL label to the right margin.
     return pw.Positioned(
       left: t.pos.dx * pageW,
       top: t.pos.dy * pageH,
-      child: pw.SizedBox(
-        width: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW),
+      child: pw.ConstrainedBox(
+        constraints: pw.BoxConstraints(maxWidth: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW)),
         child: pw.Text(
           t.text,
           textAlign: _pwAlign(align),
@@ -293,8 +344,9 @@ class EditorExportService {
 
   /// Decode and composite an [ImageAnnotation] onto the off-screen [canvas],
   /// honouring position, size and rotation (mirrors ImageAnnotationRenderer so
-  /// the export matches the on-screen preview).
-  Future<void> _drawImageAnnotation(Canvas canvas, Size size, ImageAnnotation ann) async {
+  /// the export matches the on-screen preview). Returns false when the image
+  /// cannot be decoded, so the caller can stop instead of dropping it.
+  Future<bool> _drawImageAnnotation(Canvas canvas, Size size, ImageAnnotation ann) async {
     try {
       final codec = await ui.instantiateImageCodec(ann.bytes);
       final frame = await codec.getNextFrame();
@@ -319,8 +371,9 @@ class EditorExportService {
       canvas.restore();
       img.dispose();
       codec.dispose();
+      return true;
     } catch (_) {
-      // Skip an undecodable image rather than aborting the whole export.
+      return false;
     }
   }
 
@@ -390,12 +443,14 @@ class EditorExportService {
     } else {
       baseBytes = pageCache[index];
     }
-    if (baseBytes == null) return null;
+    if (baseBytes == null || baseBytes.isEmpty) return null;
     var pageBytes = baseBytes;
     const rotator = EditorPageTransformService();
     for (var turn = 0; turn < quarterTurns; turn++) {
       final rotated = await rotator.rotateClockwise(pageBytes);
-      if (rotated == null) break;
+      if (rotated == null) {
+        throw ExportPageException(index, 'the page rotation could not be applied');
+      }
       pageBytes = rotated;
     }
 
@@ -419,7 +474,9 @@ class EditorExportService {
         // Background layer: images (photos / logos / scanned signatures).
         for (final im in layer.images) {
           if (!im.visible) continue;
-          await _drawImageAnnotation(canvas, size, im);
+          if (!await _drawImageAnnotation(canvas, size, im)) {
+            throw ExportPageException(index, 'an inserted image could not be decoded');
+          }
         }
         for (final m in layer.markups) {
           if (!m.visible) continue;
