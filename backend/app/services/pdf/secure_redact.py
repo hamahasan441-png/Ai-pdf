@@ -10,9 +10,13 @@ returned 200 with the secret intact.
 After redaction the output is reopened from its bytes and checked
 independently. Any check that fails rejects the whole request; the caller gets
 no PDF. The checks cover ordinary text extraction, annotations, links and
-form widgets inside each region, and the rendered pixels of each region. They
-do not cover document metadata, bookmarks, or content outside the regions,
-and they do not prove that no forensic method could recover anything.
+form widgets inside each region, and the rendered pixels of each region. 
+Copies of the redacted text outside the page content are handled by policy
+(see _scrub_residual_copies): hidden or derived copies (document info, XMP,
+bookmark titles, alternate text, attachments) are scrubbed and re-checked;
+visible text elsewhere in the document is counted and reported, not changed,
+because the user did not select it. None of this proves that no forensic
+method could recover anything.
 """
 
 from __future__ import annotations
@@ -55,6 +59,8 @@ class RedactionReport:
     links_removed: int = 0
     widgets_removed: int = 0
     checks: list[str] = field(default_factory=list)
+    scrubbed: dict[str, int] = field(default_factory=dict)
+    occurrences_elsewhere: int = 0
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,7 @@ def redact_pdf(pdf_bytes: bytes, areas: list[dict]) -> RedactionReport:
         orphans_before = _orphan_field_values(doc)
         regions = [_parse_area(doc, index, area) for index, area in enumerate(areas)]
         pages = sorted({r.page for r in regions})
+        needles = _redacted_needles(doc, regions)
 
         annots_removed = links_removed = 0
         field_xrefs: set[int] = set()
@@ -116,6 +123,8 @@ def redact_pdf(pdf_bytes: bytes, areas: list[dict]) -> RedactionReport:
 
         _scrub_form_fields(doc, field_xrefs)
         widgets_removed = len(field_xrefs)
+        scrubbed = _scrub_residual_copies(doc, needles)
+        elsewhere = _count_visible_elsewhere(doc, needles)
 
         try:
             out = doc.tobytes(garbage=4, deflate=True)
@@ -126,7 +135,7 @@ def redact_pdf(pdf_bytes: bytes, areas: list[dict]) -> RedactionReport:
     finally:
         doc.close()
 
-    checks = verify_redaction(out, page_count, regions, orphan_limit=orphans_before)
+    checks = verify_redaction(out, page_count, regions, orphan_limit=orphans_before, needles=needles)
     return RedactionReport(
         pdf=out,
         page_count=page_count,
@@ -136,6 +145,8 @@ def redact_pdf(pdf_bytes: bytes, areas: list[dict]) -> RedactionReport:
         links_removed=links_removed,
         widgets_removed=widgets_removed,
         checks=checks,
+        scrubbed=scrubbed,
+        occurrences_elsewhere=elsewhere,
     )
 
 
@@ -144,6 +155,7 @@ def verify_redaction(
     page_count: int,
     regions: list[_Region],
     orphan_limit: int = 0,
+    needles: list[str] | None = None,
 ) -> list[str]:
     """Reopen [out] from bytes and confirm each region is empty.
 
@@ -189,9 +201,154 @@ def verify_redaction(
         # that were already off-page in the input are left as they were.
         if _orphan_field_values(doc) > orphan_limit:
             raise RedactionRejected("A removed form field still holds a value", status=500)
+        if needles and _hidden_copies(doc, needles):
+            raise RedactionRejected("The redacted text is still in hidden document data", status=500)
     finally:
         doc.close()
-    return ["page_count", "text_extraction", "annotations", "links", "form_fields", "rendered_fill"]
+    return [
+        "page_count",
+        "text_extraction",
+        "annotations",
+        "links",
+        "form_fields",
+        "rendered_fill",
+        "hidden_copies",
+    ]
+
+
+# ─── Copies of the redacted text outside the redacted areas ──────────────────
+
+# Keys whose string values are hidden or derived copies of page text.
+_HIDDEN_TEXT_KEYS = {
+    "Title": "bookmarks",  # outline items
+    "Alt": "alt_text",
+    "ActualText": "alt_text",
+    "E": "alt_text",
+}
+_MIN_NEEDLE = 4
+
+
+def _redacted_needles(doc: fitz.Document, regions: list[_Region]) -> list[str]:
+    """Text that sits under the areas, before anything is removed.
+
+    Each area's words in reading order form one phrase. Single words are
+    added only when they are distinctive (digits, @, - or _, or long), so a
+    common word under the box does not trigger edits elsewhere.
+    """
+    needles: set[str] = set()
+    for region in regions:
+        page = doc[region.page]
+        words = []
+        for x0, y0, x1, y1, word, *_ in page.get_text("words"):
+            center = fitz.Point((x0 + x1) / 2, (y0 + y1) / 2)
+            if region.rect.contains(center):
+                words.append(word)
+        phrase = " ".join(words).strip()
+        if len(phrase) >= _MIN_NEEDLE:
+            needles.add(phrase)
+        for word in words:
+            token = word.strip(".,;:()[]{}\"'")
+            distinctive = any(ch.isdigit() or ch in "@-_" for ch in token) or len(token) >= 10
+            if len(token) >= _MIN_NEEDLE and distinctive:
+                needles.add(token)
+    return sorted(needles, key=len, reverse=True)
+
+
+def _contains(text: str, needles: list[str]) -> bool:
+    low = text.lower()
+    return any(n.lower() in low for n in needles)
+
+
+def _replace_all(text: str, needles: list[str]) -> str:
+    for n in needles:
+        text = re.sub(re.escape(n), "[redacted]", text, flags=re.IGNORECASE)
+    return text
+
+
+def _scrub_residual_copies(doc: fitz.Document, needles: list[str]) -> dict[str, int]:
+    """Remove hidden or derived copies of the redacted text. Returns counts."""
+    counts = {"metadata": 0, "xmp": 0, "bookmarks": 0, "alt_text": 0, "attachments": 0}
+    if not needles:
+        return counts
+    try:
+        meta = dict(doc.metadata or {})
+        changed = False
+        for key, value in meta.items():
+            if isinstance(value, str) and value and _contains(value, needles):
+                meta[key] = _replace_all(value, needles)
+                counts["metadata"] += 1
+                changed = True
+        if changed:
+            doc.set_metadata({k: v for k, v in meta.items() if isinstance(v, str)})
+        xmp = doc.get_xml_metadata() or ""
+        if xmp and _contains(xmp, needles):
+            doc.del_xml_metadata()
+            counts["xmp"] += 1
+        for xref in range(1, doc.xref_length()):
+            for key, bucket in _HIDDEN_TEXT_KEYS.items():
+                kind, value = doc.xref_get_key(xref, key)
+                if kind == "string" and _contains(value, needles):
+                    if key == "Title" and doc.xref_get_key(xref, "Parent")[0] == "null":
+                        continue  # only outline items carry Title + Parent
+                    doc.xref_set_key(xref, key, fitz.get_pdf_str(_replace_all(value, needles)))
+                    counts[bucket] += 1
+        for name in list(doc.embfile_names()):
+            info = doc.embfile_info(name)
+            labels = " ".join(str(info.get(k, "")) for k in ("name", "filename", "ufilename", "desc"))
+            data = doc.embfile_get(name)
+            if _contains(labels, needles) or _bytes_contain(data, needles):
+                doc.embfile_del(name)
+                counts["attachments"] += 1
+    except RedactionRejected:
+        raise
+    except Exception as exc:
+        raise RedactionRejected("Hidden copies of the text could not be removed", status=500) from exc
+    return counts
+
+
+def _bytes_contain(data: bytes, needles: list[str]) -> bool:
+    for n in needles:
+        for enc in ("utf-8", "utf-16-le", "utf-16-be", "latin-1"):
+            try:
+                if n.encode(enc) in data or n.lower().encode(enc) in data.lower():
+                    return True
+            except UnicodeEncodeError:
+                continue
+    return False
+
+
+def _hidden_copies(doc: fitz.Document, needles: list[str]) -> bool:
+    meta = doc.metadata or {}
+    if any(isinstance(v, str) and _contains(v, needles) for v in meta.values()):
+        return True
+    if _contains(doc.get_xml_metadata() or "", needles):
+        return True
+    if any(_contains(title, needles) for _, title, *_ in doc.get_toc()):
+        return True
+    for xref in range(1, doc.xref_length()):
+        for key in ("Alt", "ActualText", "E"):
+            kind, value = doc.xref_get_key(xref, key)
+            if kind == "string" and _contains(value, needles):
+                return True
+    for name in doc.embfile_names():
+        if _bytes_contain(doc.embfile_get(name), needles):
+            return True
+    return False
+
+
+def _count_visible_elsewhere(doc: fitz.Document, needles: list[str]) -> int:
+    """Visible copies the user did not select: page text, notes, form values."""
+    count = 0
+    for page in doc:
+        for n in needles:
+            count += len(page.search_for(n))
+        for annot in page.annots() or []:
+            if _contains(annot.info.get("content", "") or "", needles):
+                count += 1
+        for widget in page.widgets() or []:
+            if _contains(str(widget.field_value or ""), needles):
+                count += 1
+    return count
 
 
 def _open(pdf_bytes: bytes) -> fitz.Document:

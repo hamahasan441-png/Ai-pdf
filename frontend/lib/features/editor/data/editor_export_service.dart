@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -14,6 +15,8 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
 import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
@@ -51,6 +54,51 @@ class ExportPageException implements Exception {
   String toString() => 'Page ${pageIndex + 1}: $reason';
 }
 
+/// The source PDF cannot be kept as is (encrypted, damaged, or a filter
+/// this reader does not support). The caller must ask before falling back
+/// to an image-only export; it must not do so silently.
+enum ExportUnavailableKind { unreadableFile, encrypted, damaged, writeFailed }
+
+class PreservingExportUnavailable implements Exception {
+  final String reason;
+  final ExportUnavailableKind kind;
+
+  const PreservingExportUnavailable(this.reason, [this.kind = ExportUnavailableKind.damaged]);
+
+  @override
+  String toString() => reason;
+}
+
+/// Result of [EditorExportService.renderPreservingPdfFile].
+class PreservingExportResult {
+  final String path;
+
+  /// Shown page indexes saved as images because their marks hide content.
+  final List<int> flattenedPages;
+
+  final PreservingWriteReport report;
+
+  const PreservingExportResult(this.path, this.flattenedPages, this.report);
+}
+
+/// Pages whose marks are meant to hide what is under them: a whiteout
+/// (overlay text edits use one) or a black cover that the server did not
+/// back with real redaction. In a source-preserving export the original text
+/// would still be in the file under such a mark, so these pages are saved as
+/// images instead. Hidden marks do not count.
+List<int> pagesThatHideContent(Map<int, PageLayer> layers, Iterable<int> slots) {
+  final out = <int>[];
+  for (final i in slots) {
+    final layer = layers[i];
+    if (layer == null) continue;
+    final hides = layer.shapes.any((s) =>
+        s.visible &&
+        (s.type == ShapeType.whiteout || (s.burnsBlackCover && !s.isServerRedacted)));
+    if (hides) out.add(i);
+  }
+  return out;
+}
+
 /// Off-screen export compositor for the editor.
 ///
 /// Each page is rendered to a bitmap and the marks are painted on that bitmap,
@@ -61,6 +109,11 @@ class ExportPageException implements Exception {
 /// create documents and `pdfx` can only render them, so neither can carry the
 /// source objects across. Searchable vector text is added only for new
 /// annotations that [textExportsAsSearchableVector] accepts.
+///
+/// [renderPreservingPdfFile] is the source-preserving path: it keeps the
+/// original PDF objects and draws the marks on top (see
+/// [PreservingPdfWriter]). [renderToPdfFile] is the image-only path, used for
+/// image documents and when the user chooses it.
 ///
 /// A page that fails to render, rotate, or composite throws
 /// [ExportPageException]; no file is written. Earlier builds skipped such a
@@ -88,7 +141,6 @@ class EditorExportService {
     // searchable vector text instead of a rasterized image.
     final uni = PdfUnicodeFonts();
     await uni.load();
-    const rtlDetect = RtlDetectionService();
     var rendered = 0;
 
     for (final i in exportSlots(pageCount: pageCount, only: onlyIndices)) {
@@ -105,70 +157,251 @@ class EditorExportService {
         throw ExportPageException(i, 'the page could not be rendered');
       }
 
-      final image = pw.MemoryImage(composed.bytes);
-      const longPts = 842.0;
-      final double pageW;
-      final double pageH;
-      if (composed.sourceWidth != null &&
-          composed.sourceHeight != null &&
-          composed.sourceWidth! > 1 &&
-          composed.sourceHeight! > 1) {
-        pageW = composed.sourceWidth!;
-        pageH = composed.sourceHeight!;
-      } else if (composed.width >= composed.height) {
-        pageW = longPts;
-        pageH = longPts * composed.height / composed.width;
-      } else {
-        pageH = longPts;
-        pageW = longPts * composed.width / composed.height;
-      }
-      final shapes = (layers[i]?.shapes ?? const <ShapeAnnotation>[])
-          .where((s) =>
-              s.visible &&
-              !s.burnsBlackCover &&
-              (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
-          .toList();
-      final texts = (layers[i]?.texts ?? const <TextAnnotation>[])
-          .where((t) => t.visible && t.text.isNotEmpty && _canVectorize(t, uni))
-          .toList();
-
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat(pageW, pageH, marginAll: 0),
-          build: (_) => pw.SizedBox(
-            width: pageW,
-            height: pageH,
-            child: pw.Stack(
-              children: [
-                pw.SizedBox(
-                  width: pageW,
-                  height: pageH,
-                  child: pw.Image(image, fit: pw.BoxFit.fill),
-                ),
-                for (final s in shapes) _buildPdfShape(s, pageW, pageH),
-                for (final t in texts)
-                  _buildPdfText(t, pageW, pageH, fonts, uni, rtlDetect),
-              ],
-            ),
-          ),
-        ),
+      final size = _flattenedPageSize(composed);
+      _addEditedPage(
+        pdf,
+        pageW: size.width,
+        pageH: size.height,
+        image: pw.MemoryImage(composed.bytes),
+        layer: layers[i],
+        fonts: fonts,
+        uni: uni,
       );
       rendered++;
       await Future<void>.delayed(Duration.zero);
     }
 
     if (rendered == 0) return null;
+    return _writeAtomically(await pdf.save(), getApplicationDocumentsDirectory);
+  }
 
-    final dir = await getApplicationDocumentsDirectory();
+  /// Export that keeps the source PDF: text stays searchable and selectable,
+  /// and vectors, links, annotations, form fields, bookmarks and metadata
+  /// survive. Marks are drawn on top as an overlay; vector text stays vector.
+  ///
+  /// Pages in [pagesThatHideContent] are saved as images, with nothing of
+  /// the original page left in the file. Inserted blank pages are generated.
+  /// Deleted pages and earlier revisions are not in the output.
+  ///
+  /// Throws [PreservingExportUnavailable] when the source cannot be kept;
+  /// the caller decides with the user whether to save as images instead.
+  Future<PreservingExportResult> renderPreservingPdfFile({
+    required String sourcePath,
+    required pdfx.PdfDocument? doc,
+    required Map<int, Uint8List> pageCache,
+    required Map<int, PageLayer> layers,
+    required int pageCount,
+    required List<int> sourcePages,
+    Map<int, int> quarterTurns = const {},
+    List<int>? onlyIndices,
+    Future<Directory> Function()? outputDirectory,
+  }) async {
+    final Uint8List sourceBytes;
+    try {
+      sourceBytes = await File(sourcePath).readAsBytes();
+    } catch (_) {
+      throw const PreservingExportUnavailable(
+        'The original PDF could not be read from this device.',
+        ExportUnavailableKind.unreadableFile,
+      );
+    }
+    final List<(List<double>, int)> sourceGeometry;
+    try {
+      sourceGeometry = await Isolate.run(() {
+        final store = PdfObjectStore.parse(sourceBytes);
+        return [for (final p in store.pages) (p.cropBox, p.rotate)];
+      });
+    } on PdfSourceException catch (e) {
+      throw PreservingExportUnavailable(
+        e.encrypted ? 'The PDF is encrypted.' : 'The PDF structure could not be read: ${e.message}',
+        e.encrypted ? ExportUnavailableKind.encrypted : ExportUnavailableKind.damaged,
+      );
+    }
+
+    final slots = exportSlots(pageCount: pageCount, only: onlyIndices);
+    if (slots.isEmpty) throw const PreservingExportUnavailable('Nothing to export.');
+    final flatten = pagesThatHideContent(layers, slots).toSet();
+
+    final generated = pw.Document();
+    final fonts = EditorPdfFonts();
+    final uni = PdfUnicodeFonts();
+    await uni.load();
+    var generatedCount = 0;
+    final specs = <OutputPageSpec>[];
+
+    for (final i in slots) {
+      final source = i < sourcePages.length ? sourcePages[i] : i;
+      final turns = (quarterTurns[i] ?? 0) % 4;
+      if (source >= sourceGeometry.length) {
+        throw PreservingExportUnavailable('Page ${i + 1} points at a page the PDF does not have.');
+      }
+      if (source < 0 || flatten.contains(i)) {
+        final composed = await _composePagePng(
+          index: i,
+          doc: doc,
+          pageCache: pageCache,
+          layers: layers,
+          uni: uni,
+          quarterTurns: turns,
+          sourcePage: source,
+        );
+        if (composed == null) throw ExportPageException(i, 'the page could not be rendered');
+        final size = _flattenedPageSize(composed);
+        _addEditedPage(
+          generated,
+          pageW: size.width,
+          pageH: size.height,
+          image: pw.MemoryImage(composed.bytes),
+          layer: layers[i],
+          fonts: fonts,
+          uni: uni,
+        );
+        specs.add(GeneratedPageSpec(generatedCount++, replacesSource: source < 0 ? null : source));
+        await Future<void>.delayed(Duration.zero);
+        continue;
+      }
+
+      final layer = layers[i];
+      if (layer == null || !layer.items.any((a) => a.visible)) {
+        specs.add(SourcePageSpec(source, quarterTurns: turns));
+        continue;
+      }
+      final (crop, rotate) = sourceGeometry[source];
+      final finalRotate = (rotate + 90 * turns) % 360;
+      final w = crop[2] - crop[0];
+      final h = crop[3] - crop[1];
+      final pageW = finalRotate % 180 == 0 ? w : h;
+      final pageH = finalRotate % 180 == 0 ? h : w;
+      final scale = math.min(exportMaxEdge / math.max(pageW, pageH), 3.0);
+      final marks = await _composePagePng(
+        index: i,
+        doc: null,
+        pageCache: const {},
+        layers: layers,
+        uni: uni,
+        marksOnlySize: Size((pageW * scale).roundToDouble(), (pageH * scale).roundToDouble()),
+      );
+      if (marks == null) throw ExportPageException(i, 'the marks could not be drawn');
+      _addEditedPage(
+        generated,
+        pageW: pageW,
+        pageH: pageH,
+        image: pw.MemoryImage(marks.bytes),
+        layer: layer,
+        fonts: fonts,
+        uni: uni,
+      );
+      specs.add(SourcePageSpec(source, quarterTurns: turns, overlayPage: generatedCount++));
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    final generatedBytes = generatedCount == 0 ? null : await generated.save();
+    final (Uint8List bytes, PreservingWriteReport report) written;
+    try {
+      written = await Isolate.run(() {
+        final source = PdfObjectStore.parse(sourceBytes);
+        final gen = generatedBytes == null ? null : PdfObjectStore.parse(generatedBytes);
+        final writer = PreservingPdfWriter(source, gen);
+        final out = writer.write(specs);
+        // Read our own output back before calling it a success.
+        final check = PdfObjectStore.parse(out);
+        if (check.pages.length != specs.length) {
+          throw const PdfSourceException('The written PDF has the wrong number of pages.');
+        }
+        return (out, writer.report!);
+      });
+    } on PdfSourceException catch (e) {
+      throw PreservingExportUnavailable(
+        'The PDF could not be written with its original content: ${e.message}',
+        ExportUnavailableKind.writeFailed,
+      );
+    }
+    final path = await _writeAtomically(
+      written.$1,
+      outputDirectory ?? getApplicationDocumentsDirectory,
+    );
+    if (path == null) {
+      throw const PreservingExportUnavailable(
+        'The exported file could not be saved.',
+        ExportUnavailableKind.writeFailed,
+      );
+    }
+    return PreservingExportResult(path, [for (final i in slots) if (flatten.contains(i)) i], written.$2);
+  }
+
+  Future<String?> _writeAtomically(Uint8List bytes, Future<Directory> Function() dirOf) async {
+    final dir = await dirOf();
     final outPath = '${dir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final partial = File('$outPath.partial');
-    await partial.writeAsBytes(await pdf.save(), flush: true);
-    if (!partial.existsSync() || partial.lengthSync() < 32) {
+    try {
+      await partial.writeAsBytes(bytes, flush: true);
+      if (partial.lengthSync() < 32) {
+        await partial.delete();
+        return null;
+      }
+      await partial.rename(outPath);
+    } catch (_) {
       if (partial.existsSync()) await partial.delete();
-      return null;
+      rethrow;
     }
-    await partial.rename(outPath);
     return outPath;
+  }
+
+  Size _flattenedPageSize(_ComposedPage composed) {
+    const longPts = 842.0;
+    if (composed.sourceWidth != null &&
+        composed.sourceHeight != null &&
+        composed.sourceWidth! > 1 &&
+        composed.sourceHeight! > 1) {
+      return Size(composed.sourceWidth!, composed.sourceHeight!);
+    }
+    if (composed.width >= composed.height) {
+      return Size(longPts, longPts * composed.height / composed.width);
+    }
+    return Size(longPts * composed.width / composed.height, longPts);
+  }
+
+  /// One output page: [image] (the page bitmap, or only the marks) with the
+  /// rectangle shapes and searchable text added as vectors on top.
+  void _addEditedPage(
+    pw.Document pdf, {
+    required double pageW,
+    required double pageH,
+    required pw.MemoryImage image,
+    required PageLayer? layer,
+    required EditorPdfFonts fonts,
+    required PdfUnicodeFonts uni,
+  }) {
+    const rtlDetect = RtlDetectionService();
+    final shapes = (layer?.shapes ?? const <ShapeAnnotation>[])
+        .where((s) =>
+            s.visible &&
+            !s.burnsBlackCover &&
+            (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
+        .toList();
+    final texts = (layer?.texts ?? const <TextAnnotation>[])
+        .where((t) => t.visible && t.text.isNotEmpty && _canVectorize(t, uni))
+        .toList();
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(pageW, pageH, marginAll: 0),
+        build: (_) => pw.SizedBox(
+          width: pageW,
+          height: pageH,
+          child: pw.Stack(
+            children: [
+              pw.SizedBox(
+                width: pageW,
+                height: pageH,
+                child: pw.Image(image, fit: pw.BoxFit.fill),
+              ),
+              for (final s in shapes) _buildPdfShape(s, pageW, pageH),
+              for (final t in texts) _buildPdfText(t, pageW, pageH, fonts, uni, rtlDetect),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// The vector text widget [renderToPdfFile] places for [t].
@@ -403,7 +636,10 @@ class EditorExportService {
     painter.paint(canvas, rect.topLeft + const Offset(4, 4));
   }
 
-  Future<({Uint8List bytes, int width, int height, double? sourceWidth, double? sourceHeight})?> _composePagePng({
+  /// Page bitmap with the marks painted on it. With [marksOnlySize] there is
+  /// no page bitmap: the marks are painted on a transparent canvas of that
+  /// pixel size, for the overlay of a source-preserving export.
+  Future<_ComposedPage?> _composePagePng({
     required int index,
     required pdfx.PdfDocument? doc,
     required Map<int, Uint8List> pageCache,
@@ -411,7 +647,16 @@ class EditorExportService {
     required PdfUnicodeFonts uni,
     int quarterTurns = 0,
     int? sourcePage,
+    Size? marksOnlySize,
   }) async {
+    if (marksOnlySize != null) {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder); // nothing drawn: a transparent canvas
+      final blank = await recorder
+          .endRecording()
+          .toImage(marksOnlySize.width.toInt(), marksOnlySize.height.toInt());
+      return _paintMarks(index: index, base: blank, layers: layers, uni: uni);
+    }
     Uint8List? baseBytes;
     double? sourceWidth;
     double? sourceHeight;
@@ -462,8 +707,25 @@ class EditorExportService {
 
     final codec = await ui.instantiateImageCodec(pageBytes);
     final frame = await codec.getNextFrame();
-    final base = frame.image;
+    return _paintMarks(
+      index: index,
+      base: frame.image,
+      layers: layers,
+      uni: uni,
+      sourceWidth: sourceWidth,
+      sourceHeight: sourceHeight,
+    );
+  }
 
+  /// Paint the layer of [index] over [base] and encode a PNG. Disposes [base].
+  Future<_ComposedPage?> _paintMarks({
+    required int index,
+    required ui.Image base,
+    required Map<int, PageLayer> layers,
+    required PdfUnicodeFonts uni,
+    double? sourceWidth,
+    double? sourceHeight,
+  }) async {
     try {
       final size = Size(base.width.toDouble(), base.height.toDouble());
       final recorder = ui.PictureRecorder();
@@ -539,3 +801,11 @@ class EditorExportService {
     }
   }
 }
+
+typedef _ComposedPage = ({
+  Uint8List bytes,
+  int width,
+  int height,
+  double? sourceWidth,
+  double? sourceHeight,
+});

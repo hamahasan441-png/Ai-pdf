@@ -33,9 +33,31 @@ jobs:
         working-directory: frontend
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+      - name: Check bundled font checksums
+        working-directory: frontend/assets/fonts
+        run: sha256sum -c SHA256SUMS
+
+      # PDOCZY_EXPORT_OUT makes the source-preserving export tests keep the
+      # PDFs they write, so the next step can check them independently.
       - name: Run unit tests
         working-directory: frontend
-        run: flutter test --reporter expanded
+        env:
+          PDOCZY_EXPORT_OUT: ${{ runner.temp }}/preserving-export
+        run: |
+          mkdir -p "$PDOCZY_EXPORT_OUT"
+          flutter test --reporter expanded
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # MuPDF and qpdf re-open the exported PDFs: text, links, form fields,
+      # bookmarks, rotation, overlay position and syntax.
+      - name: Verify exported PDFs with MuPDF and qpdf
+        working-directory: frontend
+        run: |
+          pip install pymupdf==1.28.2 pikepdf==10.17.0
+          python3 tool/verify_preserving_export.py "${{ runner.temp }}/preserving-export"
 
   build:
     runs-on: ubuntu-latest

@@ -42,7 +42,7 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 final _pdfBody = utf8.encode('%PDF-1.7\n${'x' * 200}\n%%EOF');
-const _allChecks = 'page_count,text_extraction,annotations,links,form_fields,rendered_fill';
+const _allChecks = 'page_count,text_extraction,annotations,links,form_fields,rendered_fill,hidden_copies';
 
 void main() {
   late Directory tmp;
@@ -85,6 +85,27 @@ void main() {
       expect(areas.single, {'page': 0, 'x0': 0.1, 'y0': 0.1, 'x1': 0.4, 'y1': 0.2, 'fill': 'black'});
       // The real file name never leaves the device.
       expect(form.files.single.value.filename, 'document.pdf');
+    });
+
+    test('the count of unselected copies elsewhere is passed on', () async {
+      final result = await run(_FakeAdapter(200, _pdfBody, headers: {
+        'x-redaction-verified': [_allChecks],
+        'x-redaction-occurrences-elsewhere': ['2'],
+      }));
+      expect(result.ok, isTrue);
+      expect(result.occurrencesElsewhere, 2);
+    });
+
+    test('an older server without the hidden-copies check is not trusted', () async {
+      final result = await run(_FakeAdapter(200, _pdfBody, headers: {
+        'x-redaction-verified': ['page_count,text_extraction,annotations,links,form_fields,rendered_fill'],
+      }));
+      expect(result.ok, isFalse);
+    });
+
+    test('a 401 explains that nothing was redacted', () async {
+      final result = await run(_FakeAdapter(401, utf8.encode('{"detail":"no"}')));
+      expect(result.error, contains('Nothing was redacted'));
     });
 
     test('a 200 without the verification header is a failure', () async {

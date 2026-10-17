@@ -31,6 +31,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +45,11 @@ from app.services.billing.quota_tiers import get_quota_with_team
 from app.services.pdf.secure_redact import RedactionRejected, redact_pdf
 
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
+
+# One request may not ask for more areas than this; each area is a separate
+# PyMuPDF redaction and verification pass.
+MAX_REDACT_AREAS = 500
+_READ_CHUNK = 1024 * 1024
 
 
 class RedactArea(BaseModel):
@@ -138,23 +144,36 @@ async def redact_document(
 
     if not areas:
         raise HTTPException(status_code=422, detail="No redaction areas provided")
+    if len(areas) > MAX_REDACT_AREAS:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_REDACT_AREAS} areas per request")
 
-    # Read file
+    # Read in chunks and stop at the limit instead of buffering any size.
+    limit = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    buffer = bytearray()
     try:
-        pdf_bytes = await file.read()
-        if len(pdf_bytes) == 0:
-            raise ValueError("Empty file")
-        if len(pdf_bytes) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large > {settings.MAX_UPLOAD_SIZE_MB}MB")
+        while True:
+            chunk = await file.read(_READ_CHUNK)
+            if not chunk:
+                break
+            buffer.extend(chunk)
+            if len(buffer) > limit:
+                raise HTTPException(status_code=413, detail=f"File too large > {settings.MAX_UPLOAD_SIZE_MB}MB")
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(status_code=400, detail="Failed to read file")
+    pdf_bytes = bytes(buffer)
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if b"%PDF-" not in pdf_bytes[:1024]:
+        raise HTTPException(status_code=415, detail="The file is not a PDF")
 
     # Open with PyMuPDF, apply redactions, then reopen the output and verify
-    # each region. Any failure rejects the whole request.
+    # each region. Any failure rejects the whole request. The work is CPU
+    # bound, so it runs off the event loop.
     try:
-        report = redact_pdf(
+        report = await run_in_threadpool(
+            redact_pdf,
             pdf_bytes,
             [
                 {
@@ -203,6 +222,10 @@ async def redact_document(
                 f"annotations={report.annotations_removed};"
                 f"links={report.links_removed};widgets={report.widgets_removed}"
             ),
+            "X-Redaction-Hidden-Copies-Removed": ";".join(
+                f"{k}={v}" for k, v in sorted(report.scrubbed.items())
+            ),
+            "X-Redaction-Occurrences-Elsewhere": str(report.occurrences_elsewhere),
         },
     )
 

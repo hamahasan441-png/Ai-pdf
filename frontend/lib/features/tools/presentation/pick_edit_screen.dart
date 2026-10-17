@@ -80,6 +80,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.d
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_rich_text_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_top_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_thumbnail_strip.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_export_mode_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_redaction_choice_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_unsaved_changes_dialog.dart';
 import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
@@ -713,6 +714,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   bool _redacting = false;
 
+  /// Redacted copies this session wrote. Only these are ever deleted.
+  final Set<String> _redactedCopies = {};
+
   /// Ask whether to upload for secure redaction or only draw a cover.
   /// Nothing is uploaded unless the user picks the upload button.
   Future<void> _chooseRedaction(Offset start, Offset end, Rect rect, int page) async {
@@ -748,7 +752,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       quarterTurns: _pageQuarterTurns[page] ?? 0,
     );
     if (mapped == null || sourcePath == null) {
-      _showError(l10n.redactSecureFailed('the area is outside the page'));
+      _showError(l10n.redactSecureFailed(l10n.redactErrInvalidArea));
       return;
     }
     _redacting = true;
@@ -764,7 +768,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (!mounted) return;
       final path = result.path;
       if (path == null) {
-        _showError(l10n.redactSecureFailed(result.error ?? 'unknown error'));
+        _showError(l10n.redactSecureFailed(_redactionFailureText(l10n, result)));
         return;
       }
       // Another file, or a page added, removed or turned while uploading,
@@ -773,11 +777,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
           _editorController.filePath != sourcePath ||
           !listEquals(structure, _sourcePages) ||
           !mapEquals(turns, _pageQuarterTurns)) {
-        _showError(l10n.redactSecureFailed('the document changed during upload; draw the box again'));
+        _showError(l10n.redactSecureFailed(l10n.redactErrDocumentChanged));
         return;
       }
+      _redactedCopies.add(path);
       if (!await _replaceSourceDocument(path)) {
-        if (mounted) _showError(l10n.redactSecureFailed('the redacted PDF could not be opened'));
+        _redactedCopies.remove(path);
+        try {
+          File(path).deleteSync();
+        } catch (_) {}
+        if (mounted) _showError(l10n.redactSecureFailed(l10n.redactErrOpenFailed));
         return;
       }
       if (!mounted) return;
@@ -787,10 +796,40 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _pushItem(cover, page: page);
         _hasUnsavedChanges = true;
       });
-      _showError(l10n.redactSecureDone);
+      _showError(result.occurrencesElsewhere > 0
+          ? l10n.redactSecureDoneElsewhere(result.occurrencesElsewhere)
+          : l10n.redactSecureDone);
     } finally {
       _redacting = false;
     }
+  }
+
+  String _redactionFailureText(AppLocalizations l10n, BackendRedactionResult result) {
+    return switch (result.failure) {
+      RedactionFailure.invalidArea => l10n.redactErrInvalidArea,
+      RedactionFailure.missingFile => l10n.redactErrMissingFile,
+      RedactionFailure.network => l10n.redactErrNetwork,
+      RedactionFailure.timeout => l10n.redactErrTimeout,
+      RedactionFailure.auth => l10n.redactErrAuth,
+      RedactionFailure.notPdf => l10n.redactErrNotPdf,
+      RedactionFailure.tooLarge => l10n.redactErrTooLarge,
+      RedactionFailure.limit => l10n.redactErrLimit,
+      RedactionFailure.refused => l10n.redactErrRefused(result.detail ?? ''),
+      RedactionFailure.badResponse => l10n.redactErrBadResponse,
+      RedactionFailure.unverified => l10n.redactErrUnverified,
+      RedactionFailure.saveFailed => l10n.redactErrSaveFailed,
+      RedactionFailure.server || null => l10n.redactErrServer,
+    };
+  }
+
+  String _exportUnavailableText(ExportUnavailableKind kind) {
+    final l10n = AppLocalizations.of(context)!;
+    return switch (kind) {
+      ExportUnavailableKind.unreadableFile => l10n.exportErrUnreadable,
+      ExportUnavailableKind.encrypted => l10n.exportErrEncrypted,
+      ExportUnavailableKind.damaged => l10n.exportErrDamaged,
+      ExportUnavailableKind.writeFailed => l10n.exportErrWriteFailed,
+    };
   }
 
   /// Swap the working PDF for [path] and keep every mark, page order and
@@ -820,6 +859,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     // Recovery data follows the working file.
     if (oldPath != null && _layers.isNotEmpty) {
       _persistence.save(filePath: path, layers: _layers, structure: _pageStructure);
+    }
+    // An earlier redacted copy made by this app still holds what this
+    // redaction removed. The user's own file is never deleted here.
+    if (oldPath != null && _redactedCopies.remove(oldPath)) {
+      unawaited(_persistence.delete(oldPath));
+      try {
+        File(oldPath).deleteSync();
+      } catch (_) {
+        // Already gone or locked; the OS clears the temp directory later.
+      }
     }
 
     final gen = ++_textGen;
@@ -2349,18 +2398,50 @@ class _PickEditScreenState extends State<PickEditScreen> {
     List<int>? onlyIndices,
     bool clearRecovery = true,
   }) async {
+    final sourcePath = _editorController.filePath;
+    final keepsSource = _doc != null && sourcePath != null && sourcePath.toLowerCase().endsWith('.pdf');
+    if (keepsSource) {
+      final hides = pagesThatHideContent(
+        _layers,
+        exportSlots(pageCount: _pageCount, only: onlyIndices),
+      );
+      if (hides.isNotEmpty && !await showEditorFlattenNoticeDialog(context, pages: hides)) {
+        return null;
+      }
+      if (!mounted) return null;
+    }
     _editorController.beginExport();
     setState(() {});
     try {
-      final outPath = await _exportService.renderToPdfFile(
-        doc: _doc,
-        pageCache: _pageCache,
-        layers: _layers,
-        pageCount: _pageCount,
-        quarterTurns: _pageQuarterTurns,
-        sourcePages: _sourcePages,
-        onlyIndices: onlyIndices,
-      );
+      String? outPath;
+      if (keepsSource) {
+        try {
+          final result = await _exportService.renderPreservingPdfFile(
+            sourcePath: sourcePath,
+            doc: _doc,
+            pageCache: _pageCache,
+            layers: _layers,
+            pageCount: _pageCount,
+            quarterTurns: _pageQuarterTurns,
+            sourcePages: _sourcePages,
+            onlyIndices: onlyIndices,
+          );
+          outPath = result.path;
+        } on PreservingExportUnavailable catch (e) {
+          // Never switch to an image-only file without asking.
+          _editorController.finishExport();
+          if (mounted) setState(() {});
+          if (!mounted ||
+              !await showEditorImageExportFallbackDialog(context, reason: _exportUnavailableText(e.kind))) {
+            return null;
+          }
+          _editorController.beginExport();
+          if (mounted) setState(() {});
+          outPath = await _imageOnlyExport(onlyIndices);
+        }
+      } else {
+        outPath = await _imageOnlyExport(onlyIndices);
+      }
       if (outPath == null) {
         _editorController.finishExport(error: 'Nothing to export');
         _showError('Nothing to export');
@@ -2383,6 +2464,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (mounted) setState(() {});
     }
   }
+
+  Future<String?> _imageOnlyExport(List<int>? onlyIndices) => _exportService.renderToPdfFile(
+        doc: _doc,
+        pageCache: _pageCache,
+        layers: _layers,
+        pageCount: _pageCount,
+        quarterTurns: _pageQuarterTurns,
+        sourcePages: _sourcePages,
+        onlyIndices: onlyIndices,
+      );
 
   /// Save the edited PDF, then — right there at save time — offer to share it
   /// or continue straight into another tool (compress, convert, …). The saved

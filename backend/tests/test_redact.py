@@ -105,3 +105,45 @@ async def test_redact_filename_cannot_inject_headers(client: AsyncClient):
     disposition = resp.headers["content-disposition"]
     assert disposition.count('"') == 2
     assert "x-evil" not in {k.lower() for k in resp.headers}
+
+
+@pytest.mark.asyncio
+async def test_redact_limits_and_reporting_headers(client: AsyncClient, monkeypatch):
+    from app.api.v1 import redact as endpoint
+    from app.core.config import settings
+
+    area = '{"page":0,"x0":0.05,"y0":0.04,"x1":0.9,"y1":0.07}'
+    pdf = _create_sample_pdf()
+
+    ok = await client.post(
+        "/api/v1/document-ai/redact",
+        files={"file": ("t.pdf", pdf, "application/pdf")},
+        data={"areas_json": f"[{area}]"},
+    )
+    assert ok.status_code == 200
+    assert "metadata=" in ok.headers["x-redaction-hidden-copies-removed"]
+    assert ok.headers["x-redaction-occurrences-elsewhere"] == "0"
+    assert "hidden_copies" in ok.headers["x-redaction-verified"]
+
+    monkeypatch.setattr(endpoint, "MAX_REDACT_AREAS", 2)
+    too_many = await client.post(
+        "/api/v1/document-ai/redact",
+        files={"file": ("t.pdf", pdf, "application/pdf")},
+        data={"areas_json": "[" + ",".join([area] * 3) + "]"},
+    )
+    assert too_many.status_code == 422
+
+    not_pdf = await client.post(
+        "/api/v1/document-ai/redact",
+        files={"file": ("t.pdf", b"<html>" + b"x" * 2000, "application/pdf")},
+        data={"areas_json": f"[{area}]"},
+    )
+    assert not_pdf.status_code == 415
+
+    monkeypatch.setattr(settings, "MAX_UPLOAD_SIZE_MB", 0)
+    too_big = await client.post(
+        "/api/v1/document-ai/redact",
+        files={"file": ("t.pdf", pdf, "application/pdf")},
+        data={"areas_json": f"[{area}]"},
+    )
+    assert too_big.status_code == 413
