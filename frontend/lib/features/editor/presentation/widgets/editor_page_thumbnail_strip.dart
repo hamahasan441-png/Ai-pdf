@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 /// A horizontally scrollable strip of page thumbnails for quick navigation
 /// and page management (tap to jump, long-press for delete/duplicate).
@@ -83,6 +84,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
   }
 
   void _showActions(BuildContext context, int index) {
+    final l10n = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -91,7 +93,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('Duplicate page'),
+              title: Text(l10n.pageDuplicate),
               onTap: () {
                 Navigator.pop(ctx);
                 onPageAction?.call(index, 'duplicate');
@@ -100,7 +102,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
             if (index > 0)
               ListTile(
                 leading: const Icon(Icons.arrow_back),
-                title: const Text('Move page earlier'),
+                title: Text(l10n.pageMoveEarlier),
                 onTap: () {
                   Navigator.pop(ctx);
                   onPageAction?.call(index, 'moveEarlier');
@@ -109,7 +111,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
             if (index < pageCount - 1)
               ListTile(
                 leading: const Icon(Icons.arrow_forward),
-                title: const Text('Move page later'),
+                title: Text(l10n.pageMoveLater),
                 onTap: () {
                   Navigator.pop(ctx);
                   onPageAction?.call(index, 'moveLater');
@@ -117,7 +119,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
               ),
             ListTile(
               leading: const Icon(Icons.add),
-              title: const Text('Insert blank page after'),
+              title: Text(l10n.pageInsertBlankAfter),
               onTap: () {
                 Navigator.pop(ctx);
                 onPageAction?.call(index, 'insert');
@@ -126,7 +128,7 @@ class EditorPageThumbnailStrip extends StatelessWidget {
             if (pageCount > 1)
               ListTile(
                 leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
-                title: Text('Delete page', style: TextStyle(color: Colors.red.shade700)),
+                title: Text(l10n.pageDelete, style: TextStyle(color: Colors.red.shade700)),
                 onTap: () {
                   Navigator.pop(ctx);
                   onPageAction?.call(index, 'delete');

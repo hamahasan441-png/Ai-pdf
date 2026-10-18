@@ -114,6 +114,14 @@ class ToolsScreen extends ConsumerWidget {
                 onTap: () => context.push('/tools/ocr'),
               ),
               _ToolCard(
+                icon: Icons.lock_outline,
+                label: l10n.toolProtect,
+                desc: l10n.toolProtectDesc,
+                color: const Color(0xFFD9636B),
+                badge: l10n.badgeOffline,
+                onTap: () => context.push('/tools/protect'),
+              ),
+              _ToolCard(
                 icon: Icons.collections,
                 label: l10n.toolPdfToImages,
                 desc: l10n.toolPdfToImagesDesc,

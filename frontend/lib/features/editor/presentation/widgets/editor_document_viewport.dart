@@ -23,6 +23,9 @@ class EditorDocumentViewport extends StatefulWidget {
   final bool scaleEnabled;
   final double pageAspect;
   final TransformationController? transformationController;
+
+  /// Changes only how the page looks on screen (reading mode).
+  final ColorFilter? viewFilter;
   final Widget child;
 
   const EditorDocumentViewport({
@@ -31,6 +34,7 @@ class EditorDocumentViewport extends StatefulWidget {
     required this.scaleEnabled,
     this.pageAspect = PageFit.a4PortraitAspect,
     this.transformationController,
+    this.viewFilter,
     required this.child,
   });
 
@@ -120,7 +124,11 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
               child: SizedBox(
                 width: fitted.width,
                 height: fitted.height,
-                child: RepaintBoundary(child: widget.child),
+                child: RepaintBoundary(
+                  child: widget.viewFilter == null
+                      ? widget.child
+                      : ColorFiltered(colorFilter: widget.viewFilter!, child: widget.child),
+                ),
               ),
             ),
           );

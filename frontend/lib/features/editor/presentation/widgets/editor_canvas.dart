@@ -52,6 +52,9 @@ class EditorCanvas extends StatelessWidget {
 
   /// Bumped when an async image decode finishes, forcing a canvas repaint.
   final int canvasRevision;
+
+  /// The PDF's own form fields, drawn above the page and below the marks.
+  final Widget? formLayer;
   final void Function(Offset localPosition, Size canvasSize) onTapUp;
   final void Function(Offset localPosition, Size canvasSize) onPanStart;
   final void Function(Offset localPosition, Size canvasSize) onPanUpdate;
@@ -125,6 +128,7 @@ class EditorCanvas extends StatelessWidget {
     required this.imageRenderer,
     required this.stampRenderer,
     this.canvasRevision = 0,
+    this.formLayer,
     required this.onTapUp,
     required this.onPanStart,
     required this.onPanUpdate,
@@ -193,29 +197,36 @@ class EditorCanvas extends StatelessWidget {
                   filterQuality: FilterQuality.medium,
                 ),
               ),
-              CustomPaint(
-                painter: EditorCanvasPainter(
-                  layer.strokes,
-                  layer.shapes,
-                  layer.images,
-                  layer.stamps,
-                  imageRenderer,
-                  stampRenderer,
-                  drawing,
-                  shapeStart,
-                  shapeEnd,
-                  previewShapeType,
-                  color,
-                  stroke,
-                  highlightPreview,
-                  securePreview: securePreview,
-                  markups: layer.markups,
-                  markupPreview: markupPreview,
-                  markupKind: markupKind,
-                  findRects: findRects,
-                  activeFind: activeFind,
-                  wordSelection: wordSelection,
-                  revision: canvasRevision,
+              if (formLayer != null) Positioned.fill(child: formLayer!),
+              // The marks only paint. Without IgnorePointer a painter with no
+              // hitTest counts as hit everywhere and would hide the form
+              // fields from taps; the canvas gestures still arrive through
+              // the page image.
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: EditorCanvasPainter(
+                    layer.strokes,
+                    layer.shapes,
+                    layer.images,
+                    layer.stamps,
+                    imageRenderer,
+                    stampRenderer,
+                    drawing,
+                    shapeStart,
+                    shapeEnd,
+                    previewShapeType,
+                    color,
+                    stroke,
+                    highlightPreview,
+                    securePreview: securePreview,
+                    markups: layer.markups,
+                    markupPreview: markupPreview,
+                    markupKind: markupKind,
+                    findRects: findRects,
+                    activeFind: activeFind,
+                    wordSelection: wordSelection,
+                    revision: canvasRevision,
+                  ),
                 ),
               ),
               ...layer.notes.where((n) => n.visible).map(

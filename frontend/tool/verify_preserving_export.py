@@ -1,7 +1,7 @@
 """Independent check of PDFs written by the source-preserving export tests.
 
     PDOCZY_EXPORT_OUT=/tmp/out flutter test test/editor/pdf_source/preserving_export_test.dart
-    python3 tool/verify_preserving_export.py /tmp/out
+    python3 tool/verify_preserving_export.py /tmp/out   # reads every expectations*.json
 
 Opens each file listed in expectations.json with PyMuPDF (MuPDF) and with
 pikepdf (qpdf), so the result does not depend on the Dart parser that wrote
@@ -28,11 +28,34 @@ def is_red(rgb: tuple[int, ...]) -> bool:
 
 def check(path: pathlib.Path, exp: dict) -> list[str]:
     errors: list[str] = []
-    with pikepdf.open(path) as pdf:
+    password = exp.get("password")
+    if password is not None:
+        # The file must be locked: no password and a wrong one both fail.
+        for wrong in ("", password + "x"):
+            try:
+                pikepdf.open(path, password=wrong).close()
+                errors.append(f"qpdf opened the file with password {wrong!r}")
+            except pikepdf.PasswordError:
+                pass
+        locked = fitz.open(path)
+        if not locked.needs_pass:
+            errors.append("MuPDF opened the file without a password")
+        elif locked.authenticate(password + "x"):
+            errors.append("MuPDF accepted a wrong password")
+        locked.close()
+        if exp.get("encryption"):
+            with pikepdf.open(path, password=password) as pdf:
+                info = pdf.encryption
+                method = f"{info.stream_method} {info.string_method} R{info.R} {info.bits}"
+                if exp["encryption"].lower() not in method.lower():
+                    errors.append(f"encrypted with {method}, expected {exp['encryption']}")
+    with pikepdf.open(path, password=password or "") as pdf:
         problems = pdf.check_pdf_syntax()
         if problems:
             errors.append(f"qpdf reports problems: {problems[:3]}")
     doc = fitz.open(path)
+    if password is not None and not doc.authenticate(password):
+        errors.append("MuPDF rejected the right password")
     pages = exp.get("pages", [])
     if doc.page_count != len(pages):
         errors.append(f"page count {doc.page_count}, expected {len(pages)}")
@@ -65,6 +88,31 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
             far = pix.pixel(int(pix.width * 0.7), int(pix.height * 0.85))
             if is_red(far):
                 errors.append(f"page {i + 1}: red where no mark was drawn")
+    want_fields = exp.get("fields", {})
+    if want_fields:
+        got = {}
+        for page in doc:
+            for w in page.widgets():
+                if w.field_type in (fitz.PDF_WIDGET_TYPE_CHECKBOX, fitz.PDF_WIDGET_TYPE_RADIOBUTTON):
+                    if w.field_value not in ("Off", False, None, ""):
+                        got[w.field_name] = str(w.field_value)
+                    else:
+                        got.setdefault(w.field_name, "Off")
+                else:
+                    got[w.field_name] = w.field_value
+        for name, value in want_fields.items():
+            if got.get(name) != value:
+                errors.append(f"field {name!r} is {got.get(name)!r}, expected {value!r}")
+    for name in exp.get("fields_drawn", []):
+        hits = [(p, w) for p in doc for w in p.widgets() if w.field_name == name]
+        if not hits:
+            errors.append(f"field {name!r} not found")
+            continue
+        page, w = hits[0]
+        pix = page.get_pixmap(dpi=144, clip=w.rect, annots=True)
+        dark = sum(1 for i in range(pix.width * pix.height) if sum(pix.pixel(i % pix.width, i // pix.width)[:3]) < 300)
+        if dark < 5:
+            errors.append(f"field {name!r} shows no text")
     all_text = "".join(p.get_text() for p in doc)
     for t in exp.get("text_absent_everywhere", []):
         if t in all_text:
@@ -79,7 +127,9 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
 
 def main() -> int:
     out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    expectations = json.loads((out / "expectations.json").read_text())
+    # One expectations*.json per test file: the files run in parallel, so a
+    # single shared list could lose entries.
+    expectations = [e for f in sorted(out.glob("expectations*.json")) for e in json.loads(f.read_text())]
     if not expectations:
         print("No exported files to check.")
         return 1

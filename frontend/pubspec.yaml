@@ -69,6 +69,8 @@ dependencies:
 
   # Ads (free tier only; removed for Pro). Includes the UMP consent SDK.
   google_mobile_ads: ^5.1.0
+  pointycastle: ^4.0.0
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

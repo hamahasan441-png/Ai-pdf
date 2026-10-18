@@ -45,6 +45,9 @@ class EditorController extends StateNotifier<EditorState> {
   /// the toolbar button states and reflect the *real* command history (not a
   /// proxy such as "the layer has items").
   bool get canUndo => _currentHistory.canUndo;
+
+  /// Whether an export is running (readable from widgets without [state]).
+  bool get isExporting => state.exporting;
   bool get canRedo => _currentHistory.canRedo;
   String? get nextUndoLabel => _currentHistory.nextUndoLabel;
   String? get nextRedoLabel => _currentHistory.nextRedoLabel;
@@ -230,6 +233,12 @@ class EditorController extends StateNotifier<EditorState> {
     _currentHistory.push(RemoveCommand(stroke, layer), layer);
     markDirty();
     return true;
+  }
+
+  /// Runs [command] and records it as one undoable step on the current page.
+  void record(EditorCommand command, PageLayer layer) {
+    _currentHistory.push(command, layer);
+    markDirty();
   }
 
   bool eraseLast(PageLayer layer) {

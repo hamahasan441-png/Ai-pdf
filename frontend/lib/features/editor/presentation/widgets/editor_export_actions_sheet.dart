@@ -45,6 +45,7 @@ Future<EditorExportActionResult?> showEditorExportActionsSheet(
             title: const Text('Share'),
             onTap: () => Navigator.pop(ctx, const EditorExportActionResult.share()),
           ),
+          _toolTile(ctx, Icons.lock_outline, l10n.toolProtect, outPath, '/tools/protect'),
           _toolTile(ctx, Icons.compress, l10n.toolCompress, outPath, '/tools/compress'),
           _toolTile(ctx, Icons.sync_alt, l10n.convert, outPath, '/tools/convert'),
           _toolTile(ctx, Icons.collections, l10n.toolPdfToImages, outPath, '/tools/pdf-to-images'),

@@ -47,10 +47,13 @@ class ReadingModeState {
   ColorFilter? get colorFilter {
     switch (mode) {
       case ReadingMode.dark:
+        // Invert, then turn the hue by 180° so colours keep their hue (a red
+        // mark stays reddish, a photo is not a negative) while white paper
+        // becomes black and black text white.
         return const ColorFilter.matrix([
-          -1, 0, 0, 0, 255,
-          0, -1, 0, 0, 255,
-          0, 0, -1, 0, 255,
+          0.574, -1.430, -0.144, 0, 255,
+          -0.426, -0.430, -0.144, 0, 255,
+          -0.426, -1.430, 0.856, 0, 255,
           0, 0, 0, 1, 0,
         ]);
       case ReadingMode.sepia:

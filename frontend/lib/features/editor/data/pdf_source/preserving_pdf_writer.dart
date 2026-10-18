@@ -2,6 +2,7 @@ import 'dart:convert' show latin1;
 import 'dart:io' show ZLibEncoder;
 import 'dart:typed_data';
 
+import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 
 /// One page of the output document.
@@ -40,12 +41,16 @@ class PreservingWriteReport {
   final int droppedFormFields;
   final bool pageLabelsDropped;
 
+  /// Form fields whose value was written from the editor.
+  final int filledFormFields;
+
   const PreservingWriteReport({
     required this.keptSourcePages,
     required this.generatedPages,
     required this.droppedAnnotations,
     required this.droppedFormFields,
     required this.pageLabelsDropped,
+    this.filledFormFields = 0,
   });
 }
 
@@ -80,7 +85,11 @@ class PreservingPdfWriter {
 
   PreservingWriteReport? report;
 
-  Uint8List write(List<OutputPageSpec> pages) {
+  /// Writes [pages]. [formValues] sets form fields by full name: a String
+  /// for text, single choice, check box and radio (the state name, "Off"
+  /// for unset), a List<String> for a multiple choice. Fields that are read
+  /// only, unknown or on removed pages are left as they are.
+  Uint8List write(List<OutputPageSpec> pages, {Map<String, Object> formValues = const {}}) {
     if (pages.isEmpty) throw const PdfSourceException('Nothing to export.');
     _next = source.maxObjectNumber + 1;
     final pagesRoot = _alloc();
@@ -155,6 +164,7 @@ class PreservingPdfWriter {
     final reordered = !_isIdentity(pages);
     var labelsDropped = false;
     if (reordered && catalog.remove('/PageLabels') != null) labelsDropped = true;
+    final filled = _applyFormValues(catalog, formValues);
     final open = source.resolve(catalog['/OpenAction']);
     if (open is PdfArray && open.items.isNotEmpty) {
       final target = open.items.first;
@@ -179,6 +189,7 @@ class PreservingPdfWriter {
       droppedAnnotations: removedAnnots.length,
       droppedFormFields: droppedFields,
       pageLabelsDropped: labelsDropped,
+      filledFormFields: filled,
     );
     return _assemble(rootRef, info is PdfRef && _out.containsKey(info.num) ? info : null);
   }
@@ -413,6 +424,108 @@ class PreservingPdfWriter {
       }
     }
     return dropped;
+  }
+
+  /// Writes [values] into the fields (/V) and their widgets (/AS for check
+  /// boxes and radios, a new appearance for text). Sets /NeedAppearances so
+  /// viewers redraw any field whose appearance could not be built here (text
+  /// Helvetica cannot draw, comb fields, rotated widgets, list boxes).
+  /// Returns how many fields were written.
+  int _applyFormValues(Map<String, PdfValue> catalog, Map<String, Object> values) {
+    if (values.isEmpty) return 0;
+    final acroRef = catalog['/AcroForm'];
+    final acro = source.resolve(acroRef);
+    if (acro is! PdfDict) return 0;
+    final edits = <int, Map<String, PdfValue>>{};
+    Map<String, PdfValue> entriesOf(int num) => edits.putIfAbsent(num, () {
+          final v = _overrides[num] ?? source.object(num)?.value;
+          return Map<String, PdfValue>.of(v is PdfDict ? v.entries : const {});
+        });
+
+    var written = 0;
+    for (final f in const AcroFormReader().read(source)) {
+      final v = values[f.name];
+      if (v == null || !f.fillable || _removed.contains(f.objNum)) continue;
+      final widgets = [for (final w in f.widgets) if (!_removed.contains(w.objNum)) w];
+      if (widgets.isEmpty) continue;
+      final field = entriesOf(f.objNum);
+      switch (f.kind) {
+        case AcroFieldKind.checkbox || AcroFieldKind.radio:
+          if (v is! String) continue;
+          field['/V'] = PdfName('/$v');
+          for (final w in widgets) {
+            entriesOf(w.objNum)['/AS'] = PdfName(w.onState == v ? '/$v' : '/Off');
+          }
+        case AcroFieldKind.text:
+          if (v is! String) continue;
+          field['/V'] = PdfString.ofText(v);
+          for (final w in widgets) {
+            _setAppearance(entriesOf(w.objNum), w, f.comb ? null : v, f.fontSize, multiline: f.multiline);
+          }
+        case AcroFieldKind.choice:
+          if (v is List<String>) {
+            field['/V'] = PdfArray([for (final s in v) PdfString.ofText(s)]);
+          } else if (v is String) {
+            field['/V'] = PdfString.ofText(v);
+          } else {
+            continue;
+          }
+          field.remove('/I'); // selected indices would contradict /V
+          for (final w in widgets) {
+            final shown = f.combo && v is String ? f.displayOf(v) : null;
+            _setAppearance(entriesOf(w.objNum), w, shown, f.fontSize);
+          }
+        default:
+          continue;
+      }
+      written++;
+    }
+    if (written == 0) return 0;
+    edits.forEach((n, e) => _overrides[n] = PdfDict(e));
+    final next = PdfDict({...acro.entries, '/NeedAppearances': const PdfBool(true)});
+    if (acroRef is PdfRef) {
+      _overrides[acroRef.num] = next;
+    } else {
+      catalog['/AcroForm'] = next;
+    }
+    return written;
+  }
+
+  /// A new normal appearance showing [text], or none (the viewer draws it)
+  /// when [text] is null or cannot be drawn here.
+  void _setAppearance(Map<String, PdfValue> widget, AcroWidget w, String? text, double fontSize,
+      {bool multiline = false}) {
+    final mk = source.resolve(widget['/MK']);
+    final turned = mk is PdfDict && source.resolve(mk['/R']) is PdfNum && (source.resolve(mk['/R']) as PdfNum).toInt() % 360 != 0;
+    final data = text == null || turned ? null : textAppearance(text, w.width, w.height, fontSize, multiline: multiline);
+    if (data == null) {
+      // An old appearance would keep showing the previous value.
+      widget.remove('/AP');
+      return;
+    }
+    final num = _alloc();
+    _out[num] = _OutObject(
+      num,
+      0,
+      PdfDict({
+        '/Type': const PdfName('/XObject'),
+        '/Subtype': const PdfName('/Form'),
+        '/BBox': PdfArray([PdfNum.of(0), PdfNum.of(0), PdfNum.of(w.width), PdfNum.of(w.height)]),
+        '/Resources': const PdfDict({
+          '/Font': PdfDict({
+            '/Helv': PdfDict({
+              '/Type': PdfName('/Font'),
+              '/Subtype': PdfName('/Type1'),
+              '/BaseFont': PdfName('/Helvetica'),
+              '/Encoding': PdfName('/WinAnsiEncoding'),
+            }),
+          }),
+        }),
+      }),
+      data,
+      mapped: true,
+    );
+    widget['/AP'] = PdfDict({'/N': PdfRef(num, 0)});
   }
 
   // ─── Graph walk ────────────────────────────────────────────────────────
