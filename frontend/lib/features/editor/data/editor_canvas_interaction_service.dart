@@ -11,8 +11,21 @@ class EditorCanvasInteractionService {
 
   const EditorCanvasInteractionService({InkSmoothService ink = const InkSmoothService()}) : _ink = ink;
 
-  Offset normalize(Offset local, Size canvas) =>
-      Offset(local.dx / canvas.width, local.dy / canvas.height);
+  /// Pointer position on the page as 0..1, clamped to the page.
+  ///
+  /// Null when there is no usable position: a canvas that is zero-sized or
+  /// not finite (during layout or a rotation) or a non-finite pointer. The
+  /// caller drops the event instead of storing NaN or infinity in a mark.
+  Offset? normalize(Offset local, Size canvas) {
+    if (!canvas.width.isFinite || !canvas.height.isFinite || canvas.width <= 0 || canvas.height <= 0) {
+      return null;
+    }
+    if (!local.dx.isFinite || !local.dy.isFinite) return null;
+    return Offset(
+      (local.dx / canvas.width).clamp(0.0, 1.0),
+      (local.dy / canvas.height).clamp(0.0, 1.0),
+    );
+  }
 
   ShapeType? shapePreviewType(EditTool tool) {
     switch (tool) {

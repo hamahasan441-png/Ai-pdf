@@ -1375,6 +1375,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_redactionController.state.active) {
       _shapeStart = n;
       _shapeEnd = n;
@@ -1452,6 +1453,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_redactionController.state.active && _shapeStart != null) {
       _shapeEnd = n;
       setState(() {});
@@ -1666,6 +1668,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onTapUp(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_tapTools.isTextTool(_tool)) {
       _editTextBox(_tapTools.buildTextDraft(n, _color, _textSize, _bold), isNew: true);
       return;
