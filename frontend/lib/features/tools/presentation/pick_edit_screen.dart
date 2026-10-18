@@ -554,9 +554,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return 'Could not open file: $error';
   }
 
+  /// Bumped by every [_loadFile]. An older open that finishes late must not
+  /// install its document over a newer one.
+  int _openGen = 0;
+
   /// Load a PDF/image from [path]. Optionally pre-place [fields] as editable
   /// text boxes (used by the AI form filler).
   Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
+    final gen = ++_openGen;
+    bool superseded() => !mounted || gen != _openGen;
     _editorController.beginOpenFile(fileName: name, filePath: path);
     setState(() {
       _pageCache.clear();
@@ -575,8 +581,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     });
 
     try {
-      await _doc?.close();
+      // Detach before closing so no render picks up a closed document.
+      final previous = _doc;
+      _doc = null;
+      _navTicket++;
+      await previous?.close();
       final loaded = await _documentService.openDocument(path);
+      if (superseded()) {
+        await loaded.document?.close();
+        return;
+      }
       _doc = loaded.document;
       _pageCount = loaded.pageCount;
       _sourcePages = [for (var i = 0; i < loaded.pageCount; i++) i];
@@ -606,10 +620,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _pageCache[0] = loaded.imageBytes!;
         _pageEdge[0] = _renderMaxEdge;
       }
+      if (superseded()) return;
       _editorController.finishOpenFile(pageCount: _pageCount, currentPage: 0);
 
       // Restore any previously saved annotations (crash recovery).
       final saved = await _persistence.loadChecked(path);
+      if (superseded()) return;
       if (saved.corrupt) {
         _showError('Saved marks could not be read. A backup was kept.');
       }
@@ -621,6 +637,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           SavedPageStructure(sources: [for (var i = 0; i < loaded.pageCount; i++) i]);
       if (!savedStructure.fits(loaded.pageCount, savedLayers.keys)) {
         await _persistence.quarantine(path);
+        if (superseded()) return;
         savedLayers = const {};
         _showError('Saved marks do not match this file. A backup was kept.');
       } else if (!savedStructure.isIdentity) {
@@ -657,6 +674,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       }
       if (mounted) setState(() {});
     } catch (e) {
+      if (superseded()) return;
       _editorController.failOpenFile(_openError(e));
       _showError(_openError(e));
       if (mounted) setState(() {});
@@ -1916,9 +1934,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _schedulePersist() {
     if (_persistScheduled) return;
     _persistScheduled = true;
+    // Read the path now: the microtask can run after dispose(), when the
+    // controller may no longer be read, and the last edits must still be saved.
+    final path = _editorController.filePath;
     Future.microtask(() {
       _persistScheduled = false;
-      final path = _editorController.state.filePath;
       final structure = _pageStructure;
       if (path != null && (_layers.isNotEmpty || !structure.isIdentity)) {
         _persistence.save(filePath: path, layers: _layers, structure: structure);
