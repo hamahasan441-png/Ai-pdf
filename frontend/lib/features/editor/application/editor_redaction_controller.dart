@@ -80,6 +80,9 @@ final editorRedactionProvider =
 class EditorRedactionController extends StateNotifier<EditorRedactionState> {
   EditorRedactionController() : super(const EditorRedactionState());
 
+  /// Whether redaction mode is on (readable from widgets without [state]).
+  bool get isActive => state.active;
+
   static const _svc = RedactionService();
 
   Map<int, List<PdfTextElement>> _pages = const {};

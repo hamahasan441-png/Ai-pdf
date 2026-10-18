@@ -1,4 +1,4 @@
-import 'dart:convert' show latin1;
+import 'dart:convert' show latin1, utf8;
 import 'dart:io' show ZLibCodec, ZLibDecoder;
 import 'dart:typed_data';
 
@@ -632,6 +632,35 @@ final class PdfString extends PdfValue {
   final Uint8List raw;
 
   const PdfString(this.raw);
+
+  /// A hex string token for [text]: PDFDocEncoding when every character is
+  /// printable Latin-1 (where it agrees with PDFDocEncoding), else UTF-16BE
+  /// with a byte order mark.
+  factory PdfString.ofText(String text) {
+    final runes = text.runes.toList();
+    final latin = runes.every((c) => (c >= 0x20 && c <= 0x7E) || (c >= 0xA0 && c <= 0xFF && c != 0xAD));
+    final bytes = latin ? runes : [0xFE, 0xFF, ...text.codeUnits.expand((u) => [u >> 8, u & 0xFF])];
+    final hex = StringBuffer('<');
+    for (final b in bytes) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    hex.write('>');
+    return PdfString(Uint8List.fromList(latin1.encode(hex.toString())));
+  }
+
+  /// The value as a text string: UTF-16BE or UTF-8 with a byte order mark,
+  /// otherwise PDFDocEncoding (read as Latin-1; they differ only in rarely
+  /// used punctuation).
+  String get text {
+    final b = bytes;
+    if (b.length >= 2 && b[0] == 0xFE && b[1] == 0xFF) {
+      return String.fromCharCodes([for (var i = 2; i + 1 < b.length; i += 2) (b[i] << 8) | b[i + 1]]);
+    }
+    if (b.length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) {
+      return utf8.decode(Uint8List.sublistView(b, 3), allowMalformed: true);
+    }
+    return latin1.decode(b);
+  }
 
   /// The string's value: escapes of a `(literal)` resolved, a `<hex>` string
   /// decoded.

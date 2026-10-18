@@ -17,6 +17,11 @@ import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_outline_reader.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
+import 'package:ai_pdf/features/editor/data/form_value_marks.dart';
+import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
@@ -573,6 +578,25 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() => _outlineController.load(headings));
   }
 
+  /// The PDF's own form, and the values the user changed (by field name).
+  AcroFormSnapshot _form = AcroFormSnapshot.empty;
+  final Map<String, Object> _formValues = {};
+
+  /// Reads the PDF's form fields off the UI thread.
+  Future<void> _loadForm(String path, int gen) async {
+    final AcroFormSnapshot form;
+    try {
+      form = await Isolate.run(() => AcroFormSnapshot.read(File(path).readAsBytesSync()));
+    } catch (e) {
+      // A form that cannot be read (encrypted, broken) leaves the PDF
+      // without fillable fields; it still opens and can be marked up.
+      debugPrint('Form not loaded: $e');
+      return;
+    }
+    if (!mounted || gen != _openGen) return;
+    setState(() => _form = form);
+  }
+
   /// Bumped by every [_loadFile]. An older open that finishes late must not
   /// install its document over a newer one.
   int _openGen = 0;
@@ -598,6 +622,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _multi.clear();
       _selected = null;
       _outlineController.clear();
+      _form = AcroFormSnapshot.empty;
+      _formValues.clear();
     });
 
     try {
@@ -619,6 +645,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (loaded.isPdf && _doc != null) {
         unawaited(_loadTextLayer(path, textGen));
         unawaited(_loadOutline(path, gen));
+        // Awaited: whether the PDF has a real form decides below whether the
+        // OCR field guesses run.
+        await _loadForm(path, gen);
+        if (superseded()) return;
         await _preloader.renderFirstPageProgressive(
           doc: _doc!,
           index: 0,
@@ -650,6 +680,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (saved.corrupt) {
         _showError('Saved marks could not be read. A backup was kept.');
       }
+      _formValues
+        ..clear()
+        ..addAll(saved.formValues);
       var savedLayers = saved.layers;
       // Marks are keyed by position in the edited document. Restore them only
       // together with the page order they were placed on, and only if that
@@ -688,7 +721,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _tool = EditTool.pan;
       }
 
-      if (fields == null) {
+      // A PDF with a real form is filled through its own fields; OCR guesses
+      // would draw a second set of boxes over them.
+      if (fields == null && _form.isEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _pageCache[_current] != null) _detectFields(silent: true);
         });
@@ -2045,8 +2080,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
     Future.microtask(() {
       _persistScheduled = false;
       final structure = _pageStructure;
-      if (path != null && (_layers.isNotEmpty || !structure.isIdentity)) {
-        _persistence.save(filePath: path, layers: _layers, structure: structure);
+      if (path != null && (_layers.isNotEmpty || !structure.isIdentity || _formValues.isNotEmpty)) {
+        _persistence.save(filePath: path, layers: _layers, structure: structure, formValues: Map.of(_formValues));
       }
     });
   }
@@ -2550,6 +2585,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
             quarterTurns: _pageQuarterTurns,
             sourcePages: _sourcePages,
             onlyIndices: onlyIndices,
+            formValues: Map.of(_formValues),
+            flattenedPageMarks: _formMarks(),
           );
           outPath = result.path;
         } on PreservingExportUnavailable catch (e) {
@@ -2590,15 +2627,28 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  Future<String?> _imageOnlyExport(List<int>? onlyIndices) => _exportService.renderToPdfFile(
+  /// Edited form values drawn as marks, for pages saved as images.
+  Map<int, List<EditorAnnotation>> _formMarks() => formValueMarks(
+        form: _form,
+        edits: _formValues,
+        sourcePages: _sourcePages,
+        quarterTurns: _pageQuarterTurns,
+      );
+
+  /// An image-only file has no form: every page carries its edited values.
+  Future<String?> _imageOnlyExport(List<int>? onlyIndices) {
+    var layers = _layers;
+    _formMarks().forEach((i, marks) => layers = withMarksBelow(layers, i, marks));
+    return _exportService.renderToPdfFile(
         doc: _doc,
         pageCache: _pageCache,
-        layers: _layers,
+        layers: layers,
         pageCount: _pageCount,
         quarterTurns: _pageQuarterTurns,
         sourcePages: _sourcePages,
         onlyIndices: onlyIndices,
       );
+  }
 
   /// Save the edited PDF, then — right there at save time — offer to share it
   /// or continue straight into another tool (compress, convert, …). The saved
@@ -2620,6 +2670,60 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final outPath = await _renderToPdfFile();
     if (outPath == null || !mounted) return;
     await _offerExportedFile(outPath);
+  }
+
+  /// The form fields on the shown page, or null when it has none.
+  Widget? _formLayer() {
+    if (_form.isEmpty || _current >= _sourcePages.length) return null;
+    final source = _sourcePages[_current];
+    // A duplicated page is exported without the form's widgets (they belong
+    // to the first copy), so only the first copy shows the fields.
+    if (source < 0 || _sourcePages.indexOf(source) != _current) return null;
+    final turns = _pageQuarterTurns[_current] ?? 0;
+    final placed = <PlacedAcroWidget>[
+      for (final f in _form.fields)
+        if (f.kind != AcroFieldKind.pushButton && f.kind != AcroFieldKind.signature)
+          for (final w in f.widgets)
+            if (w.pageIndex == source) (field: f, widget: w, rect: _form.rectOf(w, quarterTurns: turns)),
+    ];
+    if (placed.isEmpty) return null;
+    return AcroFormLayer(
+      widgets: placed,
+      edits: _formValues,
+      // Drawing tools keep drawing over fields; Move and Select fill them.
+      interactive: (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
+      onTap: _fillFormField,
+    );
+  }
+
+  Future<void> _fillFormField(AcroField field, AcroWidget widget) async {
+    final current = fieldValue(field, _formValues);
+    final Object? next;
+    switch (field.kind) {
+      case AcroFieldKind.checkbox:
+        next = current != 'Off' ? 'Off' : field.checkedState;
+      case AcroFieldKind.radio:
+        next = widget.onState ?? current;
+      case AcroFieldKind.text:
+        next = await showFormTextDialog(context, field: field, initial: '$current');
+      case AcroFieldKind.choice:
+        next = await showFormChoiceSheet(context, field: field, current: current);
+      default:
+        return;
+    }
+    if (next == null || !mounted) return;
+    bool same(Object a, Object b) =>
+        a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
+    if (same(next, current)) return;
+    // Back to the file's value: drop the edit instead of storing a copy.
+    final after = same(next, field.value) ? null : next;
+    setState(() {
+      _editorController.record(
+        FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
+        _layer,
+      );
+    });
+    _schedulePersist();
   }
 
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
@@ -2815,6 +2919,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             imageRenderer: _imageRenderer,
             stampRenderer: _stampRenderer,
             canvasRevision: _canvasRevision,
+            formLayer: _formLayer(),
             onTapUp: _onTapUp,
             onPanStart: _onPanStart,
             onPanUpdate: _onPanUpdate,

@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 
@@ -69,21 +66,7 @@ class PdfOutlineReader {
   }
 }
 
-/// Decodes a PDF text string: UTF-16BE with BOM, UTF-8 with BOM, otherwise
-/// PDFDocEncoding (Latin-1 is used for it; they differ only in rarely used
-/// punctuation).
-String? _text(PdfValue? v) {
-  if (v is! PdfString) return null;
-  final b = v.bytes;
-  if (b.length >= 2 && b[0] == 0xFE && b[1] == 0xFF) {
-    final units = <int>[for (var i = 2; i + 1 < b.length; i += 2) (b[i] << 8) | b[i + 1]];
-    return String.fromCharCodes(units);
-  }
-  if (b.length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) {
-    return utf8.decode(Uint8List.sublistView(b, 3), allowMalformed: true);
-  }
-  return latin1.decode(b);
-}
+String? _text(PdfValue? v) => v is PdfString ? v.text : null;
 
 /// Named destinations from /Dests (PDF 1.1) and the /Names /Dests tree.
 class _NamedDests {

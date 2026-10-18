@@ -232,6 +232,12 @@ class EditorController extends StateNotifier<EditorState> {
     return true;
   }
 
+  /// Runs [command] and records it as one undoable step on the current page.
+  void record(EditorCommand command, PageLayer layer) {
+    _currentHistory.push(command, layer);
+    markDirty();
+  }
+
   bool eraseLast(PageLayer layer) {
     if (layer.items.isEmpty) return false;
     final removed = layer.items.last;

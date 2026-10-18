@@ -363,9 +363,21 @@ StampAnnotation _stampFromJson(Map<String, dynamic> j) {
 // ---------------------------------------------------------------------------
 
 /// Serialize all pages' annotations into a JSON-compatible map.
+/// Saved form-field edits: field name → String, or List<String> for a
+/// multiple choice. Unknown value types are skipped.
+Map<String, Object> formValuesFromJson(Object? json) => {
+      if (json is Map)
+        for (final e in json.entries)
+          if (e.key is String && e.value is String)
+            e.key as String: e.value as String
+          else if (e.key is String && e.value is List && (e.value as List).every((v) => v is String))
+            e.key as String: List<String>.from(e.value as List),
+    };
+
 Map<String, dynamic> layersToJson(
   Map<int, PageLayer> layers, {
   SavedPageStructure? structure,
+  Map<String, Object> formValues = const {},
 }) {
   final pages = <String, dynamic>{};
   for (final entry in layers.entries) {
@@ -377,6 +389,7 @@ Map<String, dynamic> layersToJson(
     'version': 1,
     'pages': pages,
     if (structure != null) 'structure': structure.toJson(),
+    if (formValues.isNotEmpty) 'forms': formValues,
   };
 }
 

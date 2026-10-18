@@ -468,6 +468,32 @@ void main() {
       });
     });
 
+    testWidgets('filled form fields are written into the PDF', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/forms.pdf';
+        File(source).writeAsBytesSync(fixture('forms'));
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: const {},
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+          formValues: const {'name': 'Hama Hasan', 'agree': 'Yes', 'size': 'L', 'country': 'de'},
+        );
+        expect(result.report.filledFormFields, 4);
+        keepFor('service_forms', result.path, {
+          'pages': [
+            {'text_contains': [keep], 'widgets': 9},
+            {'widgets': 1, 'rotation': 90},
+          ],
+          'fields': {'name': 'Hama Hasan', 'agree': 'Yes', 'size': 'L', 'country': 'de', 'id': 'ID-7'},
+          'fields_drawn': ['name'],
+        });
+      });
+    });
+
     testWidgets('an encrypted source is reported, not silently flattened', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/enc.pdf';

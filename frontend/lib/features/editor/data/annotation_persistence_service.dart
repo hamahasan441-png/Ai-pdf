@@ -19,7 +19,15 @@ class AnnotationLoadResult {
   /// before structure was recorded, or when nothing was saved.
   final SavedPageStructure? structure;
 
-  const AnnotationLoadResult({required this.layers, this.corrupt = false, this.structure});
+  /// Edited form-field values, by field name.
+  final Map<String, Object> formValues;
+
+  const AnnotationLoadResult({
+    required this.layers,
+    this.corrupt = false,
+    this.structure,
+    this.formValues = const {},
+  });
 }
 
 /// Persists editor annotations to disk so work is never lost.
@@ -39,9 +47,10 @@ class AnnotationPersistenceService {
     required String filePath,
     required Map<int, PageLayer> layers,
     SavedPageStructure? structure,
+    Map<String, Object> formValues = const {},
   }) async {
     final savePath = await _savePath(filePath);
-    final content = jsonEncode(layersToJson(layers, structure: structure));
+    final content = jsonEncode(layersToJson(layers, structure: structure, formValues: formValues));
     final tmp = File('$savePath.tmp');
     await tmp.writeAsString(content, flush: true);
     await tmp.rename(savePath);
@@ -78,7 +87,11 @@ class AnnotationPersistenceService {
       if (json.containsKey('structure') && structure == null) {
         throw const FormatException('malformed page structure');
       }
-      return AnnotationLoadResult(layers: layersFromJson(json), structure: structure);
+      return AnnotationLoadResult(
+        layers: layersFromJson(json),
+        structure: structure,
+        formValues: formValuesFromJson(json['forms']),
+      );
     } catch (_) {
       final backup = File('$savePath.corrupt');
       if (backup.existsSync()) {

@@ -86,6 +86,14 @@ class PreservingExportResult {
 /// back with real redaction. In a source-preserving export the original text
 /// would still be in the file under such a mark, so these pages are saved as
 /// images instead. Hidden marks do not count.
+/// [layers] with [marks] added to page [index] beneath its own marks, or
+/// [layers] itself when there is nothing to add. The originals are not
+/// changed.
+Map<int, PageLayer> withMarksBelow(Map<int, PageLayer> layers, int index, List<EditorAnnotation>? marks) {
+  if (marks == null || marks.isEmpty) return layers;
+  return {...layers, index: PageLayer()..items.addAll([...marks, ...?layers[index]?.items])};
+}
+
 List<int> pagesThatHideContent(Map<int, PageLayer> layers, Iterable<int> slots) {
   final out = <int>[];
   for (final i in slots) {
@@ -195,6 +203,8 @@ class EditorExportService {
     Map<int, int> quarterTurns = const {},
     List<int>? onlyIndices,
     Future<Directory> Function()? outputDirectory,
+    Map<String, Object> formValues = const {},
+    Map<int, List<EditorAnnotation>> flattenedPageMarks = const {},
   }) async {
     final Uint8List sourceBytes;
     try {
@@ -236,11 +246,13 @@ class EditorExportService {
         throw PreservingExportUnavailable('Page ${i + 1} points at a page the PDF does not have.');
       }
       if (source < 0 || flatten.contains(i)) {
+        // A flattened page has no form any more: draw its edited values.
+        final pageLayers = withMarksBelow(layers, i, flattenedPageMarks[i]);
         final composed = await _composePagePng(
           index: i,
           doc: doc,
           pageCache: pageCache,
-          layers: layers,
+          layers: pageLayers,
           uni: uni,
           quarterTurns: turns,
           sourcePage: source,
@@ -252,7 +264,7 @@ class EditorExportService {
           pageW: size.width,
           pageH: size.height,
           image: pw.MemoryImage(composed.bytes),
-          layer: layers[i],
+          layer: pageLayers[i],
           fonts: fonts,
           uni: uni,
         );
@@ -308,7 +320,7 @@ class EditorExportService {
         final source = PdfObjectStore.parse(sourceBytes);
         final gen = generatedBytes == null ? null : PdfObjectStore.parse(generatedBytes);
         final writer = PreservingPdfWriter(source, gen);
-        final out = writer.write(specs);
+        final out = writer.write(specs, formValues: formValues);
         // Read our own output back before calling it a success.
         final check = PdfObjectStore.parse(out);
         if (check.pages.length != specs.length) {

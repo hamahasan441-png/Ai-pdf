@@ -65,6 +65,31 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
             far = pix.pixel(int(pix.width * 0.7), int(pix.height * 0.85))
             if is_red(far):
                 errors.append(f"page {i + 1}: red where no mark was drawn")
+    want_fields = exp.get("fields", {})
+    if want_fields:
+        got = {}
+        for page in doc:
+            for w in page.widgets():
+                if w.field_type in (fitz.PDF_WIDGET_TYPE_CHECKBOX, fitz.PDF_WIDGET_TYPE_RADIOBUTTON):
+                    if w.field_value not in ("Off", False, None, ""):
+                        got[w.field_name] = str(w.field_value)
+                    else:
+                        got.setdefault(w.field_name, "Off")
+                else:
+                    got[w.field_name] = w.field_value
+        for name, value in want_fields.items():
+            if got.get(name) != value:
+                errors.append(f"field {name!r} is {got.get(name)!r}, expected {value!r}")
+    for name in exp.get("fields_drawn", []):
+        hits = [(p, w) for p in doc for w in p.widgets() if w.field_name == name]
+        if not hits:
+            errors.append(f"field {name!r} not found")
+            continue
+        page, w = hits[0]
+        pix = page.get_pixmap(dpi=144, clip=w.rect, annots=True)
+        dark = sum(1 for i in range(pix.width * pix.height) if sum(pix.pixel(i % pix.width, i // pix.width)[:3]) < 300)
+        if dark < 5:
+            errors.append(f"field {name!r} shows no text")
     all_text = "".join(p.get_text() for p in doc)
     for t in exp.get("text_absent_everywhere", []):
         if t in all_text:

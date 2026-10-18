@@ -161,6 +161,85 @@ def images(path: pathlib.Path) -> None:
     path.write_bytes(bytes(out))
 
 
+def radio_group(doc, page, name: str, states: list[str], *, selected: str, x: float, y: float) -> None:
+    """A radio field [name] with one 18 pt widget per state, built from raw
+    objects (PyMuPDF cannot group radio widgets). The parent's xref is left
+    in doc._radio_parent for the caller to add to /AcroForm /Fields."""
+    page_h = page.rect.height
+    parent = doc.get_new_xref()
+    kids = []
+    for i, st in enumerate(states):
+        on = doc.get_new_xref()
+        doc.update_object(on, "<< /Type /XObject /Subtype /Form /BBox [0 0 18 18] >>")
+        doc.update_stream(on, b"0 g 9 9 m 4 9 4 4 9 4 c 14 4 14 14 9 14 c 4 14 4 9 9 9 c f")
+        off = doc.get_new_xref()
+        doc.update_object(off, "<< /Type /XObject /Subtype /Form /BBox [0 0 18 18] >>")
+        doc.update_stream(off, b"")
+        w = doc.get_new_xref()
+        x0 = x + 40 * i
+        y0 = page_h - y - 18
+        doc.update_object(
+            w,
+            f"<< /Type /Annot /Subtype /Widget /Rect [{x0} {y0} {x0 + 18} {y0 + 18}] /Parent {parent} 0 R "
+            f"/P {page.xref} 0 R /AS /{st if st == selected else 'Off'} "
+            f"/AP << /N << /{st} {on} 0 R /Off {off} 0 R >> >> /F 4 >>",
+        )
+        kids.append(w)
+    doc.update_object(
+        parent,
+        f"<< /FT /Btn /Ff 49152 /T ({name}) /V /{selected} /Kids [{' '.join(f'{k} 0 R' for k in kids)}] >>",
+    )
+    annots = doc.xref_get_key(page.xref, "Annots")
+    refs = " ".join(f"{k} 0 R" for k in kids)
+    if annots[0] == "array":
+        doc.xref_set_key(page.xref, "Annots", annots[1][:-1] + f" {refs}]")
+    else:
+        doc.xref_set_key(page.xref, "Annots", f"[{refs}]")
+    doc._radio_parent = parent
+
+
+def forms(path: pathlib.Path) -> None:
+    """Two pages of AcroForm fields, the second page turned by /Rotate 90.
+
+    Page 1: text "name" (pre-filled), multiline "address", read-only "id",
+    check box "agree", radio group "size" (S/M/L), combo box "country",
+    multi-select list "langs". Page 2: text "note".
+    """
+    doc = fitz.open()
+    p1 = doc.new_page(width=595, height=842)
+    p1.insert_text((72, 60), f"{KEEP} form", fontsize=14)
+
+    def add(page, kind, name, rect, **kw):
+        w = fitz.Widget()
+        w.field_type = kind
+        w.field_name = name
+        w.rect = fitz.Rect(*rect)
+        for k, v in kw.items():
+            setattr(w, k, v)
+        page.add_widget(w)
+        return w
+
+    add(p1, fitz.PDF_WIDGET_TYPE_TEXT, "name", (72, 100, 300, 124), field_value="Ada", text_fontsize=12)
+    add(p1, fitz.PDF_WIDGET_TYPE_TEXT, "address", (72, 140, 300, 200), field_flags=fitz.PDF_TX_FIELD_IS_MULTILINE, text_fontsize=0)
+    add(p1, fitz.PDF_WIDGET_TYPE_TEXT, "id", (320, 100, 500, 124), field_value="ID-7", field_flags=fitz.PDF_FIELD_IS_READ_ONLY)
+    add(p1, fitz.PDF_WIDGET_TYPE_CHECKBOX, "agree", (72, 220, 90, 238), field_value=False)
+    radio_group(doc, p1, "size", ["S", "M", "L"], selected="M", x=72, y=260)
+    add(p1, fitz.PDF_WIDGET_TYPE_COMBOBOX, "country", (72, 300, 300, 322), choice_values=[("iq", "Iraq"), ("de", "Germany")], field_value="iq")
+    add(p1, fitz.PDF_WIDGET_TYPE_LISTBOX, "langs", (72, 340, 300, 420), choice_values=["Kurdish", "Arabic", "English"], field_flags=fitz.PDF_CH_FIELD_IS_MULTI_SELECT)
+
+    acro = doc.xref_get_key(doc.pdf_catalog(), "AcroForm")
+    fields_owner = int(acro[1].split()[0]) if acro[0] == "xref" else doc.pdf_catalog()
+    key = "Fields" if acro[0] == "xref" else "AcroForm/Fields"
+    fields = doc.xref_get_key(fields_owner, key)[1]
+    doc.xref_set_key(fields_owner, key, fields[:-1] + f" {doc._radio_parent} 0 R]")
+
+    p2 = doc.new_page(width=400, height=600)
+    add(p2, fitz.PDF_WIDGET_TYPE_TEXT, "note", (50, 500, 250, 530), text_fontsize=10)
+    p2.set_rotation(90)
+    doc.save(path, garbage=4, deflate=True)
+    doc.close()
+
+
 def encrypted(path: pathlib.Path) -> None:
     doc = fitz.open()
     doc.new_page().insert_text((72, 72), KEEP)
@@ -174,6 +253,7 @@ def main() -> None:
     incremental(OUT / "incremental.pdf")
     inherited(OUT / "inherited.pdf")
     images(OUT / "images.pdf")
+    forms(OUT / "forms.pdf")
     encrypted(OUT / "encrypted.pdf")
     (OUT / "truncated.pdf").write_bytes((OUT / "rich_classic.pdf").read_bytes()[:900])
 
