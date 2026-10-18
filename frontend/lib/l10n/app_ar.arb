@@ -467,5 +467,6 @@
   "toolReadView": "قراءة",
   "toolPrint": "طباعة",
   "toolPrintDesc": "إرسال ملف PDF إلى طابعة",
-  "printFailed": "الطباعة غير متاحة: {error}"
+  "printFailed": "الطباعة غير متاحة: {error}",
+  "editTextFlattened": "الصفحة {pages}: تعذّر حذف النص المستبدل من ملف PDF نفسه، لذا حُفظت الصفحة كصورة."
 }

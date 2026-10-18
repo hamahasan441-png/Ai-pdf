@@ -113,6 +113,23 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
         dark = sum(1 for i in range(pix.width * pix.height) if sum(pix.pixel(i % pix.width, i // pix.width)[:3]) < 300)
         if dark < 5:
             errors.append(f"field {name!r} shows no text")
+    for want in exp.get("same_positions", []):
+        # Words that were not edited must not move: compare with the source.
+        src = fitz.open(pathlib.Path(__file__).resolve().parent.parent / "test" / "fixtures" / "pdf" / want["source"])
+        a = {w[4]: w[:4] for w in src[want["source_page"]].get_text("words")}
+        b = {w[4]: w[:4] for w in doc[want["page"]].get_text("words")}
+        for word in want["words"]:
+            if word not in b:
+                errors.append(f"page {want['page'] + 1}: {word!r} missing")
+            elif max(abs(x - y) for x, y in zip(a[word], b[word])) > 0.3:
+                errors.append(f"page {want['page'] + 1}: {word!r} moved from {a[word]} to {b[word]}")
+    for want in exp.get("color_at", []):
+        page = doc[want["page"]]
+        pix = page.get_pixmap(dpi=72)
+        x, y = want["at"]
+        px = pix.pixel(int(pix.width * x), int(pix.height * y))[:3]
+        if max(abs(c - e) for c, e in zip(px, want["rgb"])) > want.get("tol", 16):
+            errors.append(f"page {want['page'] + 1}: colour {px} at {want['at']}, expected {want['rgb']}")
     all_text = "".join(p.get_text() for p in doc)
     for t in exp.get("text_absent_everywhere", []):
         if t in all_text:

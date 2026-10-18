@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 
 /// One page of the output document.
 sealed class OutputPageSpec {
@@ -18,7 +19,12 @@ final class SourcePageSpec extends OutputPageSpec {
   final int quarterTurns;
   final int? overlayPage;
 
-  const SourcePageSpec(this.sourceIndex, {this.quarterTurns = 0, this.overlayPage});
+  const SourcePageSpec(this.sourceIndex, {this.quarterTurns = 0, this.overlayPage, this.eraseRegions = const []});
+
+  /// Boxes (0..1 from the displayed top left) whose glyphs are removed from
+  /// the page content. Writing fails if they cannot all be removed; check
+  /// with [erasePageText] first.
+  final List<List<double>> eraseRegions;
 }
 
 /// Use a page of the generated PDF as is (an inserted page, or a page
@@ -44,6 +50,9 @@ class PreservingWriteReport {
   /// Form fields whose value was written from the editor.
   final int filledFormFields;
 
+  /// Glyphs removed from page content for replaced text.
+  final int erasedGlyphs;
+
   const PreservingWriteReport({
     required this.keptSourcePages,
     required this.generatedPages,
@@ -51,6 +60,7 @@ class PreservingWriteReport {
     required this.droppedFormFields,
     required this.pageLabelsDropped,
     this.filledFormFields = 0,
+    this.erasedGlyphs = 0,
   });
 }
 
@@ -84,6 +94,7 @@ class PreservingPdfWriter {
   final List<int> _srcQueue = [];
 
   PreservingWriteReport? report;
+  var _erasedGlyphs = 0;
 
   /// Writes [pages]. [formValues] sets form fields by full name: a String
   /// for text, single choice, check box and radio (the state name, "Off"
@@ -190,6 +201,7 @@ class PreservingPdfWriter {
       droppedFormFields: droppedFields,
       pageLabelsDropped: labelsDropped,
       filledFormFields: filled,
+      erasedGlyphs: _erasedGlyphs,
     );
     return _assemble(rootRef, info is PdfRef && _out.containsKey(info.num) ? info : null);
   }
@@ -228,8 +240,25 @@ class PreservingPdfWriter {
     final rotate = (info.rotate + 90 * (spec.quarterTurns % 4)) % 360;
     if (rotate != 0) dict['/Rotate'] = PdfNum.of(rotate);
 
-    final contents = info.attr('/Contents');
+    var contents = info.attr('/Contents');
     final resources = info.attr('/Resources');
+    if (spec.eraseRegions.isNotEmpty) {
+      final erased = erasePageText(source, info, spec.eraseRegions, quarterTurns: spec.quarterTurns);
+      if (!erased.complete) {
+        throw PdfSourceException('Text on page ${spec.sourceIndex + 1} could not be removed.');
+      }
+      _erasedGlyphs += erased.removed;
+      final data = Uint8List.fromList(ZLibEncoder().convert(erased.content));
+      final num = _alloc();
+      _out[num] = _OutObject(
+        num,
+        0,
+        PdfDict({'/Filter': const PdfName('/FlateDecode'), '/Length': PdfNum.of(data.length)}),
+        data,
+        mapped: true,
+      );
+      contents = PdfRef(num, 0);
+    }
     final overlay = spec.overlayPage;
     if (overlay == null) {
       if (contents != null) dict['/Contents'] = contents;

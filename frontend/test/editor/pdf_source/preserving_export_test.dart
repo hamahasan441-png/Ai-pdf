@@ -494,6 +494,83 @@ void main() {
       });
     });
 
+    testWidgets('replaced text is removed from the page content, not covered', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/edit.pdf';
+        File(source).writeAsBytesSync(fixture('edit_text'));
+        final words = const PdfContentTextExtractor().extract(fixture('edit_text'));
+        Rect at(int page, String text) => words[page]!.firstWhere((w) => w.text == text).rect;
+        ShapeAnnotation erase(Rect r) =>
+            ShapeAnnotation(ShapeType.whiteout, r.topLeft, r.bottomRight, Colors.white, 1)..metadata[eraseTextKey] = true;
+        // Size from the word's height across the line (on the turned page the
+        // word stands on its side, so that is the box's width).
+        TextAnnotation replace(Rect r, String text) => TextAnnotation(r.topLeft, text, Colors.black, r.shortestSide * 0.8, false);
+        final r1 = at(0, '12345'), r2 = at(0, '999'), r3 = at(1, 'REPLACEME');
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {
+            0: PageLayer()..items.addAll([erase(r1), replace(r1, '67890'), erase(r2), replace(r2, '1000')]),
+            1: PageLayer()..items.addAll([erase(r3), replace(r3, 'NEWWORD')]),
+          },
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty, reason: 'both pages keep their vector content');
+        expect(result.report.erasedGlyphs, 5 + 3 + 9);
+        final out = File(result.path).readAsBytesSync();
+        expect(pageText(out, 0), allOf(contains('67890'), contains('1000'), contains('Invoice'), isNot(contains('12345'))));
+        expect(pageText(out, 0), isNot(contains('999')));
+        // On the turned page the new text runs vertically in user space, and
+        // this extractor returns vertical runs in pieces; compare without spaces.
+        expect(pageText(out, 1).replaceAll(' ', ''), allOf(contains('NEWWORD'), contains('Turned'), isNot(contains('REPLACEME'))));
+        expect(containsBytes(allStreams(PdfObjectStore.parse(out)), Uint8List.fromList(latin1.encode('12345'))), isFalse);
+        keepFor('service_edit_text', result.path, {
+          'pages': [
+            {'text_contains': ['67890', '1000', 'Invoice', 'today', keep], 'text_absent': ['12345', '999']},
+            // The new text is upright on a sideways page; MuPDF splits such
+            // text, so only the removal and the untouched words are checked.
+            {'text_contains': ['Turned', 'here', 'OLDWORD'], 'text_absent': ['REPLACEME'], 'rotation': 90},
+          ],
+          'text_absent_everywhere': ['12345', 'REPLACEME'],
+          'same_positions': [
+            {'source': 'edit_text.pdf', 'source_page': 0, 'page': 0, 'words': ['Invoice', 'number', 'due', 'today', 'Total', 'amount', 'EUR']},
+            {'source': 'edit_text.pdf', 'source_page': 1, 'page': 1, 'words': ['Turned', 'page', 'word', 'here', 'OLDWORD']},
+          ],
+          // Under "999": the light blue band survives (a whiteout would be white).
+          'color_at': [
+            {'page': 0, 'at': [r2.right - 0.004, r2.top + 0.004], 'rgb': [204, 230, 255]},
+          ],
+        });
+      });
+    });
+
+    testWidgets('text that cannot be removed cleanly falls back to a flattened page', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/edit.pdf';
+        File(source).writeAsBytesSync(fixture('edit_text'));
+        final words = const PdfContentTextExtractor().extract(fixture('edit_text'));
+        final r = words[1]!.firstWhere((w) => w.text == 'OLDWORD').rect; // Helvetica: no widths
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: {1: await whitePng(600, 400)},
+          layers: {
+            1: PageLayer()
+              ..items.add(ShapeAnnotation(ShapeType.whiteout, r.topLeft, r.bottomRight, Colors.white, 1)
+                ..metadata[eraseTextKey] = true),
+          },
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, [1]);
+        expect(pageText(File(result.path).readAsBytesSync(), 1), isNot(contains('OLDWORD')));
+      });
+    });
+
     testWidgets('an encrypted source is reported, not silently flattened', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/enc.pdf';

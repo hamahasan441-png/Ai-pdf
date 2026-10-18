@@ -531,5 +531,7 @@
   "toolPrint": "Print",
   "toolPrintDesc": "Send a PDF to a printer",
   "printFailed": "Printing is not available: {error}",
-  "@printFailed": {"placeholders": {"error": {"type": "String"}}}
+  "@printFailed": {"placeholders": {"error": {"type": "String"}}},
+  "editTextFlattened": "Page {pages}: the replaced text could not be removed from the PDF itself, so the page was saved as an image.",
+  "@editTextFlattened": {"placeholders": {"pages": {"type": "String"}}}
 }

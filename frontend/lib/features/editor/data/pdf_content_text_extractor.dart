@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'dart:ui' show Offset, Rect;
 
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
-import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Reads positioned text out of a PDF's content streams.
 ///
@@ -21,7 +20,6 @@ import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dar
 class PdfContentTextExtractor {
   const PdfContentTextExtractor();
 
-  static const _rtl = RtlDetectionService();
 
   Map<int, List<PdfTextElement>> extract(Uint8List bytes) {
     if (bytes.isEmpty || bytes.length > 80 * 1024 * 1024) return const {};
@@ -153,7 +151,7 @@ class _PdfDoc {
     final pagesRef = catalog.dict['/Pages']?.ref;
     if (pagesRef == null) return;
     final found = <_PageInfo>[];
-    _walkPages(pagesRef, null, null, found, 0);
+    _walkPages(pagesRef, null, null, found, 0, null, 0);
     for (var i = 0; i < found.length; i++) {
       final elements = _extractPage(found[i]);
       if (elements.isNotEmpty) pages[i] = elements;
@@ -285,24 +283,31 @@ class _PdfDoc {
     List<double>? inheritedBox,
     List<_PageInfo> out,
     int depth,
+    List<double>? inheritedCrop,
+    int inheritedRotate,
   ) {
     if (depth > 40 || out.length > 500) return;
     final obj = _load(objNum);
     final d = obj.dict;
     final box = _nums(d['/MediaBox']) ?? inheritedBox;
+    final crop = _nums(d['/CropBox']) ?? inheritedCrop;
+    final rotate = d['/Rotate']?.number?.round() ?? inheritedRotate;
     final resVal = d['/Resources'];
     final res = resVal == null ? inheritedRes : _asDict(resVal);
     final type = d['/Type']?.name;
     final isPage = type == '/Page' || (type != '/Pages' && d.containsKey('/Contents'));
     if (isPage && type != '/Pages') {
-      out.add(_PageInfo(d, res, box ?? const <double>[0, 0, 612, 792]));
+      final media = box ?? const <double>[0, 0, 612, 792];
+      // The renderer shows the CropBox (clipped to the MediaBox), turned by
+      // /Rotate; word boxes are given for that displayed page.
+      out.add(_PageInfo(d, res, crop != null && crop.length == 4 ? crop : media, rotate));
       return;
     }
     final kids = d['/Kids']?.array;
     if (kids == null) return;
     for (final k in kids) {
       final ref = k.ref;
-      if (ref != null) _walkPages(ref, res, box, out, depth + 1);
+      if (ref != null) _walkPages(ref, res, box, out, depth + 1, crop, rotate);
     }
   }
 
@@ -325,10 +330,10 @@ class _PdfDoc {
     if (streams.isEmpty) return const [];
     final fonts = _fonts(page.resources);
     final box = page.box;
-    final llx = box[0];
-    final lly = box[1];
-    final urx = (box.length > 2 ? box[2] : 612).toDouble();
-    final ury = (box.length > 3 ? box[3] : 792).toDouble();
+    final llx = box[0] < box[2] ? box[0] : box[2];
+    final lly = box[1] < box[3] ? box[1] : box[3];
+    final urx = (box[0] < box[2] ? box[2] : box[0]).toDouble();
+    final ury = (box[1] < box[3] ? box[3] : box[1]).toDouble();
     final pw = ((urx - llx).abs() < 1 ? 612.0 : (urx - llx)).toDouble();
     final ph = ((ury - lly).abs() < 1 ? 792.0 : (ury - lly)).toDouble();
     final out = <PdfTextElement>[];
@@ -338,7 +343,9 @@ class _PdfDoc {
       } catch (_) {}
       if (out.length > 20000) break;
     }
-    return out;
+    // Boxes so far are on the unrotated page; turn them as it is shown.
+    final turns = (((page.rotate % 360) + 360) % 360) ~/ 90;
+    return turns == 0 ? out : [for (final e in out) e.turned(turns)];
   }
 
   Map<String, _Font> _fonts(Map<String, _V>? resources) {
@@ -569,6 +576,9 @@ class _PdfDoc {
       if (!inText || codes.isEmpty) return;
       final two = font.twoByte && codes.length >= 2;
       final sb = StringBuffer();
+      // Each glyph's text and where it starts and ends along the line, so
+      // word boxes come from the real widths, not an even split.
+      final glyphs = <(String, double, double)>[];
       var advance = 0.0;
       var i = 0;
       while (i < codes.length) {
@@ -581,14 +591,13 @@ class _PdfDoc {
           i++;
         }
         final mapped = font.unicode[code];
-        if (mapped != null) {
-          sb.write(mapped);
-        } else if (code >= 32 && code < 256) {
-          sb.writeCharCode(code);
-        }
+        final t = mapped ?? (code >= 32 && code < 256 ? String.fromCharCode(code) : '');
+        sb.write(t);
+        final start = advance;
         var tx = font.widthOf(code) * fontSize + charSpace;
         if (code == 32) tx += wordSpace;
         advance += tx * (hScale / 100.0);
+        glyphs.add((t, start, start + font.widthOf(code) * fontSize * (hScale / 100.0)));
       }
       final shown = sb.toString();
       if (shown.trim().isEmpty || advance.abs() < 0.01) {
@@ -611,7 +620,31 @@ class _PdfDoc {
         final rect = Rect.fromLTRB(left, top, right, bottom);
         final horizontal = (rgt.dy - o.dy).abs() < 1.5;
         if (horizontal) {
-          out.addAll(_splitWords(shown, rect, fontSize, font));
+          Rect boxOf(double x0, double x1) {
+            final a = textToUser(x0, 0), b = textToUser(x1, 0), c = textToUser(x0, fontSize), d = textToUser(x1, fontSize);
+            return Rect.fromLTRB(
+              ((_min4(a.dx, b.dx, c.dx, d.dx) - llx) / pw).clamp(0.0, 1.0),
+              ((ury - _max4(a.dy, b.dy, c.dy, d.dy)) / ph).clamp(0.0, 1.0),
+              ((_max4(a.dx, b.dx, c.dx, d.dx) - llx) / pw).clamp(0.0, 1.0),
+              ((ury - _min4(a.dy, b.dy, c.dy, d.dy)) / ph).clamp(0.0, 1.0),
+            );
+          }
+
+          var i = 0;
+          while (i < glyphs.length) {
+            while (i < glyphs.length && glyphs[i].$1.trim().isEmpty) {
+              i++;
+            }
+            if (i >= glyphs.length) break;
+            final first = i;
+            final word = StringBuffer();
+            while (i < glyphs.length && glyphs[i].$1.trim().isNotEmpty) {
+              word.write(glyphs[i].$1);
+              i++;
+            }
+            final box = boxOf(glyphs[first].$2, glyphs[i - 1].$3);
+            if (box.width > 0.0005) out.add(_styled(word.toString(), box, fontSize, font));
+          }
         } else {
           out.add(_styled(shown.trim(), rect, fontSize, font));
         }
@@ -799,45 +832,6 @@ class _PdfDoc {
     );
   }
 
-  List<PdfTextElement> _splitWords(String text, Rect rect, double fontSize, _Font font) {
-    final clean = text.replaceAll('\n', ' ').replaceAll('\r', ' ');
-    if (!clean.contains(RegExp(r'\s'))) {
-      final t = clean.trim();
-      if (t.isEmpty) return const [];
-      return [_styled(t, rect, fontSize, font)];
-    }
-    final rtl = PdfContentTextExtractor._rtl.isRtl(clean);
-    final n = clean.length;
-    if (n == 0 || rect.width <= 0) return const [];
-    final unit = rect.width / n;
-    final out = <PdfTextElement>[];
-    var i = 0;
-    while (i < n) {
-      while (i < n && _space(clean.codeUnitAt(i))) {
-        i++;
-      }
-      if (i >= n) break;
-      final start = i;
-      while (i < n && !_space(clean.codeUnitAt(i))) {
-        i++;
-      }
-      final word = clean.substring(start, i);
-      final w = (i - start) * unit;
-      final left = rtl ? rect.right - i * unit : rect.left + start * unit;
-      if (w > 0.0005) {
-        out.add(_styled(
-          word,
-          Rect.fromLTWH(left, rect.top, w, rect.height),
-          fontSize,
-          font,
-        ));
-      }
-    }
-    return out;
-  }
-
-  bool _space(int c) => c == 32 || c == 9;
-
   _Obj _load(int n) {
     final hit = cache[n];
     if (hit != null) return hit;
@@ -969,8 +963,11 @@ class _PdfDoc {
 class _PageInfo {
   final Map<String, _V> dict;
   final Map<String, _V>? resources;
+
+  /// The displayed area: the CropBox, else the MediaBox.
   final List<double> box;
-  _PageInfo(this.dict, this.resources, this.box);
+  final int rotate;
+  _PageInfo(this.dict, this.resources, this.box, this.rotate);
 }
 
 class _Tok {

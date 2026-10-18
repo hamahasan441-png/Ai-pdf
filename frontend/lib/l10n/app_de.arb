@@ -467,5 +467,6 @@
   "toolReadView": "Lesen",
   "toolPrint": "Drucken",
   "toolPrintDesc": "PDF an einen Drucker senden",
-  "printFailed": "Drucken nicht möglich: {error}"
+  "printFailed": "Drucken nicht möglich: {error}",
+  "editTextFlattened": "Seite {pages}: Der ersetzte Text ließ sich nicht aus dem PDF entfernen, daher wurde die Seite als Bild gespeichert."
 }

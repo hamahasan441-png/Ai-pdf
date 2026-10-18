@@ -240,6 +240,32 @@ def forms(path: pathlib.Path) -> None:
     doc.close()
 
 
+def edit_text(path: pathlib.Path) -> None:
+    """Text to replace in place.
+
+    Page 1 (A4): lines in embedded Noto Sans (a CID font with /W widths, as
+    most real PDFs), one of them on a light blue band. Page 2 is turned by
+    /Rotate 90 and holds a Noto line and a Helvetica line (no widths, so a
+    replacement there must fall back to flattening the page).
+    """
+    font = OUT.parent.parent.parent / "assets" / "fonts" / "NotoSans-Regular.ttf"
+    doc = fitz.open()
+    p1 = doc.new_page(width=595, height=842)
+    p1.insert_font(fontname="noto", fontfile=str(font))
+    p1.insert_text((72, 100), "Invoice number 12345 due today", fontname="noto", fontsize=14)
+    p1.draw_rect(fitz.Rect(60, 130, 400, 160), color=None, fill=(0.8, 0.9, 1.0))
+    p1.insert_text((72, 150), "Total amount 999 EUR", fontname="noto", fontsize=14)
+    p1.insert_text((72, 200), f"{KEEP} below", fontname="noto", fontsize=12)
+    p2 = doc.new_page(width=400, height=600)
+    p2.insert_font(fontname="noto", fontfile=str(font))
+    p2.insert_text((50, 100), "Turned page word REPLACEME here", fontname="noto", fontsize=12)
+    p2.insert_text((50, 200), "Helvetica line OLDWORD", fontname="helv", fontsize=12)
+    p2.set_rotation(90)
+    doc.subset_fonts()  # real PDFs embed only the glyphs they use
+    doc.save(path, garbage=4, deflate=True)
+    doc.close()
+
+
 def encrypted(path: pathlib.Path) -> None:
     doc = fitz.open()
     doc.new_page().insert_text((72, 72), KEEP)
@@ -254,6 +280,7 @@ def main() -> None:
     inherited(OUT / "inherited.pdf")
     images(OUT / "images.pdf")
     forms(OUT / "forms.pdf")
+    edit_text(OUT / "edit_text.pdf")
     encrypted(OUT / "encrypted.pdf")
     (OUT / "truncated.pdf").write_bytes((OUT / "rich_classic.pdf").read_bytes()[:900])
 

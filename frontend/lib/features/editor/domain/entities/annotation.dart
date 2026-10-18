@@ -25,6 +25,13 @@ const String secureRedactionKey = 'secureRedaction';
 /// is not removed. This is not secure redaction.
 const String visualCoverKey = 'visualCover';
 
+/// A whiteout over existing PDF text that the user replaced. The export
+/// removes the PDF's own glyphs in this box from the page content (see
+/// PdfTextEraser) instead of covering them, so the old text is gone from
+/// the file and the page keeps its vector content. When that cannot be done
+/// cleanly the page is flattened, as for any whiteout.
+const String eraseTextKey = 'eraseText';
+
 /// The content under this box was removed from the working PDF by the
 /// server's PyMuPDF redaction, and the server's re-check of the output
 /// passed. The editor then swapped in that redacted file. Undoing the box
