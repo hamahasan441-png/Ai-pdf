@@ -97,7 +97,7 @@ Every push to `main` builds and publishes a signed APK:
 | **PDF render** | pdfx (PDFium) with capped-resolution memory-safe rendering |
 | **PDF create/export** | pdf package (vector text + raster composite) |
 | **Image processing** | image package (pure Dart, isolate-safe via `compute()`) |
-| **On-device OCR** | Google ML Kit Text Recognition |
+| **On-device OCR** | Google ML Kit Text Recognition, Latin-script model only: Arabic, Kurdish (Arabic script), Cyrillic, CJK and Devanagari text is not recognized |
 | **On-device RAG** | Custom BM25 retriever (pure Dart, no model download) |
 | **AI provider** | OpenRouter (400+ models, OpenAI-compatible) — direct from phone |
 | **Managed AI backend** | FastAPI + async SQLAlchemy + PostgreSQL |

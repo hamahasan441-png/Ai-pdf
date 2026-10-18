@@ -38,8 +38,15 @@ class EditorDocumentViewport extends StatefulWidget {
   State<EditorDocumentViewport> createState() => _EditorDocumentViewportState();
 }
 
-class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
+class _EditorDocumentViewportState extends State<EditorDocumentViewport>
+    with SingleTickerProviderStateMixin {
+  /// Zoom a double-tap goes to from the fitted page.
+  static const double doubleTapScale = 2.5;
+
   TransformationController? _owned;
+  late final AnimationController _zoomAnim;
+  Animation<Matrix4>? _zoomTween;
+  Offset? _doubleTapAt;
 
   TransformationController get _controller =>
       widget.transformationController ?? _owned!;
@@ -47,6 +54,8 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
   @override
   void initState() {
     super.initState();
+    _zoomAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))
+      ..addListener(_onZoomTick);
     if (widget.transformationController == null) {
       _owned = TransformationController();
     }
@@ -54,8 +63,35 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
 
   @override
   void dispose() {
+    _zoomAnim.dispose();
     _owned?.dispose();
     super.dispose();
+  }
+
+  void _onZoomTick() {
+    final t = _zoomTween;
+    if (t != null) _controller.value = t.value;
+  }
+
+  /// Double-tap: zoom in around the tapped point, or back to the whole page
+  /// when already zoomed in.
+  void _onDoubleTap() {
+    final at = _doubleTapAt;
+    if (at == null) return;
+    final current = _controller.value;
+    final Matrix4 target;
+    if (current.getMaxScaleOnAxis() > 1.01) {
+      target = Matrix4.identity();
+    } else {
+      final scene = _controller.toScene(at);
+      const s = doubleTapScale;
+      target = Matrix4.identity()
+        ..translate(-scene.dx * (s - 1), -scene.dy * (s - 1))
+        ..scale(s);
+    }
+    _zoomTween = Matrix4Tween(begin: current, end: target)
+        .animate(CurvedAnimation(parent: _zoomAnim, curve: Curves.easeOutCubic));
+    _zoomAnim.forward(from: 0);
   }
 
   @override
@@ -75,7 +111,7 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
             aspect: widget.pageAspect,
           );
 
-          return InteractiveViewer(
+          final viewer = InteractiveViewer(
             transformationController: _controller,
             maxScale: 5,
             panEnabled: widget.panEnabled,
@@ -87,6 +123,14 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
                 child: RepaintBoundary(child: widget.child),
               ),
             ),
+          );
+          // Only while panning: a double-tap recognizer delays every single
+          // tap, which would make drawing and placing text feel slow.
+          if (!widget.panEnabled || !widget.scaleEnabled) return viewer;
+          return GestureDetector(
+            onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+            onDoubleTap: _onDoubleTap,
+            child: viewer,
           );
         },
       ),

@@ -272,21 +272,27 @@ class EditorExportService {
       final h = crop[3] - crop[1];
       final pageW = finalRotate % 180 == 0 ? w : h;
       final pageH = finalRotate % 180 == 0 ? h : w;
-      final scale = math.min(exportMaxEdge / math.max(pageW, pageH), 3.0);
-      final marks = await _composePagePng(
-        index: i,
-        doc: null,
-        pageCache: const {},
-        layers: layers,
-        uni: uni,
-        marksOnlySize: Size((pageW * scale).roundToDouble(), (pageH * scale).roundToDouble()),
-      );
-      if (marks == null) throw ExportPageException(i, 'the marks could not be drawn');
+      // Rectangles, whiteouts and searchable text are written as vectors;
+      // a page with nothing else gets no transparent full-page bitmap.
+      pw.MemoryImage? marksImage;
+      if (layer.items.any((a) => a.visible && !_exportsAsVector(a, uni))) {
+        final scale = math.min(exportMaxEdge / math.max(pageW, pageH), 3.0);
+        final marks = await _composePagePng(
+          index: i,
+          doc: null,
+          pageCache: const {},
+          layers: layers,
+          uni: uni,
+          marksOnlySize: Size((pageW * scale).roundToDouble(), (pageH * scale).roundToDouble()),
+        );
+        if (marks == null) throw ExportPageException(i, 'the marks could not be drawn');
+        marksImage = pw.MemoryImage(marks.bytes);
+      }
       _addEditedPage(
         generated,
         pageW: pageW,
         pageH: pageH,
-        image: pw.MemoryImage(marks.bytes),
+        image: marksImage,
         layer: layer,
         fonts: fonts,
         uni: uni,
@@ -361,13 +367,24 @@ class EditorExportService {
     return Size(longPts * composed.width / composed.height, longPts);
   }
 
-  /// One output page: [image] (the page bitmap, or only the marks) with the
-  /// rectangle shapes and searchable text added as vectors on top.
+  /// Whether [_addEditedPage] draws [a] as a vector, so the marks bitmap does
+  /// not need it. Mirrors what [_paintMarks] skips.
+  bool _exportsAsVector(EditorAnnotation a, PdfUnicodeFonts uni) {
+    if (a is ShapeAnnotation) {
+      return !a.burnsBlackCover && (a.type == ShapeType.rect || a.type == ShapeType.whiteout);
+    }
+    if (a is TextAnnotation) return _canVectorize(a, uni);
+    return false;
+  }
+
+  /// One output page: [image] (the page bitmap, or only the marks; null when
+  /// every mark is a vector) with the rectangle shapes and searchable text
+  /// added as vectors on top.
   void _addEditedPage(
     pw.Document pdf, {
     required double pageW,
     required double pageH,
-    required pw.MemoryImage image,
+    required pw.MemoryImage? image,
     required PageLayer? layer,
     required EditorPdfFonts fonts,
     required PdfUnicodeFonts uni,
@@ -390,11 +407,12 @@ class EditorExportService {
           height: pageH,
           child: pw.Stack(
             children: [
-              pw.SizedBox(
-                width: pageW,
-                height: pageH,
-                child: pw.Image(image, fit: pw.BoxFit.fill),
-              ),
+              if (image != null)
+                pw.SizedBox(
+                  width: pageW,
+                  height: pageH,
+                  child: pw.Image(image, fit: pw.BoxFit.fill),
+                ),
               for (final s in shapes) _buildPdfShape(s, pageW, pageH),
               for (final t in texts) _buildPdfText(t, pageW, pageH, fonts, uni, rtlDetect),
             ],

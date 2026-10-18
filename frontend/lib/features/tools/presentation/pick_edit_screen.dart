@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -11,8 +12,12 @@ import 'package:go_router/go_router.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:share_plus/share_plus.dart';
 
+import '../../ai/presentation/ai_chat_screen.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_outline_reader.dart';
+import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
@@ -90,7 +95,6 @@ import 'package:ai_pdf/features/editor/domain/services/page_coordinate_transform
 import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
-import 'package:ai_pdf/features/editor/application/editor_multi_doc_chat_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
@@ -98,7 +102,6 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.da
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_highlight_painter.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_compare_view.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_multi_doc_chat_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_layer_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_review_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_ops_dialog.dart';
@@ -250,7 +253,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorRedactionController _redactionController = EditorRedactionController();
   final EditorOutlineController _outlineController = EditorOutlineController();
   final EditorCompareController _compareController = EditorCompareController();
-  final EditorMultiDocChatController _chatController = EditorMultiDocChatController();
   final EditorLayerController _layerController = EditorLayerController();
   final EditorFormReviewController _formReviewController = EditorFormReviewController();
   final EditorPageOpsController _pageOpsController = EditorPageOpsController();
@@ -294,7 +296,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _redactionController.dispose();
     _outlineController.dispose();
     _compareController.dispose();
-    _chatController.dispose();
     _layerController.dispose();
     _formReviewController.dispose();
     _pageOpsController.dispose();
@@ -554,9 +555,33 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return 'Could not open file: $error';
   }
 
+  /// Reads the PDF's bookmarks for the Outline panel, off the UI thread.
+  Future<void> _loadOutline(String path, int gen) async {
+    final List<OutlineHeading> headings;
+    try {
+      headings = await Isolate.run(
+        () => const PdfOutlineReader().read(PdfObjectStore.parse(File(path).readAsBytesSync())),
+      );
+    } catch (e) {
+      // An outline that cannot be read (encrypted file, broken structure)
+      // leaves the panel showing "no outline"; the document itself still
+      // opens and edits normally.
+      debugPrint('Outline not loaded: $e');
+      return;
+    }
+    if (!mounted || gen != _openGen) return;
+    setState(() => _outlineController.load(headings));
+  }
+
+  /// Bumped by every [_loadFile]. An older open that finishes late must not
+  /// install its document over a newer one.
+  int _openGen = 0;
+
   /// Load a PDF/image from [path]. Optionally pre-place [fields] as editable
   /// text boxes (used by the AI form filler).
   Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
+    final gen = ++_openGen;
+    bool superseded() => !mounted || gen != _openGen;
     _editorController.beginOpenFile(fileName: name, filePath: path);
     setState(() {
       _pageCache.clear();
@@ -572,11 +597,20 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _fields.clear();
       _multi.clear();
       _selected = null;
+      _outlineController.clear();
     });
 
     try {
-      await _doc?.close();
+      // Detach before closing so no render picks up a closed document.
+      final previous = _doc;
+      _doc = null;
+      _navTicket++;
+      await previous?.close();
       final loaded = await _documentService.openDocument(path);
+      if (superseded()) {
+        await loaded.document?.close();
+        return;
+      }
       _doc = loaded.document;
       _pageCount = loaded.pageCount;
       _sourcePages = [for (var i = 0; i < loaded.pageCount; i++) i];
@@ -584,6 +618,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final textGen = ++_textGen;
       if (loaded.isPdf && _doc != null) {
         unawaited(_loadTextLayer(path, textGen));
+        unawaited(_loadOutline(path, gen));
         await _preloader.renderFirstPageProgressive(
           doc: _doc!,
           index: 0,
@@ -606,10 +641,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _pageCache[0] = loaded.imageBytes!;
         _pageEdge[0] = _renderMaxEdge;
       }
+      if (superseded()) return;
       _editorController.finishOpenFile(pageCount: _pageCount, currentPage: 0);
 
       // Restore any previously saved annotations (crash recovery).
       final saved = await _persistence.loadChecked(path);
+      if (superseded()) return;
       if (saved.corrupt) {
         _showError('Saved marks could not be read. A backup was kept.');
       }
@@ -621,6 +658,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           SavedPageStructure(sources: [for (var i = 0; i < loaded.pageCount; i++) i]);
       if (!savedStructure.fits(loaded.pageCount, savedLayers.keys)) {
         await _persistence.quarantine(path);
+        if (superseded()) return;
         savedLayers = const {};
         _showError('Saved marks do not match this file. A backup was kept.');
       } else if (!savedStructure.isIdentity) {
@@ -657,6 +695,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       }
       if (mounted) setState(() {});
     } catch (e) {
+      if (superseded()) return;
       _editorController.failOpenFile(_openError(e));
       _showError(_openError(e));
       if (mounted) setState(() {});
@@ -1160,12 +1199,39 @@ class _PickEditScreenState extends State<PickEditScreen> {
     setState(() => _outlineController.toggle());
   }
 
+  /// Opens the document assistant on this file. It reads the file as saved
+  /// on disk; marks not yet exported are not part of it.
   void _toggleChat() {
-    setState(() => _chatController.toggle());
+    final path = _editorController.filePath;
+    if (path == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AiChatScreen(mode: AiChatMode.understand, initialPath: path),
+    ));
   }
 
   void _toggleLayers() {
     setState(() => _layerController.toggle());
+  }
+
+  static String _layerKind(String layerId) => layerId.substring('layer_'.length);
+
+  /// Applies a Layers-panel toggle to the marks of the current page as one
+  /// undoable step.
+  void _changeLayers(void Function(PageLayer page) change) {
+    final page = _layer;
+    final items = EditorLayerController.targets(page, null);
+    if (items.isEmpty) return;
+    setState(() {
+      _editorController.beginEdit(items, label: 'Layers');
+      change(page);
+      _editorController.commitEdit(page);
+      _canvasRevision++;
+      // A hidden or locked mark cannot stay selected.
+      final sel = _selected;
+      if (sel != null && (!sel.visible || sel.locked)) _selected = null;
+      _multi.removeWhere((a) => !a.visible || a.locked);
+    });
+    _schedulePersist();
   }
 
   void _showPageOps() {
@@ -1251,7 +1317,51 @@ class _PickEditScreenState extends State<PickEditScreen> {
       case 'insert':
         _insertBlankPage(index + 1);
         break;
+      case 'moveEarlier':
+        _movePage(index, index - 1);
+        break;
+      case 'moveLater':
+        _movePage(index, index + 1);
+        break;
     }
+  }
+
+  /// Moves page [from] to position [to]. Everything kept per page (bitmap,
+  /// marks, undo history, rotation, text, detected fields) moves with it,
+  /// and the export writes the pages in the new order.
+  void _movePage(int from, int to) {
+    if (from == to || from < 0 || to < 0 || from >= _pageCount || to >= _pageCount) return;
+    Map<int, T> moved<T>(Map<int, T> m) => PageSourceMap.afterMove(m, from, to);
+    void reKey<T>(Map<int, T> m) {
+      final next = moved(m);
+      m
+        ..clear()
+        ..addAll(next);
+    }
+
+    setState(() {
+      reKey(_pageCache);
+      reKey(_pageEdge);
+      reKey(_pageAspect);
+      reKey(_pageHeightPt);
+      reKey(_pageQuarterTurns);
+      reKey(_textLayer);
+      reKey(_layers);
+      reKey(_fields);
+      reKey(_editLines);
+      _editorController.shiftHistories(moved);
+      if (_sourcePages.length == _pageCount) {
+        final order = List<int>.of(_sourcePages);
+        order.insert(to, order.removeAt(from));
+        _sourcePages = order;
+      }
+      _current = PageSourceMap.movedIndex(_current, from, to);
+      _hasUnsavedChanges = true;
+      _selected = null;
+      _multi.clear();
+      _syncSearchPages();
+    });
+    _schedulePersist();
   }
 
   void _deletePage(int index) {
@@ -1333,6 +1443,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
   ) {
     _editorController.shiftHistories((h) => shift(h, index, oldCount));
     _schedulePersist();
+    // Detected fields and OCR lines belong to a page too; before, they stayed
+    // on the old index and showed up on the wrong page.
+    final fields = shift(Map<int, List<DetectedField>>.of(_fields), index, oldCount);
+    final lines = shift(Map<int, List<OcrLine>>.of(_editLines), index, oldCount);
+    _fields
+      ..clear()
+      ..addAll(fields);
+    _editLines
+      ..clear()
+      ..addAll(lines);
     final turns = shift(Map<int, int>.of(_pageQuarterTurns), index, oldCount);
     final aspects = shift(Map<int, double>.of(_pageAspect), index, oldCount);
     final heights = shift(Map<int, double>.of(_pageHeightPt), index, oldCount);
@@ -1357,6 +1477,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_redactionController.state.active) {
       _shapeStart = n;
       _shapeEnd = n;
@@ -1434,6 +1555,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_redactionController.state.active && _shapeStart != null) {
       _shapeEnd = n;
       setState(() {});
@@ -1648,6 +1770,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onTapUp(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
+    if (n == null) return;
     if (_tapTools.isTextTool(_tool)) {
       _editTextBox(_tapTools.buildTextDraft(n, _color, _textSize, _bold), isNew: true);
       return;
@@ -1815,7 +1938,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _pickSelectedTextColor() async {
     final sel = _selected;
     if (sel is! TextAnnotation) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color);
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color, title: 'Text colour');
     if (picked == null) return;
     setState(() {
       _editorController.beginEdit([sel], label: 'Text colour');
@@ -1916,9 +2039,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _schedulePersist() {
     if (_persistScheduled) return;
     _persistScheduled = true;
+    // Read the path now: the microtask can run after dispose(), when the
+    // controller may no longer be read, and the last edits must still be saved.
+    final path = _editorController.filePath;
     Future.microtask(() {
       _persistScheduled = false;
-      final path = _editorController.state.filePath;
       final structure = _pageStructure;
       if (path != null && (_layers.isNotEmpty || !structure.isIdentity)) {
         _persistence.save(filePath: path, layers: _layers, structure: structure);
@@ -2198,7 +2323,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _pickSelectionColor() async {
     final editing = _inlineEditing;
     if (editing == null || _inlineSelection.isCollapsed) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color);
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: 'Text colour');
     if (picked == null || !mounted) return;
     setState(() {
       editing.runs = _richText.applyStyle(
@@ -2574,24 +2699,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onClose: () => setState(() => _outlineController.hide()),
               )
             : null,
-        chatPanel: _chatController.state.visible
-            ? EditorMultiDocChatPanel(
-                chatState: _chatController.state,
-                onSend: (msg) => setState(() => _chatController.sendUserMessage(msg)),
-                onNewSession: () => setState(() => _chatController.newSession()),
-                onClose: () => setState(() => _chatController.hide()),
-                onRemoveDocument: (id) => setState(() => _chatController.removeDocument(id)),
-              )
-            : null,
         layerPanel: _layerController.state.visible
             ? EditorLayerPanel(
-                layerState: _layerController.state,
-                onToggleVisibility: (id) => setState(() => _layerController.toggleVisibility(id)),
-                onToggleLock: (id) => setState(() => _layerController.toggleLock(id)),
-                onSetOpacity: (id, v) => setState(() => _layerController.setOpacity(id, v)),
-                onReorder: (o, n) => setState(() => _layerController.reorder(o, n)),
-                onShowAll: () => setState(() => _layerController.showAll()),
-                onHideAll: () => setState(() => _layerController.hideAll()),
+                // Read from the marks on every build, so the rows always
+                // match the page, its undo state and page changes.
+                layerState: EditorLayerState(
+                  visible: true,
+                  layers: EditorLayerController.layersOf(_layers[_current]),
+                ),
+                onToggleVisibility: (id) =>
+                    _changeLayers((p) => EditorLayerController.toggleVisibility(p, _layerKind(id))),
+                onToggleLock: (id) => _changeLayers((p) => EditorLayerController.toggleLock(p, _layerKind(id))),
+                onShowAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, true)),
+                onHideAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, false)),
                 onClose: () => setState(() => _layerController.hide()),
               )
             : null,
@@ -2815,6 +2935,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onLayers: _toggleLayers,
           onPageOps: _showPageOps,
           onColorChanged: (c) => setState(() => _color = c),
+          recentColors: RecentColors.current,
+          onPickColor: () async {
+            final c = await showEditorTextColorPickerSheet(context, selectedColor: _color);
+            if (c != null && mounted) setState(() => _color = c);
+          },
           onStrokeChanged: (v) => setState(() => _stroke = v),
           onTextSizeChanged: (v) => setState(() => _textSize = v),
           onToggleBold: () => setState(() => _bold = !_bold),

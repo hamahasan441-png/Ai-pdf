@@ -1,3 +1,10 @@
+/// Marks a nullable [EditorState.copyWith] argument that was not passed.
+class _Keep {
+  const _Keep();
+}
+
+const _keep = _Keep();
+
 class EditorState {
   final bool loading;
   final bool exporting;
@@ -19,15 +26,19 @@ class EditorState {
     this.error,
   });
 
+  /// Omitting [filePath], [fileName] or [error] keeps the current value;
+  /// passing null clears it. (`error ?? this.error` could never clear a stale
+  /// error, so `beginExport` and a successful `finishExport` kept showing the
+  /// previous failure.)
   EditorState copyWith({
     bool? loading,
     bool? exporting,
     int? currentPage,
     int? pageCount,
     bool? hasUnsavedChanges,
-    String? filePath,
-    String? fileName,
-    String? error,
+    Object? filePath = _keep,
+    Object? fileName = _keep,
+    Object? error = _keep,
   }) {
     return EditorState(
       loading: loading ?? this.loading,
@@ -35,9 +46,9 @@ class EditorState {
       currentPage: currentPage ?? this.currentPage,
       pageCount: pageCount ?? this.pageCount,
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
-      filePath: filePath ?? this.filePath,
-      fileName: fileName ?? this.fileName,
-      error: error ?? this.error,
+      filePath: identical(filePath, _keep) ? this.filePath : filePath as String?,
+      fileName: identical(fileName, _keep) ? this.fileName : fileName as String?,
+      error: identical(error, _keep) ? this.error : error as String?,
     );
   }
 }

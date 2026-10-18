@@ -52,6 +52,10 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
             errors.append(f"page {i + 1}: {len(page.get_links())} links, expected {want['links']}")
         if "widgets" in want and len(list(page.widgets())) != want["widgets"]:
             errors.append(f"page {i + 1}: {len(list(page.widgets()))} widgets, expected {want['widgets']}")
+        if "images" in want and len(page.get_images()) != want["images"]:
+            errors.append(f"page {i + 1}: {len(page.get_images())} images, expected {want['images']}")
+        if "size" in want and [round(page.rect.width), round(page.rect.height)] != want["size"]:
+            errors.append(f"page {i + 1}: size {page.rect.width}x{page.rect.height}, expected {want['size']}")
         if "red_at" in want:
             pix = page.get_pixmap(dpi=72)
             x, y = want["red_at"]

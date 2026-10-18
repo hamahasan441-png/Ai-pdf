@@ -627,9 +627,80 @@ final class PdfName extends PdfValue {
 
 /// A literal or hex string, raw bytes including the delimiters.
 final class PdfString extends PdfValue {
+  /// The string token as it appears in the file, delimiters included, so it
+  /// can be written back unchanged.
   final Uint8List raw;
 
   const PdfString(this.raw);
+
+  /// The string's value: escapes of a `(literal)` resolved, a `<hex>` string
+  /// decoded.
+  Uint8List get bytes {
+    if (raw.isEmpty) return raw;
+    final out = BytesBuilder();
+    if (raw.first == 0x3C) {
+      int? high;
+      for (final c in raw.skip(1)) {
+        if (c == 0x3E) break;
+        final d = switch (c) {
+          >= 0x30 && <= 0x39 => c - 0x30,
+          >= 0x41 && <= 0x46 => c - 0x37,
+          >= 0x61 && <= 0x66 => c - 0x57,
+          _ => null,
+        };
+        if (d == null) continue; // whitespace
+        if (high == null) {
+          high = d;
+        } else {
+          out.addByte(high << 4 | d);
+          high = null;
+        }
+      }
+      if (high != null) out.addByte(high << 4); // odd digit count: pad with 0
+      return out.toBytes();
+    }
+    final end = raw.last == 0x29 ? raw.length - 1 : raw.length;
+    for (var i = 1; i < end; i++) {
+      final c = raw[i];
+      if (c == 0x0D) {
+        // An unescaped end of line in a literal reads as \n.
+        out.addByte(0x0A);
+        if (i + 1 < end && raw[i + 1] == 0x0A) i++;
+        continue;
+      }
+      if (c != 0x5C || i + 1 >= end) {
+        out.addByte(c);
+        continue;
+      }
+      final e = raw[++i];
+      switch (e) {
+        case 0x6E:
+          out.addByte(0x0A);
+        case 0x72:
+          out.addByte(0x0D);
+        case 0x74:
+          out.addByte(0x09);
+        case 0x62:
+          out.addByte(0x08);
+        case 0x66:
+          out.addByte(0x0C);
+        case 0x0D:
+          // Backslash + end of line: the line continues.
+          if (i + 1 < end && raw[i + 1] == 0x0A) i++;
+        case 0x0A:
+          break;
+        case >= 0x30 && <= 0x37:
+          var v = e - 0x30;
+          for (var k = 0; k < 2 && i + 1 < end && raw[i + 1] >= 0x30 && raw[i + 1] <= 0x37; k++) {
+            v = v * 8 + raw[++i] - 0x30;
+          }
+          out.addByte(v & 0xFF);
+        default:
+          out.addByte(e); // \( \) \\ and unknown escapes
+      }
+    }
+    return out.toBytes();
+  }
 }
 
 final class PdfBool extends PdfValue {

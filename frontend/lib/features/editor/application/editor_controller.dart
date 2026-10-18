@@ -88,6 +88,8 @@ class EditorController extends StateNotifier<EditorState> {
 
   void beginOpenFile({required String fileName, String? filePath}) {
     _histories.clear();
+    // An edit begun on the previous document must not commit into this one.
+    _txn = null;
     state = EditorState(
       loading: true,
       exporting: false,

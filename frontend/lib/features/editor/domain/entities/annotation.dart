@@ -108,13 +108,15 @@ class StrokeAnnotation extends EditorAnnotation {
   final double width;
   final bool highlight;
 
+  /// Copies [points]: [restoreFrom] rewrites the list in place, which throws
+  /// on a const or fixed-length list (an empty signature was `const []`).
   StrokeAnnotation(
-    this.points,
+    List<Offset> points,
     this.color,
     this.width,
     this.highlight, {
     super.id,
-  });
+  }) : points = List.of(points);
 
   @override
   Rect get bounds {
@@ -358,9 +360,17 @@ class TextAnnotation extends EditorAnnotation {
   @override
   Rect get bounds {
     // Estimate width: non-Latin (Arabic/Hebrew/CJK) chars are wider than Latin.
+    // Each line is measured on its own; a multi-line box is as wide as its
+    // longest line and as tall as all its lines.
     final avgCharWidth = _hasWideChars(text) ? 0.7 : 0.55;
-    final w = (text.length * size * avgCharWidth).clamp(0.02, 1.0);
-    return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), size * 1.3);
+    final lines = text.split('\n');
+    var longest = 0;
+    for (final line in lines) {
+      if (line.length > longest) longest = line.length;
+    }
+    final w = (longest * size * avgCharWidth).clamp(0.02, 1.0);
+    final lineH = size * 1.3 * (lineHeight > 0 ? lineHeight : 1.0);
+    return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), lineH * lines.length);
   }
 
   static bool _hasWideChars(String text) {
