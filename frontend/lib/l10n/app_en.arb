@@ -476,5 +476,14 @@
   "protectButton": "Protect PDF",
   "protectDone": "PDF protected",
   "protectDoneSub": "Opening it now asks for the password (AES-256).",
-  "protectAlreadyEncrypted": "This PDF already has a password."
+  "protectAlreadyEncrypted": "This PDF already has a password.",
+  "shortcutPaste": "Paste",
+  "shortcutDeselect": "Deselect",
+  "shortcutPreviousPage": "Previous page",
+  "shortcutNextPage": "Next page",
+  "shortcutFirstPage": "First page",
+  "shortcutLastPage": "Last page",
+  "shortcutFind": "Find in document",
+  "shortcutFitPage": "Fit page",
+  "shortcutHelp": "Keyboard shortcuts"
 }

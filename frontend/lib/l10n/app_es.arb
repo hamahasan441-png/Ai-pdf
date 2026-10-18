@@ -408,5 +408,14 @@
   "protectButton": "Proteger PDF",
   "protectDone": "PDF protegido",
   "protectDoneSub": "Ahora al abrirlo pide la contraseña (AES-256).",
-  "protectAlreadyEncrypted": "Este PDF ya tiene contraseña."
+  "protectAlreadyEncrypted": "Este PDF ya tiene contraseña.",
+  "shortcutPaste": "Pegar",
+  "shortcutDeselect": "Quitar selección",
+  "shortcutPreviousPage": "Página anterior",
+  "shortcutNextPage": "Página siguiente",
+  "shortcutFirstPage": "Primera página",
+  "shortcutLastPage": "Última página",
+  "shortcutFind": "Buscar en el documento",
+  "shortcutFitPage": "Ajustar página",
+  "shortcutHelp": "Atajos de teclado"
 }

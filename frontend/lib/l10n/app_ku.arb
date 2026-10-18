@@ -175,5 +175,14 @@
   "protectButton": "پاراستنی PDF",
   "protectDone": "PDF پارێزرا",
   "protectDoneSub": "ئێستا بۆ کردنەوەی داوای وشەی نهێنی دەکات (AES-256).",
-  "protectAlreadyEncrypted": "ئەم PDF ـە پێشتر وشەی نهێنی هەیە."
+  "protectAlreadyEncrypted": "ئەم PDF ـە پێشتر وشەی نهێنی هەیە.",
+  "shortcutPaste": "لکاندن",
+  "shortcutDeselect": "لابردنی هەڵبژاردن",
+  "shortcutPreviousPage": "پەڕەی پێشوو",
+  "shortcutNextPage": "پەڕەی دواتر",
+  "shortcutFirstPage": "یەکەم پەڕە",
+  "shortcutLastPage": "دوایین پەڕە",
+  "shortcutFind": "گەڕان لە بەڵگەنامەدا",
+  "shortcutFitPage": "گونجاندنی پەڕە",
+  "shortcutHelp": "کورتبڕەکانی تەختەکلیل"
 }

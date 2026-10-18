@@ -408,5 +408,14 @@
   "protectButton": "حماية PDF",
   "protectDone": "تمت حماية الملف",
   "protectDoneSub": "فتحه الآن يطلب كلمة المرور (AES-256).",
-  "protectAlreadyEncrypted": "هذا الملف محمي بكلمة مرور بالفعل."
+  "protectAlreadyEncrypted": "هذا الملف محمي بكلمة مرور بالفعل.",
+  "shortcutPaste": "لصق",
+  "shortcutDeselect": "إلغاء التحديد",
+  "shortcutPreviousPage": "الصفحة السابقة",
+  "shortcutNextPage": "الصفحة التالية",
+  "shortcutFirstPage": "الصفحة الأولى",
+  "shortcutLastPage": "الصفحة الأخيرة",
+  "shortcutFind": "البحث في المستند",
+  "shortcutFitPage": "ملاءمة الصفحة",
+  "shortcutHelp": "اختصارات لوحة المفاتيح"
 }

@@ -23,6 +23,8 @@ import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
+import 'package:ai_pdf/features/editor/application/editor_keyboard_shortcuts.dart';
 import 'package:ai_pdf/features/viewer/presentation/reading_mode_controller.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
@@ -85,7 +87,6 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_signature_pic
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_smart_fill_review_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_value_prompt_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_dialog.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_selection_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_toolbar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/inline_text_editor.dart';
@@ -106,9 +107,7 @@ import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart'
 import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_highlight_painter.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_compare_view.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_layer_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_review_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_ops_dialog.dart';
@@ -581,6 +580,66 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
     if (!mounted || gen != _openGen) return;
     setState(() => _outlineController.load(headings));
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (textInputHasFocus()) return KeyEventResult.ignored;
+    final keys = HardwareKeyboard.instance;
+    final shortcut = editorShortcutFor(
+      event.logicalKey,
+      control: keys.isControlPressed || keys.isMetaPressed,
+      shift: keys.isShiftPressed,
+    );
+    if (shortcut == null) return KeyEventResult.ignored;
+    final hasDoc = _pageCache.isNotEmpty;
+    switch (shortcut) {
+      case EditorShortcut.undo:
+        if (_editorController.canUndo) _undo();
+      case EditorShortcut.redo:
+        if (_editorController.canRedo) _redoAction();
+      case EditorShortcut.copy:
+        if (_selected != null) _copySelected();
+      case EditorShortcut.paste:
+        if (_clipboard != null) _pasteClipboard();
+      case EditorShortcut.duplicate:
+        if (_multi.isNotEmpty) {
+          _duplicateMulti();
+        } else if (_selected != null) {
+          _duplicateSelected();
+        }
+      case EditorShortcut.delete:
+        if (_multi.isNotEmpty) {
+          _deleteMulti();
+        } else if (_selected != null) {
+          _deleteSelected();
+        } else {
+          return KeyEventResult.ignored;
+        }
+      case EditorShortcut.deselect:
+        if (_selected == null && _multi.isEmpty) return KeyEventResult.ignored;
+        setState(() {
+          _selected = null;
+          _multi.clear();
+        });
+      case EditorShortcut.previousPage:
+        if (_current > 0) _goToPage(_current - 1);
+      case EditorShortcut.nextPage:
+        if (_current < _pageCount - 1) _goToPage(_current + 1);
+      case EditorShortcut.firstPage:
+        if (_current != 0 && hasDoc) _goToPage(0);
+      case EditorShortcut.lastPage:
+        if (_current != _pageCount - 1 && hasDoc) _goToPage(_pageCount - 1);
+      case EditorShortcut.find:
+        if (hasDoc) _toggleSearch();
+      case EditorShortcut.save:
+        if (hasDoc && !_editorController.isExporting) _export();
+      case EditorShortcut.fitPage:
+        _viewTransform.value = Matrix4.identity();
+      case EditorShortcut.help:
+        showEditorShortcutsSheet(context);
+    }
+    return KeyEventResult.handled;
   }
 
   /// How pages look on screen; never changes the exported file.
@@ -2763,6 +2822,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
           if (mounted) Navigator.of(context).pop();
         }
       },
+      // Hardware keyboard shortcuts. Keys go to a focused text field first.
+      child: Focus(
+      autofocus: true,
+      onKeyEvent: _onKey,
       child: Scaffold(
       backgroundColor: const Color(0xFF2B2B2B),
       // Prevent the Scaffold from shrinking when the soft keyboard opens.
@@ -3077,6 +3140,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     ),
+      ),
     );
   }
 

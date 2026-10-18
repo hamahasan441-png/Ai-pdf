@@ -163,5 +163,14 @@
   "protectButton": "محافظت از PDF",
   "protectDone": "PDF محافظت شد",
   "protectDoneSub": "اکنون باز کردن آن رمز می‌خواهد (AES-256).",
-  "protectAlreadyEncrypted": "این PDF از قبل رمز دارد."
+  "protectAlreadyEncrypted": "این PDF از قبل رمز دارد.",
+  "shortcutPaste": "چسباندن",
+  "shortcutDeselect": "لغو انتخاب",
+  "shortcutPreviousPage": "صفحهٔ قبل",
+  "shortcutNextPage": "صفحهٔ بعد",
+  "shortcutFirstPage": "صفحهٔ اول",
+  "shortcutLastPage": "صفحهٔ آخر",
+  "shortcutFind": "جستجو در سند",
+  "shortcutFitPage": "اندازهٔ صفحه",
+  "shortcutHelp": "میانبرهای صفحه‌کلید"
 }
