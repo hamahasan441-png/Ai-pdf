@@ -97,6 +97,24 @@ class EditorPageThumbnailStrip extends StatelessWidget {
                 onPageAction?.call(index, 'duplicate');
               },
             ),
+            if (index > 0)
+              ListTile(
+                leading: const Icon(Icons.arrow_back),
+                title: const Text('Move page earlier'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onPageAction?.call(index, 'moveEarlier');
+                },
+              ),
+            if (index < pageCount - 1)
+              ListTile(
+                leading: const Icon(Icons.arrow_forward),
+                title: const Text('Move page later'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onPageAction?.call(index, 'moveLater');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.add),
               title: const Text('Insert blank page after'),

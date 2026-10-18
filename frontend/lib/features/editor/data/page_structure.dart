@@ -25,6 +25,24 @@ class PageSourceMap {
     sources.insert(index + 1, sources[index]);
   }
 
+  /// Where page [i] ends up when the page at [from] is moved to [to].
+  static int movedIndex(int i, int from, int to) {
+    if (i == from) return to;
+    if (from < to && i > from && i <= to) return i - 1;
+    if (from > to && i >= to && i < from) return i + 1;
+    return i;
+  }
+
+  /// Re-key map entries the same way moving page [from] to [to] reorders
+  /// the editor.
+  static Map<int, T> afterMove<T>(Map<int, T> map, int from, int to) =>
+      {for (final e in map.entries) movedIndex(e.key, from, to): e.value};
+
+  void move(int from, int to) {
+    if (from < 0 || from >= sources.length || to < 0 || to >= sources.length) return;
+    sources.insert(to, sources.removeAt(from));
+  }
+
   /// Shift map entries the same way a page delete shifts the editor.
   static Map<int, T> afterDelete<T>(Map<int, T> map, int index, int oldCount) {
     final next = <int, T>{};

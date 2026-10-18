@@ -1317,7 +1317,51 @@ class _PickEditScreenState extends State<PickEditScreen> {
       case 'insert':
         _insertBlankPage(index + 1);
         break;
+      case 'moveEarlier':
+        _movePage(index, index - 1);
+        break;
+      case 'moveLater':
+        _movePage(index, index + 1);
+        break;
     }
+  }
+
+  /// Moves page [from] to position [to]. Everything kept per page (bitmap,
+  /// marks, undo history, rotation, text, detected fields) moves with it,
+  /// and the export writes the pages in the new order.
+  void _movePage(int from, int to) {
+    if (from == to || from < 0 || to < 0 || from >= _pageCount || to >= _pageCount) return;
+    Map<int, T> moved<T>(Map<int, T> m) => PageSourceMap.afterMove(m, from, to);
+    void reKey<T>(Map<int, T> m) {
+      final next = moved(m);
+      m
+        ..clear()
+        ..addAll(next);
+    }
+
+    setState(() {
+      reKey(_pageCache);
+      reKey(_pageEdge);
+      reKey(_pageAspect);
+      reKey(_pageHeightPt);
+      reKey(_pageQuarterTurns);
+      reKey(_textLayer);
+      reKey(_layers);
+      reKey(_fields);
+      reKey(_editLines);
+      _editorController.shiftHistories(moved);
+      if (_sourcePages.length == _pageCount) {
+        final order = List<int>.of(_sourcePages);
+        order.insert(to, order.removeAt(from));
+        _sourcePages = order;
+      }
+      _current = PageSourceMap.movedIndex(_current, from, to);
+      _hasUnsavedChanges = true;
+      _selected = null;
+      _multi.clear();
+      _syncSearchPages();
+    });
+    _schedulePersist();
   }
 
   void _deletePage(int index) {
@@ -1399,6 +1443,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
   ) {
     _editorController.shiftHistories((h) => shift(h, index, oldCount));
     _schedulePersist();
+    // Detected fields and OCR lines belong to a page too; before, they stayed
+    // on the old index and showed up on the wrong page.
+    final fields = shift(Map<int, List<DetectedField>>.of(_fields), index, oldCount);
+    final lines = shift(Map<int, List<OcrLine>>.of(_editLines), index, oldCount);
+    _fields
+      ..clear()
+      ..addAll(fields);
+    _editLines
+      ..clear()
+      ..addAll(lines);
     final turns = shift(Map<int, int>.of(_pageQuarterTurns), index, oldCount);
     final aspects = shift(Map<int, double>.of(_pageAspect), index, oldCount);
     final heights = shift(Map<int, double>.of(_pageHeightPt), index, oldCount);
