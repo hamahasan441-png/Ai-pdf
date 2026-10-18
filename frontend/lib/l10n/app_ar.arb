@@ -464,5 +464,8 @@
   "moreShapes": "الأشكال",
   "moreInsert": "إدراج",
   "moreDocument": "المستند",
-  "toolReadView": "قراءة"
+  "toolReadView": "قراءة",
+  "toolPrint": "طباعة",
+  "toolPrintDesc": "إرسال ملف PDF إلى طابعة",
+  "printFailed": "الطباعة غير متاحة: {error}"
 }

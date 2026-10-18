@@ -527,5 +527,9 @@
   "formOption": "{field}, option {option}",
   "@formOption": {"placeholders": {"field": {"type": "String"}, "option": {"type": "String"}}},
   "formSelected": "selected",
-  "toolReadView": "Read"
+  "toolReadView": "Read",
+  "toolPrint": "Print",
+  "toolPrintDesc": "Send a PDF to a printer",
+  "printFailed": "Printing is not available: {error}",
+  "@printFailed": {"placeholders": {"error": {"type": "String"}}}
 }

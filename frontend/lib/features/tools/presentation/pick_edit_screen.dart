@@ -13,6 +13,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:share_plus/share_plus.dart';
 
 import '../../ai/presentation/ai_chat_screen.dart';
+import '../services/pdf_print_service.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
@@ -2796,6 +2797,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (action == null || !mounted) return;
     if (action.kind == 'share') {
       await Share.shareXFiles([XFile(outPath)]);
+      return;
+    }
+    if (action.kind == 'print') {
+      try {
+        await const PdfPrintService().printFile(outPath, jobName: _fileName);
+      } catch (e) {
+        if (mounted) _showError(AppLocalizations.of(context)!.printFailed('$e'));
+      }
       return;
     }
     if (action.kind == 'route' && action.route != null) {

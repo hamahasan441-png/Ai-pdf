@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,12 +6,27 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ads/ad_banner.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/pressable_scale.dart';
+import '../services/pdf_print_service.dart';
 
 /// ToolsScreen - Hub for all document tools.
 ///
 /// Clearly separates:
 ///   OFFLINE tools (work without internet, on-device)
 ///   ONLINE tools (require AI backend)
+/// Pick a PDF and open the system print dialog for it.
+Future<void> _pickAndPrint(BuildContext context) async {
+  final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+  final path = result?.files.firstOrNull?.path;
+  if (path == null) return;
+  try {
+    await const PdfPrintService().printFile(path);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.printFailed('$e'))));
+  }
+}
+
 class ToolsScreen extends ConsumerWidget {
   const ToolsScreen({super.key});
 
@@ -112,6 +128,14 @@ class ToolsScreen extends ConsumerWidget {
                 color: const Color(0xFF2BB5A6),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/ocr'),
+              ),
+              _ToolCard(
+                icon: Icons.print_outlined,
+                label: l10n.toolPrint,
+                desc: l10n.toolPrintDesc,
+                color: const Color(0xFF5C6B7A),
+                badge: l10n.badgeOffline,
+                onTap: () => _pickAndPrint(context),
               ),
               _ToolCard(
                 icon: Icons.lock_outline,
