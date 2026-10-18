@@ -407,6 +407,67 @@ void main() {
       });
     });
 
+    testWidgets('images, an undecodable filter and mixed page sizes pass through unread', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/images.pdf';
+        File(source).writeAsBytesSync(fixture('images'));
+        final src = store('images');
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {
+            0: PageLayer()..items.add(TextAnnotation(const Offset(0.5, 0.05), 'OVERLAY-TEXT', Colors.black, 0.04, false)),
+          },
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty, reason: 'nothing may fall back to an image page');
+        final bytes = File(result.path).readAsBytesSync();
+        final back = PdfObjectStore.parse(bytes);
+        expect(back.pages.map((p) => p.mediaBox), [
+          [0, 0, 400, 300],
+          [0, 0, 200, 500],
+        ]);
+        expect(containsBytes(pageContent(back, 0), pageContent(src, 0)), isTrue, reason: 'vector path and text kept');
+        expect(pageContent(back, 1), pageContent(src, 1));
+        expect(pageText(bytes, 0), allOf(contains(keep), contains('OVERLAY-TEXT')));
+
+        // Each image keeps its encoded bytes and its filter, including the
+        // JBIG2 stream the app cannot decode and the SMask and globals it
+        // points to.
+        PdfDict xobjects(PdfObjectStore s) =>
+            s.resolve((s.resolve(s.pages[0].attr('/Resources')) as PdfDict)['/XObject']) as PdfDict;
+        final xobjs = xobjects(back);
+        final srcXobjs = xobjects(src);
+        for (final name in ['/ImJ', '/ImF', '/ImB']) {
+          final a = back.object((xobjs[name] as PdfRef).num)!;
+          final b = src.object((srcXobjs[name] as PdfRef).num)!;
+          expect(a.stream, b.stream, reason: '$name raw bytes');
+          expect((a.value as PdfDict)['/Filter'], isA<PdfName>());
+          expect(((a.value as PdfDict)['/Filter'] as PdfName).name, ((b.value as PdfDict)['/Filter'] as PdfName).name);
+        }
+        final jbig = back.object((xobjs['/ImB'] as PdfRef).num)!.value as PdfDict;
+        final globals = (back.resolve(jbig['/DecodeParms']) as PdfDict)['/JBIG2Globals'] as PdfRef;
+        expect(latin1.decode(back.object(globals.num)!.stream!), 'PDOCZY-JBIG2-GLOBALS');
+        final masked = back.object((xobjs['/ImF'] as PdfRef).num)!.value as PdfDict;
+        expect(back.object((masked['/SMask'] as PdfRef).num)!.stream, isNotNull);
+        int imageCount(PdfObjectStore s) => [
+              for (var n = 1; n <= s.maxObjectNumber; n++)
+                if (s.object(n)?.value case PdfDict d when (d['/Subtype'] as PdfName?)?.name == '/Image') n,
+            ].length;
+        expect(imageCount(back), imageCount(src),
+            reason: 'a text-only overlay is vector; no transparent page bitmap is added');
+        keepFor('service_images', result.path, {
+          'pages': [
+            {'text_contains': [keep, 'OVERLAY-TEXT'], 'images': 3, 'size': [400, 300]},
+            {'images': 0, 'size': [200, 500]},
+          ],
+        });
+      });
+    });
+
     testWidgets('an encrypted source is reported, not silently flattened', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/enc.pdf';

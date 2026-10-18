@@ -22,6 +22,8 @@ class OcrResult {
 }
 
 /// On-device OCR via Google ML Kit (bundled Latin model, fully offline).
+/// Only Latin-script text is recognized; Arabic-script, Cyrillic, CJK and
+/// Devanagari pages come back empty or as garbage.
 ///
 /// Reusable: keep one instance, call [recognize] as needed, and [dispose] when
 /// done. All work happens on-device — nothing is uploaded.
