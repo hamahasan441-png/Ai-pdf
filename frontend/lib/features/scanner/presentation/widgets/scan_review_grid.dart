@@ -66,13 +66,26 @@ class ScanReviewGrid extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Page ${i + 1}',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface)),
+                      Row(
+                        children: [
+                          Text('Page ${i + 1}',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurface)),
+                          if (page.hasOcrText) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.text_snippet,
+                                size: 14, color: cs.primary),
+                          ],
+                        ],
+                      ),
                       Text(page.filter.label,
                           style: TextStyle(
                               fontSize: 12, color: cs.onSurfaceVariant)),
+                      if (page.hasOcrText)
+                        Text('Text detected',
+                            style: TextStyle(
+                                fontSize: 11, color: cs.primary)),
                     ],
                   ),
                 ),

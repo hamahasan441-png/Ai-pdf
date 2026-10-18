@@ -53,6 +53,7 @@ class _M {
   _M copy() => _M(a, b, c, d, e, f);
 }
 
+/// a ∘ b: the matrix that applies [b] first, then [a].
 _M _mul(_M a, _M b) => _M(
       a.a * b.a + a.c * b.b,
       a.b * b.a + a.d * b.b,
@@ -515,7 +516,7 @@ class _PdfDoc {
         if (obj.dict['/Subtype']?.name != '/Form' || obj.stream == null) return;
         final formResources = _asDict(obj.dict['/Resources']) ?? resources;
         final m = _nums6(obj.dict['/Matrix']);
-        final formCtm = m == null ? ctm.copy() : _mul(_M(m[0], m[1], m[2], m[3], m[4], m[5]), ctm);
+        final formCtm = m == null ? ctm.copy() : _mul(ctm, _M(m[0], m[1], m[2], m[3], m[4], m[5]));
         _readContent(
           _decodeStream(obj.dict, obj.stream!),
           _fonts(formResources),
@@ -645,7 +646,8 @@ class _PdfDoc {
               n[4].number ?? 0,
               n[5].number ?? 0,
             );
-            ctm = _mul(m, ctm);
+            // cm applies the new matrix first, then the current CTM.
+            ctm = _mul(ctm, m);
           }
           break;
         case 'BT':
