@@ -3,7 +3,24 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 
+bool _same(Color a, Color b) => a.toARGB32() == b.toARGB32();
+
 class EditorToolbar extends StatelessWidget {
+  static const List<Color> presets = [Color(0xFFFFEB3B), Colors.red, Colors.blue, Colors.black, Colors.green];
+
+  /// The swatches in the style row: the presets, then the current or most
+  /// recent colour that is not a preset, so a picked colour stays one tap
+  /// away. One extra only: on a 360 dp phone the size slider needs the rest.
+  static List<Color> quickColors(Color current, List<Color> recent) {
+    final extra = <Color>[];
+    for (final c in [current, ...recent]) {
+      if (extra.isNotEmpty) break;
+      if (presets.any((p) => _same(p, c)) || extra.any((e) => _same(e, c))) continue;
+      extra.add(c);
+    }
+    return [...presets, ...extra];
+  }
+
   final EditTool tool;
   final bool detecting;
   final bool showFields;
@@ -33,6 +50,12 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback? onLayers;
   final VoidCallback? onPageOps;
   final ValueChanged<Color> onColorChanged;
+
+  /// Opens the full colour picker. The button is hidden when null.
+  final VoidCallback? onPickColor;
+
+  /// Recently picked colours; the newest that is not a preset is shown.
+  final List<Color> recentColors;
   final ValueChanged<double> onStrokeChanged;
   final ValueChanged<double> onTextSizeChanged;
   final VoidCallback onToggleBold;
@@ -68,6 +91,8 @@ class EditorToolbar extends StatelessWidget {
     this.onLayers,
     this.onPageOps,
     required this.onColorChanged,
+    this.onPickColor,
+    this.recentColors = const [],
     required this.onStrokeChanged,
     required this.onTextSizeChanged,
     required this.onToggleBold,
@@ -118,24 +143,36 @@ class EditorToolbar extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 6, left: 10, right: 10),
                 child: Row(
                   children: [
-                    ...[const Color(0xFFFFEB3B), Colors.red, Colors.blue, Colors.black, Colors.green, Colors.orange, Colors.purple].map(
-                      (c) => GestureDetector(
-                        onTap: () => onColorChanged(c),
-                        child: Container(
-                          width: 26,
-                          height: 26,
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: color == c ? cs.primary : Colors.grey.shade400,
-                              width: color == c ? 3 : 1,
+                    ...quickColors(color, recentColors).map(
+                      (c) => Semantics(
+                        button: true,
+                        selected: _same(color, c),
+                        label: 'Colour',
+                        child: GestureDetector(
+                          onTap: () => onColorChanged(c),
+                          child: Container(
+                            width: 26,
+                            height: 26,
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _same(color, c) ? cs.primary : Colors.grey.shade400,
+                                width: _same(color, c) ? 3 : 1,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
+                    if (onPickColor != null)
+                      IconButton(
+                        tooltip: 'More colours',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.palette_outlined),
+                        onPressed: onPickColor,
+                      ),
                     if (tool == EditTool.draw || isShape)
                       Expanded(
                         child: Slider(

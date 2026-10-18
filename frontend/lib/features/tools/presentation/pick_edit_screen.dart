@@ -1884,7 +1884,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _pickSelectedTextColor() async {
     final sel = _selected;
     if (sel is! TextAnnotation) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color);
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color, title: 'Text colour');
     if (picked == null) return;
     setState(() {
       _editorController.beginEdit([sel], label: 'Text colour');
@@ -2269,7 +2269,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _pickSelectionColor() async {
     final editing = _inlineEditing;
     if (editing == null || _inlineSelection.isCollapsed) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color);
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: 'Text colour');
     if (picked == null || !mounted) return;
     setState(() {
       editing.runs = _richText.applyStyle(
@@ -2881,6 +2881,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onLayers: _toggleLayers,
           onPageOps: _showPageOps,
           onColorChanged: (c) => setState(() => _color = c),
+          recentColors: RecentColors.current,
+          onPickColor: () async {
+            final c = await showEditorTextColorPickerSheet(context, selectedColor: _color);
+            if (c != null && mounted) setState(() => _color = c);
+          },
           onStrokeChanged: (v) => setState(() => _stroke = v),
           onTextSizeChanged: (v) => setState(() => _textSize = v),
           onToggleBold: () => setState(() => _bold = !_bold),
