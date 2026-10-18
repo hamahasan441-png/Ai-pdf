@@ -16,14 +16,12 @@ import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.da
 /// not drawn and not exported; locked marks cannot be selected or moved.
 class AnnotationLayer {
   final String kind;
-  final String label;
   final bool visible;
   final bool locked;
   final int itemCount;
 
   const AnnotationLayer({
     required this.kind,
-    required this.label,
     required this.visible,
     required this.locked,
     required this.itemCount,
@@ -86,7 +84,6 @@ class EditorLayerController extends StateNotifier<EditorLayerState> {
         if (byKind[k] case final items?)
           AnnotationLayer(
             kind: k,
-            label: _labelFor(k),
             visible: items.every((a) => a.visible),
             locked: items.every((a) => a.locked),
             itemCount: items.length,
@@ -123,16 +120,4 @@ class EditorLayerController extends StateNotifier<EditorLayerState> {
       a.visible = visible;
     }
   }
-
-  static String _labelFor(String kind) => switch (kind) {
-        'text' => 'Text',
-        'shape' => 'Shapes',
-        'stroke' => 'Drawings',
-        'markup' => 'Highlights',
-        'image' => 'Images',
-        'stamp' => 'Stamps',
-        'note' => 'Notes',
-        'form' => 'Form fields',
-        _ => kind,
-      };
 }

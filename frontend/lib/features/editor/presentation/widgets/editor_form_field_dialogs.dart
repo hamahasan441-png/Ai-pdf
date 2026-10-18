@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 
@@ -127,7 +128,7 @@ class _ChoiceSheetState extends State<_ChoiceSheet> {
                   if (f.editableCombo)
                     ListTile(
                       leading: const Icon(Icons.edit_outlined),
-                      title: const Text('Type a value'),
+                      title: Text(AppLocalizations.of(context)!.formTypeValue),
                       onTap: () async {
                         final typed = await showFormTextDialog(
                           context,

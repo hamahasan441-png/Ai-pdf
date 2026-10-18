@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Colours the user picked recently, newest first, kept across sessions.
@@ -88,7 +89,7 @@ final List<Color> editorPalette = [
 Future<Color?> showEditorTextColorPickerSheet(
   BuildContext context, {
   required Color selectedColor,
-  String title = 'Colour',
+  String? title,
 }) async {
   if (RecentColors.current.isEmpty) await RecentColors.load();
   if (!context.mounted) return null;
@@ -96,7 +97,11 @@ Future<Color?> showEditorTextColorPickerSheet(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (ctx) => _ColorPicker(title: title, selected: selectedColor, recent: RecentColors.current),
+    builder: (ctx) => _ColorPicker(
+      title: title ?? AppLocalizations.of(ctx)!.colorTitle,
+      selected: selectedColor,
+      recent: RecentColors.current,
+    ),
   );
   if (picked != null) await RecentColors.push(picked);
   return picked;
@@ -126,7 +131,7 @@ class _ColorPickerState extends State<_ColorPicker> {
   void _submitHex() {
     final c = parseHex(_hex.text);
     if (c == null) {
-      setState(() => _hexError = 'Use #RRGGBB, for example #1E88E5');
+      setState(() => _hexError = AppLocalizations.of(context)!.colorHexError);
       return;
     }
     Navigator.pop(context, c);
@@ -160,6 +165,7 @@ class _ColorPickerState extends State<_ColorPicker> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context)!;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
@@ -171,7 +177,7 @@ class _ColorPickerState extends State<_ColorPicker> {
               Text(widget.title, style: text.titleMedium),
               if (widget.recent.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text('Recent', style: text.labelMedium),
+                Text(l10n.colorRecent, style: text.labelMedium),
                 const SizedBox(height: 8),
                 Wrap(spacing: 10, runSpacing: 10, children: [for (final c in widget.recent) _swatch(c)]),
               ],
@@ -184,7 +190,7 @@ class _ColorPickerState extends State<_ColorPicker> {
                     child: TextField(
                       controller: _hex,
                       decoration: InputDecoration(
-                        labelText: 'Hex',
+                        labelText: l10n.colorHex,
                         errorText: _hexError,
                         border: const OutlineInputBorder(),
                         isDense: true,
@@ -197,7 +203,7 @@ class _ColorPickerState extends State<_ColorPicker> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  FilledButton(onPressed: _submitHex, child: const Text('Use')),
+                  FilledButton(onPressed: _submitHex, child: Text(l10n.colorUse)),
                 ],
               ),
             ],

@@ -24,6 +24,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_view.dart';
 import 'package:ai_pdf/features/editor/application/editor_keyboard_shortcuts.dart';
 import 'package:ai_pdf/features/viewer/presentation/reading_mode_controller.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
@@ -642,6 +643,65 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return KeyEventResult.handled;
   }
 
+  /// All pages in one scroll for reading (More → Read). Its bitmaps are
+  /// kept apart from the editor's and dropped when the view closes.
+  bool _readingView = false;
+  final Map<int, Uint8List> _readCache = {};
+  final Map<int, int> _readEdge = {};
+  final Set<int> _readPending = {};
+  static const int _readMaxEdge = 1400;
+  static const int _readMaxCached = 10;
+
+  void _openReadingView() {
+    if (_pageCount == 0) return;
+    setState(() {
+      _selected = null;
+      _multi.clear();
+      _readingView = true;
+    });
+  }
+
+  void _closeReadingView({int? page}) {
+    setState(() {
+      _readingView = false;
+      _readCache.clear();
+      _readEdge.clear();
+      _readPending.clear();
+    });
+    if (page != null && page != _current) _goToPage(page);
+  }
+
+  Uint8List? _readBytes(int i) => _readCache[i] ?? _pageCache[i];
+
+  void _requestReadPage(int i) {
+    final doc = _doc;
+    if (doc == null || _readBytes(i) != null || !_readPending.add(i)) return;
+    final source = i < _sourcePages.length ? _sourcePages[i] : i;
+    if (source < 0) return; // an inserted blank page is drawn white
+    _pageRender
+        .renderPage(
+          doc: doc,
+          index: i,
+          pageCache: _readCache,
+          renderMaxEdge: _readMaxEdge,
+          resolution: _readEdge,
+          sourcePage: source,
+          quarterTurns: _pageQuarterTurns[i] ?? 0,
+          stillCurrent: () => mounted && _readingView && identical(doc, _doc),
+        )
+        .whenComplete(() {
+      _readPending.remove(i);
+      if (!mounted || !_readingView) return;
+      _pageRender.evictFarPages(
+        pageCache: _readCache,
+        keepIndex: i,
+        maxCachedPages: _readMaxCached,
+        resolution: _readEdge,
+      );
+      setState(() {});
+    });
+  }
+
   /// How pages look on screen; never changes the exported file.
   ReadingMode _readingMode = ReadingMode.normal;
 
@@ -696,6 +756,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _multi.clear();
       _selected = null;
       _outlineController.clear();
+      _readingView = false;
+      _readCache.clear();
+      _readEdge.clear();
+      _readPending.clear();
       _form = AcroFormSnapshot.empty;
       _formValues.clear();
     });
@@ -2047,7 +2111,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _pickSelectedTextColor() async {
     final sel = _selected;
     if (sel is! TextAnnotation) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color, title: 'Text colour');
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: sel.color, title: AppLocalizations.of(context)!.colorText);
     if (picked == null) return;
     setState(() {
       _editorController.beginEdit([sel], label: 'Text colour');
@@ -2432,7 +2496,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _pickSelectionColor() async {
     final editing = _inlineEditing;
     if (editing == null || _inlineSelection.isCollapsed) return;
-    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: 'Text colour');
+    final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: AppLocalizations.of(context)!.colorText);
     if (picked == null || !mounted) return;
     setState(() {
       editing.runs = _richText.applyStyle(
@@ -2747,13 +2811,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   /// The form fields on the shown page, or null when it has none.
-  Widget? _formLayer() {
-    if (_form.isEmpty || _current >= _sourcePages.length) return null;
-    final source = _sourcePages[_current];
+  Widget? _formLayer() => _formLayerFor(_current, interactive: true);
+
+  Widget? _formLayerFor(int page, {required bool interactive}) {
+    if (_form.isEmpty || page >= _sourcePages.length) return null;
+    final source = _sourcePages[page];
     // A duplicated page is exported without the form's widgets (they belong
     // to the first copy), so only the first copy shows the fields.
-    if (source < 0 || _sourcePages.indexOf(source) != _current) return null;
-    final turns = _pageQuarterTurns[_current] ?? 0;
+    if (source < 0 || _sourcePages.indexOf(source) != page) return null;
+    final turns = _pageQuarterTurns[page] ?? 0;
     final placed = <PlacedAcroWidget>[
       for (final f in _form.fields)
         if (f.kind != AcroFieldKind.pushButton && f.kind != AcroFieldKind.signature)
@@ -2765,7 +2831,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       widgets: placed,
       edits: _formValues,
       // Drawing tools keep drawing over fields; Move and Select fill them.
-      interactive: (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
+      interactive: interactive && (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
       onTap: _fillFormField,
     );
   }
@@ -2808,9 +2874,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final bytes = _pageCache[_current];
 
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: !_hasUnsavedChanges && !_readingView,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        // Back leaves the reading view first.
+        if (_readingView) {
+          _closeReadingView();
+          return;
+        }
         final action = await showEditorUnsavedChangesDialog(context);
         if (action == 'discard' && mounted) {
           setState(() {
@@ -2960,7 +3031,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 ),
               )
             : null,
-        documentViewport: EditorDocumentViewport(
+        documentViewport: _readingView
+            ? EditorReadingView(
+                pageCount: _pageCount,
+                initialPage: _current,
+                aspectOf: (i) => _pageAspect[i] ?? _aspectFor(i),
+                bytesOf: _readBytes,
+                requestPage: _requestReadPage,
+                layerOf: (i) => _layers[i],
+                formLayerOf: (i) => _formLayerFor(i, interactive: false),
+                imageRenderer: _imageRenderer,
+                stampRenderer: _stampRenderer,
+                viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
+                revision: _canvasRevision,
+                onOpenPage: (i) => _closeReadingView(page: i),
+              )
+            : EditorDocumentViewport(
           panEnabled: _tool == EditTool.pan && !_redactionController.state.active,
           scaleEnabled: !_redactionController.state.active,
           pageAspect: _aspectFor(_current),
@@ -3119,6 +3205,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onLayers: _toggleLayers,
           onPageOps: _showPageOps,
           onReadingMode: _chooseReadingMode,
+          onReadingView: _openReadingView,
           onColorChanged: (c) => setState(() => _color = c),
           recentColors: RecentColors.current,
           onPickColor: () async {

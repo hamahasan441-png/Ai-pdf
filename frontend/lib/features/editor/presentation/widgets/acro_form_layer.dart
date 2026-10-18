@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 
@@ -60,11 +61,17 @@ class AcroFormLayer extends StatelessWidget {
       AcroFieldKind.text || AcroFieldKind.choice => _text(f, value),
       _ => const SizedBox.shrink(),
     };
-    final label = switch (f.kind) {
-      AcroFieldKind.checkbox => '${f.name}, check box, ${value != 'Off' ? 'checked' : 'not checked'}',
-      AcroFieldKind.radio => '${f.name}, option ${p.widget.onState ?? ''}${value == p.widget.onState ? ', selected' : ''}',
-      _ => '${f.name}: ${fieldDisplayText(f, value)}',
-    };
+    final l10n = AppLocalizations.of(context);
+    final label = l10n == null
+        ? f.name
+        : switch (f.kind) {
+            AcroFieldKind.checkbox => l10n.formCheckbox(f.name, value != 'Off' ? l10n.formChecked : l10n.formNotChecked),
+            AcroFieldKind.radio => [
+                l10n.formOption(f.name, p.widget.onState ?? ''),
+                if (value == p.widget.onState) l10n.formSelected,
+              ].join(', '),
+            _ => '${f.name}: ${fieldDisplayText(f, value)}',
+          };
     return Semantics(
       button: editable,
       enabled: editable,
