@@ -8,14 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 
-import 'package:ai_pdf/core/services/ocr_service.dart';
 import 'package:ai_pdf/features/scanner/application/scanner_controller.dart';
 import 'package:ai_pdf/features/scanner/data/scan_image_processor.dart';
+import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/scanner/data/scan_ocr_service.dart';
+import 'package:ai_pdf/features/scanner/data/scan_pdf_builder.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/document_corners.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
@@ -598,61 +598,11 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   Future<void> _exportPdf({bool forceSearchable = false}) async {
     final controller = ref.read(scannerControllerProvider.notifier);
     final state = ref.read(scannerControllerProvider);
-    final useSearchable = forceSearchable || state.searchablePdf;
     controller.beginExport();
     try {
-      final doc = pw.Document();
-      for (final page in state.pages) {
-        final image = pw.MemoryImage(page.displayBytes);
-        if (useSearchable && page.hasOcrText) {
-          // Searchable PDF: image with positional text overlay.
-          doc.addPage(
-            pw.Page(
-              pageFormat: PdfPageFormat.a4,
-              build: (context) => pw.Stack(
-                children: [
-                  pw.Center(
-                    child: pw.Image(image, fit: pw.BoxFit.contain),
-                  ),
-                  // Use per-line positioned overlay if positions are available.
-                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
-                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
-                  else
-                    // Fallback: single block text layer for searchability.
-                    pw.Positioned.fill(
-                      child: pw.Padding(
-                        padding: const pw.EdgeInsets.all(20),
-                        child: pw.Text(
-                          page.extractedText ?? '',
-                          style: pw.TextStyle(
-                            fontSize: 1,
-                            color: PdfColor.fromInt(0x00000000),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        } else {
-          // Image-only PDF page.
-          doc.addPage(
-            pw.Page(
-              pageFormat: PdfPageFormat.a4,
-              build: (_) => pw.Center(
-                child: pw.Image(image, fit: pw.BoxFit.contain),
-              ),
-            ),
-          );
-        }
-      }
-      final bytes = await doc.save();
+      final bytes = await _buildPdf(state.pages, forceSearchable || state.searchablePdf);
       final dir = await getTemporaryDirectory();
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final path = '${dir.path}/scan_$ts.pdf';
-      final f = File(path);
-      await f.writeAsBytes(bytes);
+      final path = await _writeAtomically(bytes, dir.path);
       controller.finishExport();
       await Share.shareXFiles([XFile(path)], text: 'Scanned document');
     } catch (e) {
@@ -660,28 +610,23 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
   }
 
-  /// Build per-line positioned invisible text widgets for searchable PDF.
-  /// Each line is placed at its normalized (0..1) position within the page.
-  List<pw.Widget> _buildPositionedTextOverlay(
-    List<OcrLine> lines,
-    pw.Context context,
-  ) {
-    return [
-      for (final line in lines)
-        pw.Positioned(
-          left: line.x * PdfPageFormat.a4.width,
-          top: line.y * PdfPageFormat.a4.height,
-          width: line.w * PdfPageFormat.a4.width,
-          height: line.h * PdfPageFormat.a4.height,
-          child: pw.Text(
-            line.text,
-            style: pw.TextStyle(
-              fontSize: (line.h * PdfPageFormat.a4.height).clamp(1.0, 12.0),
-              color: PdfColor.fromInt(0x00000000),
-            ),
-          ),
-        ),
-    ];
+  /// One builder for share and save, so both files are the same.
+  Future<Uint8List> _buildPdf(List<ScanPage> pages, bool searchable) async {
+    pw.Font? font;
+    if (searchable) {
+      final fonts = PdfUnicodeFonts();
+      await fonts.load();
+      font = fonts.notoSans;
+    }
+    return const ScanPdfBuilder().build(pages, searchable: searchable, textFont: font);
+  }
+
+  Future<String> _writeAtomically(Uint8List bytes, String dir) async {
+    final path = '$dir/scan_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final partial = File('$path.partial');
+    await partial.writeAsBytes(bytes, flush: true);
+    await partial.rename(path);
+    return path;
   }
 
   /// Save PDF directly to the device's documents directory.
@@ -690,54 +635,9 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     final state = ref.read(scannerControllerProvider);
     controller.beginExport();
     try {
-      final doc = pw.Document();
-      for (final page in state.pages) {
-        final image = pw.MemoryImage(page.displayBytes);
-        if (state.searchablePdf && page.hasOcrText) {
-          doc.addPage(
-            pw.Page(
-              pageFormat: PdfPageFormat.a4,
-              build: (context) => pw.Stack(
-                children: [
-                  pw.Center(
-                    child: pw.Image(image, fit: pw.BoxFit.contain),
-                  ),
-                  if (page.ocrLines != null && page.ocrLines!.isNotEmpty)
-                    ..._buildPositionedTextOverlay(page.ocrLines!, context)
-                  else
-                    pw.Positioned.fill(
-                      child: pw.Padding(
-                        padding: const pw.EdgeInsets.all(20),
-                        child: pw.Text(
-                          page.extractedText ?? '',
-                          style: pw.TextStyle(
-                            fontSize: 1,
-                            color: PdfColor.fromInt(0x00000000),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        } else {
-          doc.addPage(
-            pw.Page(
-              pageFormat: PdfPageFormat.a4,
-              build: (_) => pw.Center(
-                child: pw.Image(image, fit: pw.BoxFit.contain),
-              ),
-            ),
-          );
-        }
-      }
-      final bytes = await doc.save();
+      final bytes = await _buildPdf(state.pages, state.searchablePdf);
       final dir = await getApplicationDocumentsDirectory();
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final path = '${dir.path}/scan_$ts.pdf';
-      final f = File(path);
-      await f.writeAsBytes(bytes);
+      final path = await _writeAtomically(bytes, dir.path);
       controller.finishExport();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
