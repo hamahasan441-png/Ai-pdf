@@ -85,6 +85,8 @@ class EditorCanvasInteractionService {
     final r = Rect.fromPoints(marqueeStart, marqueeEnd);
     if (r.width <= 0.01 && r.height <= 0.01) return out;
     for (final a in items) {
+      // Like a tap, a box selection never picks hidden or locked marks.
+      if (!a.visible || a.locked) continue;
       if (bounds.boundsOf(a).overlaps(r)) out.add(a);
     }
     return out;

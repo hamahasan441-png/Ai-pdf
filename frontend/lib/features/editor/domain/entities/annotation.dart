@@ -108,13 +108,15 @@ class StrokeAnnotation extends EditorAnnotation {
   final double width;
   final bool highlight;
 
+  /// Copies [points]: [restoreFrom] rewrites the list in place, which throws
+  /// on a const or fixed-length list (an empty signature was `const []`).
   StrokeAnnotation(
-    this.points,
+    List<Offset> points,
     this.color,
     this.width,
     this.highlight, {
     super.id,
-  });
+  }) : points = List.of(points);
 
   @override
   Rect get bounds {

@@ -326,22 +326,25 @@ class EditorCanvas extends StatelessWidget {
                     ),
                   ),
                 ),
-              ...layer.texts.map((t) => Positioned(
+              // Hidden text is not drawn (export leaves it out too); locked
+              // text stays visible but cannot be selected, edited or dragged.
+              ...layer.texts.where((t) => t.visible).map((t) => Positioned(
                     left: t.pos.dx * size.width,
                     top: t.pos.dy * size.height,
                     child: GestureDetector(
                       onTap: () {
+                        if (t.locked) return;
                         if (tool == EditTool.pan) {
                           onSelectText(t);
                         } else {
                           onEditText(t);
                         }
                       },
-                      onPanStart: _canDragText
+                      onPanStart: _canDragText && !t.locked
                           ? (_) => onMoveTextStart?.call(t)
                           : null,
-                      onPanUpdate: _canDragText ? (d) => onMoveText(t, d, size) : null,
-                      onPanEnd: _canDragText ? (_) => onMoveTextEnd?.call() : null,
+                      onPanUpdate: _canDragText && !t.locked ? (d) => onMoveText(t, d, size) : null,
+                      onPanEnd: _canDragText && !t.locked ? (_) => onMoveTextEnd?.call() : null,
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(

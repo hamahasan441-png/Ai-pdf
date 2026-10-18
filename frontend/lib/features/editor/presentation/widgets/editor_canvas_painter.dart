@@ -72,6 +72,7 @@ class EditorCanvasPainter extends CustomPainter {
     }
     _paintFind(canvas, size);
     for (final m in markups) {
+      if (!m.visible) continue;
       AnnotationDraw.markup(canvas, size, m, multiply: false);
     }
     for (final s in strokes) {

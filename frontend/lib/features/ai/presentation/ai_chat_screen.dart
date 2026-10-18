@@ -36,7 +36,11 @@ enum AiChatMode { understand, fillForm }
 /// Runs directly on the phone through OpenRouter with the user's own key.
 class AiChatScreen extends StatefulWidget {
   final AiChatMode mode;
-  const AiChatScreen({super.key, required this.mode});
+
+  /// A document to open straight away (from the editor), instead of asking
+  /// the user to pick one.
+  final String? initialPath;
+  const AiChatScreen({super.key, required this.mode, this.initialPath});
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -138,6 +142,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
         if (mounted) setState(() => _memoryBlock = FormMemoryService.instance.asPromptBlock());
       });
     }
+    final initial = widget.initialPath;
+    if (initial != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _open(initial, initial.split(Platform.pathSeparator).last);
+      });
+    }
   }
 
   @override
@@ -155,11 +165,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
     if (path == null) return;
+    await _open(path, result.files.first.name);
+  }
 
+  Future<void> _open(String path, String name) async {
     setState(() {
       _loadingDoc = true;
       _error = null;
-      _fileName = result.files.first.name;
+      _fileName = name;
       _docPath = path;
       _docImages = [];
       _pageImages = {};
