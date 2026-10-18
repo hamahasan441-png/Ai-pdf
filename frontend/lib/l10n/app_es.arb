@@ -464,5 +464,8 @@
   "moreShapes": "Formas",
   "moreInsert": "Insertar",
   "moreDocument": "Documento",
-  "toolReadView": "Leer"
+  "toolReadView": "Leer",
+  "toolPrint": "Imprimir",
+  "toolPrintDesc": "Enviar un PDF a una impresora",
+  "printFailed": "No se puede imprimir: {error}"
 }

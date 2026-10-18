@@ -464,5 +464,8 @@
   "watchAdToUse": "ڕیکلام ببینە بۆ یەک جار گۆڕین",
   "goPro": "ببە بە Pro",
   "adNotReady": "لە ئێستادا هیچ ڕیکلامێک بەردەست نییە — تکایە دووبارە هەوڵ بدەرەوە.",
-  "toolReadView": "خوێندنەوە"
+  "toolReadView": "خوێندنەوە",
+  "toolPrint": "چاپکردن",
+  "toolPrintDesc": "ناردنی PDF بۆ چاپکەر",
+  "printFailed": "چاپکردن بەردەست نییە: {error}"
 }

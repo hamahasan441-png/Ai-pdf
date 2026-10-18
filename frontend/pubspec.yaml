@@ -71,6 +71,7 @@ dependencies:
   google_mobile_ads: ^5.1.0
   pointycastle: ^4.0.0
   crypto: ^3.0.6
+  printing: ^5.14.3
 
 dev_dependencies:
   flutter_test:

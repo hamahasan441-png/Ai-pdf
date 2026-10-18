@@ -464,5 +464,8 @@
   "watchAdToUse": "دیدن تبلیغ برای یک بار تبدیل",
   "goPro": "Pro شوید",
   "adNotReady": "فعلاً تبلیغی در دسترس نیست — لطفاً دوباره تلاش کنید.",
-  "toolReadView": "خواندن"
+  "toolReadView": "خواندن",
+  "toolPrint": "چاپ",
+  "toolPrintDesc": "ارسال PDF به چاپگر",
+  "printFailed": "چاپ ممکن نیست: {error}"
 }
