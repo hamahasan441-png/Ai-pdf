@@ -150,5 +150,18 @@
   "readingModeDark": "تیره",
   "readingModeSepia": "سپیا",
   "readingModeGreen": "نور آبی کم",
-  "readingModeNote": "فقط ظاهر صفحه‌ها روی صفحه‌نمایش را تغییر می‌دهد. فایل‌های خروجی رنگ اصلی خود را حفظ می‌کنند."
+  "readingModeNote": "فقط ظاهر صفحه‌ها روی صفحه‌نمایش را تغییر می‌دهد. فایل‌های خروجی رنگ اصلی خود را حفظ می‌کنند.",
+  "toolProtect": "محافظت با رمز عبور",
+  "toolProtectDesc": "قفل کردن PDF تا رمز بخواهد",
+  "protectPassword": "رمز عبور",
+  "protectConfirm": "تکرار رمز عبور",
+  "protectMismatch": "رمزها یکسان نیستند",
+  "protectAllowPrint": "اجازهٔ چاپ",
+  "protectAllowCopy": "اجازهٔ کپی متن",
+  "protectRestrictNote": "بیشتر برنامه‌های PDF این محدودیت‌ها را رعایت می‌کنند، اما همه آن‌ها را اجبار نمی‌کنند.",
+  "protectForgetWarning": "اگر رمز فراموش شود فایل باز نمی‌شود. نسخهٔ اصلی را نگه دارید.",
+  "protectButton": "محافظت از PDF",
+  "protectDone": "PDF محافظت شد",
+  "protectDoneSub": "اکنون باز کردن آن رمز می‌خواهد (AES-256).",
+  "protectAlreadyEncrypted": "این PDF از قبل رمز دارد."
 }

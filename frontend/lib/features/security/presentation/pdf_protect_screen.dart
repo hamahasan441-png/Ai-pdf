@@ -1,11 +1,15 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
+import 'package:ai_pdf/core/services/tool_handoff.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/security/data/pdf_encryptor.dart';
 import 'package:ai_pdf/features/security/data/pdf_password_service.dart';
+import 'package:ai_pdf/features/tools/widgets/result_sheet.dart';
 
-/// Screen to add password protection to a PDF file.
-///
-/// User picks a PDF → enters a password → gets an encrypted PDF they can
-/// save/share. Works fully offline (encryption runs on-device in an isolate).
+/// Pick a PDF, choose a password (and optional limits), get an encrypted
+/// copy. Fully offline.
 class PdfProtectScreen extends StatefulWidget {
   const PdfProtectScreen({super.key});
 
@@ -14,11 +18,11 @@ class PdfProtectScreen extends StatefulWidget {
 }
 
 class _PdfProtectScreenState extends State<PdfProtectScreen> {
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
-  final _service = const PdfPasswordService();
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  static const _service = PdfPasswordService();
 
-  bool _obscurePassword = true;
+  bool _obscure = true;
   bool _allowPrinting = true;
   bool _allowCopying = true;
   bool _working = false;
@@ -26,130 +30,144 @@ class _PdfProtectScreenState extends State<PdfProtectScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // A file handed over from another screen (e.g. after an editor export).
+    final handed = ToolHandoff.instance.take();
+    if (handed != null && handed.toLowerCase().endsWith('.pdf')) _filePath = handed;
+  }
+
+  @override
   void dispose() {
-    _passwordController.dispose();
-    _confirmController.dispose();
+    _password.dispose();
+    _confirm.dispose();
     super.dispose();
   }
 
-  bool get _canProtect =>
-      _filePath != null &&
-      _passwordController.text.isNotEmpty &&
-      _passwordController.text == _confirmController.text &&
-      !_working;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Password Protect PDF')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // File selection
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.picture_as_pdf),
-              title: Text(_filePath ?? 'Choose a PDF'),
-              subtitle: _filePath != null ? null : const Text('Tap to select'),
-              onTap: _pickFile,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Password fields
-          TextField(
-            controller: _passwordController,
-            obscureText: _obscurePassword,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              prefixIcon: const Icon(Icons.lock),
-              suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-              ),
-              border: const OutlineInputBorder(),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _confirmController,
-            obscureText: true,
-            decoration: InputDecoration(
-              labelText: 'Confirm password',
-              prefixIcon: const Icon(Icons.lock_outline),
-              border: const OutlineInputBorder(),
-              errorText: _confirmController.text.isNotEmpty &&
-                      _confirmController.text != _passwordController.text
-                  ? 'Passwords do not match'
-                  : null,
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 24),
-
-          // Permissions
-          Text('Permissions', style: theme.textTheme.titleSmall),
-          SwitchListTile(
-            title: const Text('Allow printing'),
-            value: _allowPrinting,
-            onChanged: (v) => setState(() => _allowPrinting = v),
-          ),
-          SwitchListTile(
-            title: const Text('Allow copying text'),
-            value: _allowCopying,
-            onChanged: (v) => setState(() => _allowCopying = v),
-          ),
-          const SizedBox(height: 24),
-
-          // Error
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ),
-
-          // Action button
-          FilledButton.icon(
-            onPressed: _canProtect ? _protect : null,
-            icon: _working
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.shield),
-            label: Text(_working ? 'Encrypting…' : 'Protect PDF'),
-          ),
-        ],
-      ),
-    );
-  }
+  bool get _matches => _password.text == _confirm.text;
+  bool get _canProtect => _filePath != null && _password.text.isNotEmpty && _matches && !_working;
 
   Future<void> _pickFile() async {
-    // In production: use file_picker to select a PDF.
-    // For now, set a placeholder path.
+    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    final path = result?.files.firstOrNull?.path;
+    if (path == null) return;
     setState(() {
-      _filePath = 'document.pdf';
+      _filePath = path;
       _error = null;
     });
   }
 
   Future<void> _protect() async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() {
       _working = true;
       _error = null;
     });
-
     try {
-      // In production: read file bytes, call _service.protect(), save result.
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PDF protected with password')),
+      final out = await _service.protectFile(
+        sourcePath: _filePath!,
+        password: _password.text,
+        access: PdfAccess(print: _allowPrinting, copy: _allowCopying),
       );
-      Navigator.of(context).pop();
+      if (!mounted) return;
+      await showResultSheet(context, paths: [out], title: l10n.protectDone, subtitle: l10n.protectDoneSub);
+    } on PdfSourceException catch (e) {
+      setState(() => _error = e.encrypted ? l10n.protectAlreadyEncrypted : l10n.operationFailed(e.message));
     } catch (e) {
-      setState(() => _error = 'Protection failed: $e');
+      setState(() => _error = l10n.operationFailed('$e'));
     } finally {
       if (mounted) setState(() => _working = false);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.toolProtect)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.picture_as_pdf),
+              title: Text(
+                _filePath?.split('/').last ?? l10n.tapToChoosePdf,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.folder_open),
+              onTap: _working ? null : _pickFile,
+            ),
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: _password,
+            obscureText: _obscure,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: l10n.protectPassword,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _confirm,
+            obscureText: _obscure,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: l10n.protectConfirm,
+              border: const OutlineInputBorder(),
+              errorText: _confirm.text.isNotEmpty && !_matches ? l10n.protectMismatch : null,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            title: Text(l10n.protectAllowPrint),
+            value: _allowPrinting,
+            onChanged: (v) => setState(() => _allowPrinting = v),
+          ),
+          SwitchListTile(
+            title: Text(l10n.protectAllowCopy),
+            value: _allowCopying,
+            onChanged: (v) => setState(() => _allowCopying = v),
+          ),
+          if (!_allowPrinting || !_allowCopying)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(l10n.protectRestrictNote, style: theme.textTheme.bodySmall),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 18, color: theme.colorScheme.error),
+              const SizedBox(width: 8),
+              Expanded(child: Text(l10n.protectForgetWarning, style: theme.textTheme.bodySmall)),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          ],
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: _canProtect ? _protect : null,
+            icon: _working
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.lock),
+            label: Text(l10n.protectButton),
+          ),
+        ],
+      ),
+    );
   }
 }

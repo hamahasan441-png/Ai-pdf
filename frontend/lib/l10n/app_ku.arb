@@ -162,5 +162,18 @@
   "readingModeDark": "تاریک",
   "readingModeSepia": "قاوەیی گەرم",
   "readingModeGreen": "ڕووناکی شینی کەم",
-  "readingModeNote": "تەنها شێوەی پەڕەکان لەسەر شاشە دەگۆڕێت. فایلە هەناردەکراوەکان ڕەنگی ڕەسەنی خۆیان دەپارێزن."
+  "readingModeNote": "تەنها شێوەی پەڕەکان لەسەر شاشە دەگۆڕێت. فایلە هەناردەکراوەکان ڕەنگی ڕەسەنی خۆیان دەپارێزن.",
+  "toolProtect": "پاراستن بە وشەی نهێنی",
+  "toolProtectDesc": "PDF دابخە تا داوای وشەی نهێنی بکات",
+  "protectPassword": "وشەی نهێنی",
+  "protectConfirm": "دووبارەکردنەوەی وشەی نهێنی",
+  "protectMismatch": "وشە نهێنییەکان وەک یەک نین",
+  "protectAllowPrint": "ڕێگەدان بە چاپکردن",
+  "protectAllowCopy": "ڕێگەدان بە کۆپیکردنی دەق",
+  "protectRestrictNote": "زۆربەی ئەپەکانی PDF ڕێز لەم سنووردارکردنانە دەگرن، بەڵام هەموویان جێبەجێیان ناکەن.",
+  "protectForgetWarning": "ئەگەر وشەی نهێنی لەبیر بچێت، فایلەکە ناکرێتەوە. فایلە ڕەسەنەکە بپارێزە.",
+  "protectButton": "پاراستنی PDF",
+  "protectDone": "PDF پارێزرا",
+  "protectDoneSub": "ئێستا بۆ کردنەوەی داوای وشەی نهێنی دەکات (AES-256).",
+  "protectAlreadyEncrypted": "ئەم PDF ـە پێشتر وشەی نهێنی هەیە."
 }

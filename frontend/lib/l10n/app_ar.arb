@@ -395,5 +395,18 @@
   "readingModeDark": "داكن",
   "readingModeSepia": "بني دافئ",
   "readingModeGreen": "ضوء أزرق منخفض",
-  "readingModeNote": "يغيّر شكل الصفحات على الشاشة فقط. تحتفظ الملفات المصدّرة بألوانها الأصلية."
+  "readingModeNote": "يغيّر شكل الصفحات على الشاشة فقط. تحتفظ الملفات المصدّرة بألوانها الأصلية.",
+  "toolProtect": "حماية بكلمة مرور",
+  "toolProtectDesc": "اقفل ملف PDF ليطلب كلمة مرور",
+  "protectPassword": "كلمة المرور",
+  "protectConfirm": "أعد كتابة كلمة المرور",
+  "protectMismatch": "كلمتا المرور غير متطابقتين",
+  "protectAllowPrint": "السماح بالطباعة",
+  "protectAllowCopy": "السماح بنسخ النص",
+  "protectRestrictNote": "تلتزم معظم تطبيقات PDF بهذه القيود، لكن ليس كلها يفرضها.",
+  "protectForgetWarning": "إذا نُسيت كلمة المرور فلا يمكن فتح الملف. احتفظ بالأصل.",
+  "protectButton": "حماية PDF",
+  "protectDone": "تمت حماية الملف",
+  "protectDoneSub": "فتحه الآن يطلب كلمة المرور (AES-256).",
+  "protectAlreadyEncrypted": "هذا الملف محمي بكلمة مرور بالفعل."
 }

@@ -395,5 +395,18 @@
   "readingModeDark": "Oscuro",
   "readingModeSepia": "Sepia",
   "readingModeGreen": "Poca luz azul",
-  "readingModeNote": "Solo cambia cómo se ven las páginas en pantalla. Los archivos exportados conservan sus colores."
+  "readingModeNote": "Solo cambia cómo se ven las páginas en pantalla. Los archivos exportados conservan sus colores.",
+  "toolProtect": "Proteger con contraseña",
+  "toolProtectDesc": "Bloquea un PDF para que pida contraseña",
+  "protectPassword": "Contraseña",
+  "protectConfirm": "Repite la contraseña",
+  "protectMismatch": "Las contraseñas no coinciden",
+  "protectAllowPrint": "Permitir imprimir",
+  "protectAllowCopy": "Permitir copiar texto",
+  "protectRestrictNote": "La mayoría de apps de PDF respetan estos límites, pero no todas los aplican.",
+  "protectForgetWarning": "Si olvidas la contraseña, el archivo no se podrá abrir. Conserva el original.",
+  "protectButton": "Proteger PDF",
+  "protectDone": "PDF protegido",
+  "protectDoneSub": "Ahora al abrirlo pide la contraseña (AES-256).",
+  "protectAlreadyEncrypted": "Este PDF ya tiene contraseña."
 }
