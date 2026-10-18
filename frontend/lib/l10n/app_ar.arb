@@ -389,5 +389,11 @@
   "exportFlattenContinue": "حفظ",
   "exportImageFallbackTitle": "لا يمكن الاحتفاظ بالمحتوى الأصلي",
   "exportImageFallbackBody": "{reason}\n\nهل تريد حفظ كل صفحة كصورة بدلًا من ذلك؟ لن يمكن البحث في نص ذلك الملف أو تحديده، وستُفقد الروابط وحقول النماذج والإشارات المرجعية.",
-  "exportImageFallbackConfirm": "حفظ كصور"
+  "exportImageFallbackConfirm": "حفظ كصور",
+  "toolReadingMode": "وضع القراءة",
+  "readingModeNormal": "عادي",
+  "readingModeDark": "داكن",
+  "readingModeSepia": "بني دافئ",
+  "readingModeGreen": "ضوء أزرق منخفض",
+  "readingModeNote": "يغيّر شكل الصفحات على الشاشة فقط. تحتفظ الملفات المصدّرة بألوانها الأصلية."
 }

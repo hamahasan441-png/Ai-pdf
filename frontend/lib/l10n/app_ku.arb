@@ -156,5 +156,11 @@
   "exportFlattenContinue": "پاشەکەوت",
   "exportImageFallbackTitle": "ناتوانرێت ناوەڕۆکی ڕەسەن بپارێزرێت",
   "exportImageFallbackBody": "{reason}\n\nلە جیاتی ئەوە هەموو پەڕەکان وەک وێنە پاشەکەوت بکرێن؟ دەقی ئەو فایلە ناگەڕێندرێت و هەڵنابژێردرێت، و بەستەر و خانەکانی فۆرم و نیشانەکان لەدەست دەچن.",
-  "exportImageFallbackConfirm": "پاشەکەوت وەک وێنە"
+  "exportImageFallbackConfirm": "پاشەکەوت وەک وێنە",
+  "toolReadingMode": "دۆخی خوێندنەوە",
+  "readingModeNormal": "ئاسایی",
+  "readingModeDark": "تاریک",
+  "readingModeSepia": "قاوەیی گەرم",
+  "readingModeGreen": "ڕووناکی شینی کەم",
+  "readingModeNote": "تەنها شێوەی پەڕەکان لەسەر شاشە دەگۆڕێت. فایلە هەناردەکراوەکان ڕەنگی ڕەسەنی خۆیان دەپارێزن."
 }

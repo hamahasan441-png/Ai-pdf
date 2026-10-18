@@ -144,5 +144,11 @@
   "exportFlattenContinue": "ذخیره",
   "exportImageFallbackTitle": "محتوای اصلی را نمی‌توان نگه داشت",
   "exportImageFallbackBody": "{reason}\n\nبه‌جای آن همهٔ صفحه‌ها به‌صورت تصویر ذخیره شوند؟ متن آن فایل قابل جست‌وجو یا انتخاب نخواهد بود و پیوندها، فیلدهای فرم و نشانک‌ها از بین می‌روند.",
-  "exportImageFallbackConfirm": "ذخیره به‌صورت تصویر"
+  "exportImageFallbackConfirm": "ذخیره به‌صورت تصویر",
+  "toolReadingMode": "حالت مطالعه",
+  "readingModeNormal": "عادی",
+  "readingModeDark": "تیره",
+  "readingModeSepia": "سپیا",
+  "readingModeGreen": "نور آبی کم",
+  "readingModeNote": "فقط ظاهر صفحه‌ها روی صفحه‌نمایش را تغییر می‌دهد. فایل‌های خروجی رنگ اصلی خود را حفظ می‌کنند."
 }

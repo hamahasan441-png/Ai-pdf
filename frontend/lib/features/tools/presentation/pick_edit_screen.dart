@@ -22,6 +22,8 @@ import 'package:ai_pdf/features/editor/data/form_value_marks.dart';
 import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
+import 'package:ai_pdf/features/viewer/presentation/reading_mode_controller.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_render_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
@@ -270,6 +272,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void initState() {
     super.initState();
     _viewTransform.addListener(_onViewTransform);
+    loadEditorReadingMode().then((m) {
+      if (mounted && m != _readingMode) setState(() => _readingMode = m);
+    });
     // Restore signatures saved in previous sessions (once per app run).
     if (!_signaturesLoaded) {
       _signaturesLoaded = true;
@@ -576,6 +581,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
     if (!mounted || gen != _openGen) return;
     setState(() => _outlineController.load(headings));
+  }
+
+  /// How pages look on screen; never changes the exported file.
+  ReadingMode _readingMode = ReadingMode.normal;
+
+  Future<void> _chooseReadingMode() async {
+    final picked = await showEditorReadingModeSheet(context, current: _readingMode);
+    if (picked == null || !mounted) return;
+    setState(() => _readingMode = picked);
+    await saveEditorReadingMode(picked);
   }
 
   /// The PDF's own form, and the values the user changed (by field name).
@@ -2887,6 +2902,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           scaleEnabled: !_redactionController.state.active,
           pageAspect: _aspectFor(_current),
           transformationController: _viewTransform,
+          viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
             tool: _tool,
@@ -3039,6 +3055,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onChat: _toggleChat,
           onLayers: _toggleLayers,
           onPageOps: _showPageOps,
+          onReadingMode: _chooseReadingMode,
           onColorChanged: (c) => setState(() => _color = c),
           recentColors: RecentColors.current,
           onPickColor: () async {

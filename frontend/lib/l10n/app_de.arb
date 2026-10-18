@@ -389,5 +389,11 @@
   "exportFlattenContinue": "Speichern",
   "exportImageFallbackTitle": "Der Originalinhalt kann nicht erhalten werden",
   "exportImageFallbackBody": "{reason}\n\nStattdessen jede Seite als Bild speichern? Der Text in dieser Datei ist dann nicht durchsuchbar oder markierbar, und Links, Formularfelder und Lesezeichen gehen verloren.",
-  "exportImageFallbackConfirm": "Als Bilder speichern"
+  "exportImageFallbackConfirm": "Als Bilder speichern",
+  "toolReadingMode": "Lesemodus",
+  "readingModeNormal": "Normal",
+  "readingModeDark": "Dunkel",
+  "readingModeSepia": "Sepia",
+  "readingModeGreen": "Wenig Blaulicht",
+  "readingModeNote": "Ändert nur die Anzeige auf dem Bildschirm. Exportierte Dateien behalten ihre Farben."
 }

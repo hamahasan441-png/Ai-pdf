@@ -389,5 +389,11 @@
   "exportFlattenContinue": "Guardar",
   "exportImageFallbackTitle": "No se puede conservar el contenido original",
   "exportImageFallbackBody": "{reason}\n\n¿Guardar cada página como imagen? El texto de ese archivo no se podrá buscar ni seleccionar, y se perderán los enlaces, los campos de formulario y los marcadores.",
-  "exportImageFallbackConfirm": "Guardar como imágenes"
+  "exportImageFallbackConfirm": "Guardar como imágenes",
+  "toolReadingMode": "Modo lectura",
+  "readingModeNormal": "Normal",
+  "readingModeDark": "Oscuro",
+  "readingModeSepia": "Sepia",
+  "readingModeGreen": "Poca luz azul",
+  "readingModeNote": "Solo cambia cómo se ven las páginas en pantalla. Los archivos exportados conservan sus colores."
 }

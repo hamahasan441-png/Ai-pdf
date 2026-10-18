@@ -457,5 +457,11 @@
   "proFeatureBody": "Convert is a Pro feature. Start your free trial, watch a short ad to convert once, or go Pro.",
   "watchAdToUse": "Watch ad to convert once",
   "goPro": "Go Pro",
-  "adNotReady": "No ad available right now — please try again."
+  "adNotReady": "No ad available right now — please try again.",
+  "toolReadingMode": "Reading mode",
+  "readingModeNormal": "Normal",
+  "readingModeDark": "Dark",
+  "readingModeSepia": "Sepia",
+  "readingModeGreen": "Low blue light",
+  "readingModeNote": "Only changes how pages look on screen. Exported files keep their original colours."
 }

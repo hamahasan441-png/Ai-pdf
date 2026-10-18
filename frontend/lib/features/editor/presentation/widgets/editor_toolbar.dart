@@ -49,6 +49,7 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback? onChat;
   final VoidCallback? onLayers;
   final VoidCallback? onPageOps;
+  final VoidCallback? onReadingMode;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -90,6 +91,7 @@ class EditorToolbar extends StatelessWidget {
     this.onChat,
     this.onLayers,
     this.onPageOps,
+    this.onReadingMode,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -328,6 +330,8 @@ class EditorToolbar extends StatelessWidget {
                     _actionBtn(Icons.auto_awesome, l10n.toolChat, () => act(onChat!), cs),
                   if (onPageOps != null)
                     _actionBtn(Icons.pages, l10n.toolPages, () => act(onPageOps!), cs),
+                  if (onReadingMode != null)
+                    _actionBtn(Icons.contrast, l10n.toolReadingMode, () => act(onReadingMode!), cs),
                   _actionBtn(Icons.folder_open, l10n.toolOpen, () => act(onOpen), cs),
                 ],
               ),
