@@ -40,12 +40,4 @@ class PageLayer {
     }
   }
 
-  /// Removes the annotation with the given [id] from [items].
-  /// Returns true if an item was removed.
-  bool removeById(String id) {
-    final index = items.indexWhere((a) => a.id == id);
-    if (index < 0) return false;
-    redo.add(items.removeAt(index));
-    return true;
-  }
 }

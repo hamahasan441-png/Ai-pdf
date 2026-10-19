@@ -3,30 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_pdf/features/editor/data/tile_zoom_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
 import 'package:ai_pdf/features/editor/domain/services/rotation_math.dart';
 import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 
 void main() {
-  group('TileZoomService planner (Phase 6)', () {
-    const svc = TileZoomService();
-
-    test('needsHighRes activates past the threshold', () {
-      expect(svc.needsHighRes(1.0), isFalse);
-      expect(svc.needsHighRes(2.0), isTrue);
-    });
-
-    test('targetMaxEdge scales with zoom but is clamped to the hard cap', () {
-      expect(svc.targetMaxEdge(baseMaxEdge: 2400, zoom: 1.0, hardCap: 4800), 2400);
-      expect(svc.targetMaxEdge(baseMaxEdge: 2400, zoom: 1.5, hardCap: 4800), 3600);
-      expect(svc.targetMaxEdge(baseMaxEdge: 2400, zoom: 2.0, hardCap: 4800), 4800);
-      // Deep zoom never exceeds the memory-bounded hard cap.
-      expect(svc.targetMaxEdge(baseMaxEdge: 2400, zoom: 5.0, hardCap: 4800), 4800);
-    });
-  });
-
   group('Object-to-object snapping (Phase 7)', () {
     const selection = SelectionService();
     const bounds = AnnotationBoundsService();

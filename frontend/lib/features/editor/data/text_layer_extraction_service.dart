@@ -127,14 +127,6 @@ class TextLayerExtractionService {
     return elements.where((e) => e.text.toLowerCase().contains(lower)).toList();
   }
 
-  /// Get all text as a single string (for copy-all / AI context).
-  ///
-  /// This joins the list as given. For reading order and line breaks use
-  /// [TextSelectionService.selectAll].
-  String allText(List<PdfTextElement> elements) {
-    return elements.map((e) => e.text).join(' ');
-  }
-
   /// Find the element at a normalised tap position.
   PdfTextElement? hitTest(List<PdfTextElement> elements, Offset normPos) {
     if (!normPos.dx.isFinite || !normPos.dy.isFinite) return null;

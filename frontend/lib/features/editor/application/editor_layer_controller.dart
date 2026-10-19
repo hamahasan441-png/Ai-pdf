@@ -39,9 +39,6 @@ class EditorLayerState {
   bool get hasLayers => layers.isNotEmpty;
 }
 
-final editorLayerProvider =
-    StateNotifierProvider<EditorLayerController, EditorLayerState>((ref) => EditorLayerController());
-
 /// Shows or hides the Layers panel and applies its toggles to the marks.
 ///
 /// Redaction covers never belong to a layer: hiding one would leave the text

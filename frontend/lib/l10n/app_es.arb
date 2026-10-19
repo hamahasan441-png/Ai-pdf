@@ -321,8 +321,6 @@
   "markDash": "Guion",
   "markCheckbox": "Casilla",
   "signatureDate": "Fecha de firma",
-  "smartFill": "Relleno inteligente",
-  "scanning": "Escaneando…",
   "myProfile": "Mi perfil",
   "noProfileData": "Aún no hay datos de perfil guardados",
   "readAloud": "Leer en voz alta",
@@ -330,11 +328,9 @@
   "chooseFileToRead": "Elige un PDF o imagen para leer en voz alta",
   "nothingToRead": "No se encontró texto para leer",
   "play": "Reproducir",
-  "pause": "Pausar",
   "stop": "Detener",
   "speed": "Velocidad",
   "editTextTool": "Editar texto",
-  "tapLineToEdit": "Toca una línea para editar su texto",
   "overlayEditNotice": "Toca una línea para cubrirla con un cuadro de texto nuevo. El texto PDF original sigue en el archivo.",
   "visualCoverNotice": "Cobertura negra en la imagen exportada. El texto original no se eliminó y todavía se puede extraer del PDF.",
   "convert": "Convertir",
@@ -526,5 +522,7 @@
   "savedToAppFolder": "Guardado en la carpeta Pdoczy",
   "saveCancelled": "Guardado cancelado",
   "couldNotShare": "No se pudo compartir: {error}",
-  "noFilesToShare": "No hay archivos para compartir"
+  "noFilesToShare": "No hay archivos para compartir",
+  "openingDocument": "Abriendo el documento…",
+  "analyzingDocument": "Analizando la página…"
 }

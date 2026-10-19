@@ -321,8 +321,6 @@
   "markDash": "Strich",
   "markCheckbox": "Kontrollkästchen",
   "signatureDate": "Unterschriftsdatum",
-  "smartFill": "Intelligentes Ausfüllen",
-  "scanning": "Scannen…",
   "myProfile": "Mein Profil",
   "noProfileData": "Noch keine Profildaten gespeichert",
   "readAloud": "Vorlesen",
@@ -330,11 +328,9 @@
   "chooseFileToRead": "Ein PDF oder Bild zum Vorlesen wählen",
   "nothingToRead": "Kein Text zum Vorlesen gefunden",
   "play": "Abspielen",
-  "pause": "Pause",
   "stop": "Stopp",
   "speed": "Geschwindigkeit",
   "editTextTool": "Text bearbeiten",
-  "tapLineToEdit": "Tippe auf eine Zeile, um ihren Text zu bearbeiten",
   "overlayEditNotice": "Tippe auf eine Zeile, um sie mit einem neuen Textfeld zu überdecken. Der ursprüngliche PDF-Text bleibt in der Datei.",
   "visualCoverNotice": "Schwarze Abdeckung im exportierten Bild. Der Originaltext wurde nicht entfernt und kann weiter aus dem PDF gelesen werden.",
   "convert": "Konvertieren",
@@ -526,5 +522,7 @@
   "savedToAppFolder": "Im Pdoczy-Ordner gespeichert",
   "saveCancelled": "Speichern abgebrochen",
   "couldNotShare": "Teilen nicht möglich: {error}",
-  "noFilesToShare": "Keine Dateien zum Teilen"
+  "noFilesToShare": "Keine Dateien zum Teilen",
+  "openingDocument": "Dokument wird geöffnet…",
+  "analyzingDocument": "Seite wird analysiert…"
 }

@@ -321,8 +321,6 @@
   "markDash": "شرطة",
   "markCheckbox": "مربع اختيار",
   "signatureDate": "تاريخ التوقيع",
-  "smartFill": "تعبئة ذكية",
-  "scanning": "جارٍ المسح…",
   "myProfile": "ملفي الشخصي",
   "noProfileData": "لا توجد بيانات ملف شخصي محفوظة بعد",
   "readAloud": "قراءة بصوت عالٍ",
@@ -330,11 +328,9 @@
   "chooseFileToRead": "اختر ملف PDF أو صورة للقراءة بصوت عالٍ",
   "nothingToRead": "لم يتم العثور على نص للقراءة",
   "play": "تشغيل",
-  "pause": "إيقاف مؤقت",
   "stop": "إيقاف",
   "speed": "السرعة",
   "editTextTool": "تحرير النص",
-  "tapLineToEdit": "اضغط على سطر لتحرير نصه",
   "overlayEditNotice": "اضغط على سطر لتغطيته بمربع نص جديد. يبقى نص PDF الأصلي داخل الملف.",
   "visualCoverNotice": "أُضيف غطاء أسود إلى صورة التصدير. لم يُحذف النص الأصلي ولا يزال يمكن استخراجه من ملف PDF.",
   "convert": "تحويل",
@@ -526,5 +522,7 @@
   "savedToAppFolder": "تم الحفظ في مجلد Pdoczy",
   "saveCancelled": "تم إلغاء الحفظ",
   "couldNotShare": "تعذّرت المشاركة: {error}",
-  "noFilesToShare": "لا توجد ملفات للمشاركة"
+  "noFilesToShare": "لا توجد ملفات للمشاركة",
+  "openingDocument": "جارٍ فتح المستند…",
+  "analyzingDocument": "جارٍ تحليل الصفحة…"
 }

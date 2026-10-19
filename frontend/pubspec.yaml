@@ -86,8 +86,16 @@ flutter:
   # Bundled SIL OFL 1.1 fonts (see assets/fonts/README.md). PdfUnicodeFonts
   # loads them by path for vector text in exported PDFs; the families below
   # make the on-screen preview use the same faces the export embeds.
+  # Only the faces the app loads; README, SHA256SUMS, the download script
+  # and NotoSans-Bold (used by tests from disk) stay out of the bundle.
   assets:
-    - assets/fonts/
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSansArabic-Regular.ttf
+    - assets/fonts/NotoSansArabic-Bold.ttf
+    - assets/fonts/Vazirmatn-Regular.ttf
+    - assets/fonts/Vazirmatn-Bold.ttf
+    - assets/fonts/NotoSansHebrew-Regular.ttf
+    - assets/fonts/NotoSansHebrew-Bold.ttf
     - assets/fonts/licenses/
 
   fonts:

@@ -59,15 +59,6 @@ class EditorSearchState {
   }
 }
 
-/// Controller for the search bar + highlight overlay (Phase 27).
-///
-/// Wired as a [StateNotifier] so widgets rebuild only when the search state
-/// changes. Delegates the actual matching to [DocumentSearchService] (Phase 12).
-final editorSearchProvider =
-    StateNotifierProvider<EditorSearchController, EditorSearchState>((ref) {
-  return EditorSearchController();
-});
-
 class EditorSearchController extends StateNotifier<EditorSearchState> {
   /// The current state, for widgets that own this controller directly
   /// (StateNotifier keeps [state] protected).

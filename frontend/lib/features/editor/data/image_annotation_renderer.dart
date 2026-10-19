@@ -72,8 +72,4 @@ class ImageAnnotationRenderer {
     _cache.clear();
   }
 
-  /// Remove a specific annotation's cached image.
-  void evict(String annotationId) {
-    _cache.remove(annotationId)?.dispose();
-  }
 }

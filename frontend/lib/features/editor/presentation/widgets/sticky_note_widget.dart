@@ -8,14 +8,12 @@ class StickyNoteWidget extends StatelessWidget {
   final StickyNoteAnnotation note;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
-  final ValueChanged<String>? onTextChanged;
 
   const StickyNoteWidget({
     super.key,
     required this.note,
     required this.onTap,
     this.onDelete,
-    this.onTextChanged,
   });
 
   @override

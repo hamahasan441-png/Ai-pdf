@@ -188,23 +188,6 @@ class EditorExistingTextService {
     );
     return draft;
   }
-
-  PdfEditCapability capabilityForWords(
-    List<PdfTextElement> words, {
-    double pageHeightPt = 0,
-    Set<String> loadedFamilies = const {},
-  }) {
-    final draft = draftForWords(
-      words,
-      pageHeightPt: pageHeightPt,
-      loadedFamilies: loadedFamilies,
-    );
-    return PdfEditCapability(
-      fontKind: _kindOf(draft),
-      bundledFaceLoaded: draft.textBox.metadata['fontFileLoaded'] == true,
-    );
-  }
-
   void _labelOverlay(
     ExistingLineEditDraft draft, {
     required FontMatchKind fontKind,

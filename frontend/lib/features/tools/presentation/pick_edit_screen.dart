@@ -115,12 +115,10 @@ import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
-import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_layer_panel.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_review_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_ops_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
@@ -301,7 +299,6 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   final EditorOutlineController _outlineController = EditorOutlineController();
   final EditorCompareController _compareController = EditorCompareController();
   final EditorLayerController _layerController = EditorLayerController();
-  final EditorFormReviewController _formReviewController = EditorFormReviewController();
   final EditorPageOpsController _pageOpsController = EditorPageOpsController();
 
   // --- Saved signatures (persisted across sessions) ---
@@ -351,7 +348,6 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _outlineController.dispose();
     _compareController.dispose();
     _layerController.dispose();
-    _formReviewController.dispose();
     _pageOpsController.dispose();
     super.dispose();
   }
@@ -3477,20 +3473,6 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onShowAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, true)),
                 onHideAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, false)),
                 onClose: () => setState(() => _layerController.hide()),
-              )
-            : null,
-        formReviewPanel: _formReviewController.current.visible
-            ? EditorFormReviewPanel(
-                reviewState: _formReviewController.current,
-                onAccept: (id) => setState(() => _formReviewController.acceptField(id)),
-                onReject: (id) => setState(() => _formReviewController.rejectField(id)),
-                onAcceptAllValid: () => setState(() => _formReviewController.acceptAllValid()),
-                onRejectAllPending: () => setState(() => _formReviewController.rejectAllPending()),
-                onApply: () {
-                  _formReviewController.beginApply();
-                  setState(() => _formReviewController.finishApply());
-                },
-                onClose: () => setState(() => _formReviewController.hide()),
               )
             : null,
         inlineOverlay: _inlineEditing != null

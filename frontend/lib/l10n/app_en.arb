@@ -363,8 +363,6 @@
   "markDash": "Dash",
   "markCheckbox": "Checkbox",
   "signatureDate": "Signature Date",
-  "smartFill": "Smart Fill",
-  "scanning": "Scanning…",
   "myProfile": "My Profile",
   "noProfileData": "No profile info saved yet",
   "readAloud": "Read Aloud",
@@ -372,11 +370,9 @@
   "chooseFileToRead": "Choose a PDF or image to read aloud",
   "nothingToRead": "No text found to read",
   "play": "Play",
-  "pause": "Pause",
   "stop": "Stop",
   "speed": "Speed",
   "editTextTool": "Edit Text",
-  "tapLineToEdit": "Tap a line to edit its text",
   "overlayEditNotice": "Tap a line to cover it with a new text box. The original PDF text stays in the file.",
   "visualCoverNotice": "Black cover added to the export image. The original text was not removed and can still be extracted from the PDF.",
   "redactChoiceTitle": "Redact this area",
@@ -594,5 +590,7 @@
   "saveCancelled": "Save cancelled",
   "couldNotShare": "Could not share: {error}",
   "@couldNotShare": {"placeholders": {"error": {"type": "String"}}},
-  "noFilesToShare": "No files to share"
+  "noFilesToShare": "No files to share",
+  "openingDocument": "Opening the document…",
+  "analyzingDocument": "Analysing the page…"
 }

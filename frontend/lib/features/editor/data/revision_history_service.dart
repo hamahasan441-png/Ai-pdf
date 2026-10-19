@@ -61,21 +61,6 @@ class RevisionHistoryService {
     }
   }
 
-  /// Get the number of edits made to a document.
-  Future<int> editCount(String filePath) async {
-    final history = await loadHistory(filePath);
-    return history.length;
-  }
-
-  /// Clear revision history for a document (e.g. after export / "flatten").
-  Future<void> clearHistory(String filePath) async {
-    final logPath = await _logPath(filePath);
-    final file = File(logPath);
-    if (file.existsSync()) {
-      await file.delete();
-    }
-  }
-
   Future<String> _logPath(String filePath) async {
     final dir = await getApplicationDocumentsDirectory();
     final logDir = Directory('${dir.path}/revision_history');

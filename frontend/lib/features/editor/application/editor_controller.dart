@@ -15,11 +15,6 @@ import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 
 import 'editor_state.dart';
 
-final editorControllerProvider =
-    StateNotifierProvider<EditorController, EditorState>((ref) {
-  return EditorController();
-});
-
 /// Editor controller with Command-pattern undo/redo.
 ///
 /// Internally uses [EditorHistory] for unlimited, object-level undo/redo.
@@ -64,15 +59,6 @@ class EditorController extends StateNotifier<EditorState> {
   void setLoading(bool value) {
     state = state.copyWith(loading: value);
   }
-
-  void setExporting(bool value) {
-    state = state.copyWith(exporting: value);
-  }
-
-  void setPage({required int currentPage, required int pageCount}) {
-    state = state.copyWith(currentPage: currentPage, pageCount: pageCount);
-  }
-
   void setCurrentPage(int currentPage) {
     state = state.copyWith(currentPage: currentPage);
   }
@@ -244,15 +230,6 @@ class EditorController extends StateNotifier<EditorState> {
     _currentHistory.push(command, layer);
     markDirty();
   }
-
-  bool eraseLast(PageLayer layer) {
-    if (layer.items.isEmpty) return false;
-    final removed = layer.items.last;
-    _currentHistory.push(RemoveCommand(removed, layer), layer);
-    markDirty();
-    return true;
-  }
-
   // ─── Annotation mutations (all go through history) ──────────────────────
 
   /// Add [annotation] to [layer]. [page] is the page that owns [layer]; it
