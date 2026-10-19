@@ -15,10 +15,14 @@ class ExistingLineEditDraft {
   const ExistingLineEditDraft({required this.whiteout, required this.textBox});
 }
 
-/// Overlay replacement. This does not rewrite the original PDF text object.
-/// It places a whiteout shape and a new text box that copies the styles we
-/// can actually read. A missing font is a substitute, not the original face.
-/// Whiteout is not secure redaction.
+/// Replacement of existing text: a whiteout and a new text box that copies
+/// the styles we can actually read. A missing font is a substitute, not the
+/// original face.
+///
+/// For words of the PDF's own text ([draftForWords]) the whiteout is marked
+/// [eraseTextKey]: the export removes those glyphs from the page content.
+/// For OCR lines of a scanned page ([draftForLine]) there is no text to
+/// remove; the whiteout covers the image as before.
 class EditorExistingTextService {
   const EditorExistingTextService();
 
@@ -138,13 +142,15 @@ class EditorExistingTextService {
       if (word.rect.bottom.isFinite && word.rect.bottom > bottom) bottom = word.rect.bottom;
     }
     final draft = ExistingLineEditDraft(
+      // These words are the PDF's own text: the export removes their glyphs
+      // instead of covering them (eraseTextKey).
       whiteout: ShapeAnnotation(
         ShapeType.whiteout,
         Offset(left, top),
         Offset(right, bottom),
         Colors.white,
         1,
-      ),
+      )..metadata[eraseTextKey] = true,
       textBox: TextAnnotation(
         Offset(left, top),
         buffer.toString(),

@@ -45,6 +45,26 @@ class PdfTextElement {
     this.source = TextGeometrySource.native,
     this.confidence = 1,
   });
+
+  /// The same element with its box moved by [quarterTurns] clockwise turns
+  /// of the page (as the editor turns pages).
+  PdfTextElement turned(int quarterTurns) {
+    var r = rect;
+    for (var i = 0; i < quarterTurns % 4; i++) {
+      // A clockwise turn maps (x, y) to (1 - y, x).
+      r = Rect.fromLTRB(1 - r.bottom, r.left, 1 - r.top, r.right);
+    }
+    return PdfTextElement(
+      text: text,
+      rect: r,
+      fontSize: fontSize,
+      fontName: fontName,
+      isBold: isBold,
+      isItalic: isItalic,
+      source: source,
+      confidence: confidence,
+    );
+  }
 }
 
 /// Service for extracting the native text layer from a PDF page.

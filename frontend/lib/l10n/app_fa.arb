@@ -467,5 +467,6 @@
   "toolReadView": "خواندن",
   "toolPrint": "چاپ",
   "toolPrintDesc": "ارسال PDF به چاپگر",
-  "printFailed": "چاپ ممکن نیست: {error}"
+  "printFailed": "چاپ ممکن نیست: {error}",
+  "editTextFlattened": "صفحهٔ {pages}: متن جایگزین‌شده از خود PDF حذف نشد، پس صفحه به‌صورت تصویر ذخیره شد."
 }

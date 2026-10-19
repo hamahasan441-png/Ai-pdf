@@ -467,5 +467,6 @@
   "toolReadView": "خوێندنەوە",
   "toolPrint": "چاپکردن",
   "toolPrintDesc": "ناردنی PDF بۆ چاپکەر",
-  "printFailed": "چاپکردن بەردەست نییە: {error}"
+  "printFailed": "چاپکردن بەردەست نییە: {error}",
+  "editTextFlattened": "پەڕەی {pages}: دەقە گۆڕدراوەکە لە خودی PDF ـەکە نەسڕایەوە، بۆیە پەڕەکە وەک وێنە پاشەکەوت کرا."
 }

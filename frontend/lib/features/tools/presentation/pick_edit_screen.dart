@@ -1122,11 +1122,22 @@ class _PickEditScreenState extends State<PickEditScreen> {
       );
 
   /// Place PDF text by shown position. Text is extracted per PDF page.
+  /// The page's words follow a turn of the page, so selection, search and
+  /// replaced text stay on the right words.
+  void _turnTextLayer(int page, int turns) {
+    final words = _textLayer[page];
+    if (words == null || turns % 4 == 0) return;
+    _textLayer[page] = [for (final w in words) w.turned(turns)];
+    _syncSearchPages();
+  }
+
   void _setTextLayerFromSource(Map<int, List<PdfTextElement>> bySource) {
     _textLayer.clear();
     for (var i = 0; i < _sourcePages.length; i++) {
       final words = bySource[_sourcePages[i]];
-      if (words != null) _textLayer[i] = List<PdfTextElement>.of(words);
+      // Words are on the page as the PDF shows it; follow the editor's turns.
+      final turns = _pageQuarterTurns[i] ?? 0;
+      if (words != null) _textLayer[i] = [for (final w in words) turns == 0 ? w : w.turned(turns)];
     }
   }
 
@@ -1473,6 +1484,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       }
       _pageAspect[index] = aspect;
       _pageQuarterTurns[index] = ((_pageQuarterTurns[index] ?? 0) + turns) % 4;
+      _turnTextLayer(index, turns);
       _hasUnsavedChanges = true;
     });
     _schedulePersist();
@@ -2671,6 +2683,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         final aspect = _aspectFor(_current);
         _pageAspect[_current] = 1 / aspect;
         _pageQuarterTurns[_current] = ((_pageQuarterTurns[_current] ?? 0) + 1) % 4;
+        _turnTextLayer(_current, 1);
         // Saved with the marks, so recovery reopens the page turned.
         _hasUnsavedChanges = true;
         _schedulePersist();
@@ -2699,8 +2712,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }) async {
     final sourcePath = _editorController.filePath;
     final keepsSource = _doc != null && sourcePath != null && sourcePath.toLowerCase().endsWith('.pdf');
+    var hides = const <int>[];
     if (keepsSource) {
-      final hides = pagesThatHideContent(
+      hides = pagesThatHideContent(
         _layers,
         exportSlots(pageCount: _pageCount, only: onlyIndices),
       );
@@ -2728,6 +2742,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
             flattenedPageMarks: _formMarks(),
           );
           outPath = result.path;
+          // Pages flattened only because replaced text could not be removed
+          // from the PDF: say so, they were not in the notice above.
+          final unannounced = [for (final p in result.flattenedPages) if (!hides.contains(p)) p + 1];
+          if (unannounced.isNotEmpty && mounted) {
+            _showError(AppLocalizations.of(context)!.editTextFlattened(unannounced.join(', ')));
+          }
         } on PreservingExportUnavailable catch (e) {
           // Never switch to an image-only file without asking.
           _editorController.finishExport();

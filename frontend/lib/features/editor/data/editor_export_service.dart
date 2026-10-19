@@ -17,6 +17,7 @@ import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
@@ -94,6 +95,22 @@ Map<int, PageLayer> withMarksBelow(Map<int, PageLayer> layers, int index, List<E
   return {...layers, index: PageLayer()..items.addAll([...marks, ...?layers[index]?.items])};
 }
 
+/// Boxes (0..1, displayed page) of the replaced PDF text on [layer]: the
+/// visible whiteouts marked with [eraseTextKey].
+List<List<double>> eraseRegionsOf(PageLayer? layer) => [
+      for (final s in layer?.shapes ?? const <ShapeAnnotation>[])
+        if (s.visible && s.type == ShapeType.whiteout && s.metadata[eraseTextKey] == true)
+          [
+            math.min(s.start.dx, s.end.dx),
+            math.min(s.start.dy, s.end.dy),
+            math.max(s.start.dx, s.end.dx),
+            math.max(s.start.dy, s.end.dy),
+          ],
+    ];
+
+/// Pages that must be saved as images because a mark hides content: a
+/// whiteout or a burned cover. Whiteouts over replaced text are not counted
+/// here; the export removes that text instead when it can.
 List<int> pagesThatHideContent(Map<int, PageLayer> layers, Iterable<int> slots) {
   final out = <int>[];
   for (final i in slots) {
@@ -101,7 +118,8 @@ List<int> pagesThatHideContent(Map<int, PageLayer> layers, Iterable<int> slots) 
     if (layer == null) continue;
     final hides = layer.shapes.any((s) =>
         s.visible &&
-        (s.type == ShapeType.whiteout || (s.burnsBlackCover && !s.isServerRedacted)));
+        ((s.type == ShapeType.whiteout && s.metadata[eraseTextKey] != true) ||
+            (s.burnsBlackCover && !s.isServerRedacted)));
     if (hides) out.add(i);
   }
   return out;
@@ -215,11 +233,27 @@ class EditorExportService {
         ExportUnavailableKind.unreadableFile,
       );
     }
+    final slots = exportSlots(pageCount: pageCount, only: onlyIndices);
+    if (slots.isEmpty) throw const PreservingExportUnavailable('Nothing to export.');
+    // Replaced text whose glyphs can be removed from the page content.
+    final eraseJobs = <int, (int, List<List<double>>, int)>{
+      for (final i in slots)
+        if (eraseRegionsOf(layers[i]) case final regions when regions.isNotEmpty)
+          i: (i < sourcePages.length ? sourcePages[i] : i, regions, (quarterTurns[i] ?? 0) % 4),
+    };
     final List<(List<double>, int)> sourceGeometry;
+    final Set<int> erasable;
     try {
-      sourceGeometry = await Isolate.run(() {
+      (sourceGeometry, erasable) = await Isolate.run(() {
         final store = PdfObjectStore.parse(sourceBytes);
-        return [for (final p in store.pages) (p.cropBox, p.rotate)];
+        final ok = <int>{
+          for (final MapEntry(key: i, value: (source, regions, turns)) in eraseJobs.entries)
+            if (source >= 0 &&
+                source < store.pages.length &&
+                erasePageText(store, store.pages[source], regions, quarterTurns: turns).complete)
+              i,
+        };
+        return ([for (final p in store.pages) (p.cropBox, p.rotate)], ok);
       });
     } on PdfSourceException catch (e) {
       throw PreservingExportUnavailable(
@@ -228,9 +262,13 @@ class EditorExportService {
       );
     }
 
-    final slots = exportSlots(pageCount: pageCount, only: onlyIndices);
-    if (slots.isEmpty) throw const PreservingExportUnavailable('Nothing to export.');
-    final flatten = pagesThatHideContent(layers, slots).toSet();
+    // A page whose replaced text cannot be removed cleanly is flattened, as
+    // a whiteout always was: its old text must not survive under the box.
+    final flatten = {
+      ...pagesThatHideContent(layers, slots),
+      for (final i in eraseJobs.keys)
+        if (!erasable.contains(i)) i,
+    };
 
     final generated = pw.Document();
     final fonts = EditorPdfFonts();
@@ -275,7 +313,7 @@ class EditorExportService {
 
       final layer = layers[i];
       if (layer == null || !layer.items.any((a) => a.visible)) {
-        specs.add(SourcePageSpec(source, quarterTurns: turns));
+        specs.add(SourcePageSpec(source, quarterTurns: turns, eraseRegions: eraseJobs[i]?.$2 ?? const []));
         continue;
       }
       final (crop, rotate) = sourceGeometry[source];
@@ -308,8 +346,16 @@ class EditorExportService {
         layer: layer,
         fonts: fonts,
         uni: uni,
+        // The replaced text is removed from the page; a white box would hide
+        // the background (a coloured header, a table rule) for nothing.
+        drawEraseCovers: false,
       );
-      specs.add(SourcePageSpec(source, quarterTurns: turns, overlayPage: generatedCount++));
+      specs.add(SourcePageSpec(
+        source,
+        quarterTurns: turns,
+        overlayPage: generatedCount++,
+        eraseRegions: eraseJobs[i]?.$2 ?? const [],
+      ));
       await Future<void>.delayed(Duration.zero);
     }
 
@@ -400,13 +446,15 @@ class EditorExportService {
     required PageLayer? layer,
     required EditorPdfFonts fonts,
     required PdfUnicodeFonts uni,
+    bool drawEraseCovers = true,
   }) {
     const rtlDetect = RtlDetectionService();
     final shapes = (layer?.shapes ?? const <ShapeAnnotation>[])
         .where((s) =>
             s.visible &&
             !s.burnsBlackCover &&
-            (s.type == ShapeType.rect || s.type == ShapeType.whiteout))
+            (s.type == ShapeType.rect || s.type == ShapeType.whiteout) &&
+            (drawEraseCovers || s.metadata[eraseTextKey] != true))
         .toList();
     final texts = (layer?.texts ?? const <TextAnnotation>[])
         .where((t) => t.visible && t.text.isNotEmpty && _canVectorize(t, uni))

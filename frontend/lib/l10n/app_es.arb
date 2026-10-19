@@ -467,5 +467,6 @@
   "toolReadView": "Leer",
   "toolPrint": "Imprimir",
   "toolPrintDesc": "Enviar un PDF a una impresora",
-  "printFailed": "No se puede imprimir: {error}"
+  "printFailed": "No se puede imprimir: {error}",
+  "editTextFlattened": "Página {pages}: no se pudo quitar el texto reemplazado del propio PDF, así que la página se guardó como imagen."
 }
