@@ -3,6 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -177,7 +180,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       final bytes = await file.readAsBytes();
       _addPageFromBytes(bytes);
     } catch (e) {
-      controller.setError('Capture failed: $e');
+      if (mounted) controller.setError(AppLocalizations.of(context)!.errCapture(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -196,7 +199,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         _addPageFromBytes(bytes);
       }
     } catch (e) {
-      controller.setError('Batch import failed: $e');
+      if (mounted) controller.setError(AppLocalizations.of(context)!.errImport(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -590,7 +593,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       }
     } catch (e) {
       controller.markProcessing(pageId, false);
-      controller.setError('Processing failed: $e');
+      if (mounted) controller.setError(AppLocalizations.of(context)!.errProcessing(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -605,7 +608,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       controller.finishExport();
       await Share.shareXFiles([XFile(path)], text: 'Scanned document');
     } catch (e) {
-      controller.setError('Export failed: $e');
+      if (mounted) controller.setError(AppLocalizations.of(context)!.errExport(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -651,7 +654,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         );
       }
     } catch (e) {
-      controller.setError('Save failed: $e');
+      if (mounted) controller.setError(AppLocalizations.of(context)!.saveFailed(describeError(e, AppLocalizations.of(context))));
     }
   }
 }

@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
@@ -108,7 +110,7 @@ class _OcrScreenState extends State<OcrScreen> {
     } catch (e) {
       setState(() {
         _text = '';
-        _status = l10n.couldNotReadText(e.toString());
+        _status = l10n.couldNotReadText(describeError(e, l10n));
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -138,7 +140,7 @@ class _OcrScreenState extends State<OcrScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.saveFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.saveFailed(describeError(e, l10n)))));
       }
     }
   }

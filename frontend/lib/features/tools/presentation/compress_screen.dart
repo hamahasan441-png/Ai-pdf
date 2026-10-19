@@ -1,6 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
@@ -66,7 +68,7 @@ class _CompressScreenState extends State<CompressScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressionFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressionFailed(describeError(e, l10n)))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

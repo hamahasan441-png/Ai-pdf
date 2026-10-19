@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -65,7 +68,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _result = ImportedFile(status: 'failed', reason: e.toString());
+          _result = ImportedFile(status: 'failed', reason: describeError(e, AppLocalizations.of(context)));
         });
       }
     } finally {

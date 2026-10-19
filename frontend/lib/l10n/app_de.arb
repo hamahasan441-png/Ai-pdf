@@ -572,5 +572,17 @@
   "libFileGone": "Diese Datei ist nicht mehr auf dem Gerät.",
   "libRemoveEntry": "Aus Bibliothek entfernen",
   "libNew": "Neu",
-  "signatureAdded": "Unterschrift hinzugefügt. Zum Verschieben ziehen, Größe über die Eckgriffe ändern."
+  "signatureAdded": "Unterschrift hinzugefügt. Zum Verschieben ziehen, Größe über die Eckgriffe ändern.",
+  "errReadFile": "Die Datei konnte nicht gelesen werden: {error}",
+  "errExport": "Export fehlgeschlagen: {error}",
+  "errRotate": "Die Seite konnte nicht gedreht werden: {error}",
+  "errAddImage": "Das Bild konnte nicht hinzugefügt werden: {error}",
+  "errFieldDetection": "Die Formularfelder wurden nicht gefunden: {error}",
+  "errSmartFill": "Intelligentes Ausfüllen fehlgeschlagen: {error}",
+  "errPlaceAnswers": "Die Antworten konnten nicht eingesetzt werden: {error}",
+  "errDelete": "Löschen nicht möglich: {error}",
+  "errRestore": "Wiederherstellen nicht möglich: {error}",
+  "errImport": "Import fehlgeschlagen: {error}",
+  "errCapture": "Das Foto konnte nicht aufgenommen werden: {error}",
+  "errProcessing": "Verarbeitung fehlgeschlagen: {error}"
 }

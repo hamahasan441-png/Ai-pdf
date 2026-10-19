@@ -384,7 +384,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _showError('No obvious fields found on this page. You can still tap Text to add anywhere.');
       }
     } catch (e) {
-      if (!silent) _showError('Field detection failed: $e');
+      if (!silent && mounted) _showError(AppLocalizations.of(context)!.errFieldDetection(describeError(e, AppLocalizations.of(context))));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -2389,7 +2389,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         );
       }
     } catch (e) {
-      _showError('Smart Fill failed: $e');
+      if (mounted) _showError(AppLocalizations.of(context)!.errSmartFill(describeError(e, AppLocalizations.of(context))));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -2431,7 +2431,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             .showSnackBar(SnackBar(content: Text(l10n.overlayEditNotice)));
       }
     } catch (e) {
-      _showError(l10n.operationFailed(e.toString()));
+      _showError(l10n.operationFailed(describeError(e, l10n)));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -2587,7 +2587,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _tool = EditTool.pan;
       });
     } catch (e) {
-      _showError('Could not add image: $e');
+      if (mounted) _showError(AppLocalizations.of(context)!.errAddImage(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -2902,8 +2902,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _schedulePersist();
       }
     } catch (e) {
-      _editorController.setError('Rotate failed: $e');
-      _showError('Rotate failed: $e');
+      if (!mounted) return;
+      final message = AppLocalizations.of(context)!.errRotate(describeError(e, AppLocalizations.of(context)));
+      _editorController.setError(message);
+      _showError(message);
     } finally {
       _editorController.finishPageChange(_current);
       if (mounted) setState(() {});
@@ -2992,8 +2994,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       }
       return outPath;
     } catch (e) {
-      _editorController.finishExport(error: 'Export failed: $e');
-      _showError('Export failed: $e');
+      if (!mounted) return null;
+      final message = AppLocalizations.of(context)!.errExport(describeError(e, AppLocalizations.of(context)));
+      _editorController.finishExport(error: message);
+      _showError(message);
       return null;
     } finally {
       if (mounted) setState(() {});
@@ -3037,7 +3041,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       try {
         await const PdfPrintService().printFile(outPath, jobName: _fileName);
       } catch (e) {
-        if (mounted) _showError(AppLocalizations.of(context)!.printFailed('$e'));
+        if (mounted) _showError(AppLocalizations.of(context)!.printFailed(describeError(e, AppLocalizations.of(context))));
       }
       return;
     }

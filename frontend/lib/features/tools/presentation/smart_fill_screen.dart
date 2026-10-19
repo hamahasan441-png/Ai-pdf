@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
@@ -142,7 +144,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
         setState(() => _status = l10n.smartFillPlaced(confirmed.length));
       }
     } catch (e) {
-      if (mounted) setState(() => _error = l10n.operationFailed(e.toString()));
+      if (mounted) setState(() => _error = l10n.operationFailed(describeError(e, l10n)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

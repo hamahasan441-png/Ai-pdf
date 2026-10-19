@@ -572,5 +572,17 @@
   "libFileGone": "Este archivo ya no está en el dispositivo.",
   "libRemoveEntry": "Quitar de la biblioteca",
   "libNew": "Nuevo",
-  "signatureAdded": "Firma añadida. Arrástrala para moverla y usa las esquinas para cambiar su tamaño."
+  "signatureAdded": "Firma añadida. Arrástrala para moverla y usa las esquinas para cambiar su tamaño.",
+  "errReadFile": "No se pudo leer el archivo: {error}",
+  "errExport": "Error al exportar: {error}",
+  "errRotate": "No se pudo girar la página: {error}",
+  "errAddImage": "No se pudo añadir la imagen: {error}",
+  "errFieldDetection": "No se encontraron los campos del formulario: {error}",
+  "errSmartFill": "Error en el relleno inteligente: {error}",
+  "errPlaceAnswers": "No se pudieron colocar las respuestas: {error}",
+  "errDelete": "No se pudo eliminar: {error}",
+  "errRestore": "No se pudo restaurar: {error}",
+  "errImport": "Error al importar: {error}",
+  "errCapture": "No se pudo tomar la foto: {error}",
+  "errProcessing": "Error al procesar: {error}"
 }

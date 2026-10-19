@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -208,7 +210,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _ensureIndex();
       }
     } catch (e) {
-      _error = 'Could not read file: $e';
+      if (mounted) _error = AppLocalizations.of(context)!.errReadFile(describeError(e, AppLocalizations.of(context)));
     } finally {
       if (mounted) setState(() => _loadingDoc = false);
     }
@@ -506,7 +508,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (mounted) {
         setState(() {
           _messages.remove(assistant);
-          _error = 'Something went wrong: $e';
+          _error = AppLocalizations.of(context)!.operationFailed(describeError(e, AppLocalizations.of(context)));
         });
       }
     } finally {
@@ -606,7 +608,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     } on OpenRouterException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Could not place answers: $e');
+      setState(() => _error = AppLocalizations.of(context)!.errPlaceAnswers(describeError(e, AppLocalizations.of(context))));
     } finally {
       if (mounted) setState(() => _placing = false);
     }
@@ -657,7 +659,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             subtitle: AppLocalizations.of(context)!.savedAsPdf);
       }
     } catch (e) {
-      if (mounted) setState(() => _error = 'Could not save PDF: $e');
+      if (mounted) setState(() => _error = AppLocalizations.of(context)!.saveFailed(describeError(e, AppLocalizations.of(context))));
     }
   }
 

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -57,7 +60,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = describeError(e, AppLocalizations.of(context));
         _loading = false;
       });
     }
@@ -164,7 +167,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.errImport(describeError(e, AppLocalizations.of(context))))));
       }
     }
   }

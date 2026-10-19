@@ -572,5 +572,17 @@
   "libFileGone": "این فایل دیگر روی دستگاه نیست.",
   "libRemoveEntry": "حذف از کتابخانه",
   "libNew": "جدید",
-  "signatureAdded": "امضا اضافه شد. برای جابه‌جایی بکشید و با دستگیره‌های گوشه اندازه را تغییر دهید."
+  "signatureAdded": "امضا اضافه شد. برای جابه‌جایی بکشید و با دستگیره‌های گوشه اندازه را تغییر دهید.",
+  "errReadFile": "خواندن فایل ممکن نشد: {error}",
+  "errExport": "خروجی گرفتن ناموفق بود: {error}",
+  "errRotate": "چرخاندن صفحه ممکن نشد: {error}",
+  "errAddImage": "افزودن تصویر ممکن نشد: {error}",
+  "errFieldDetection": "یافتن فیلدهای فرم ممکن نشد: {error}",
+  "errSmartFill": "پرکردن هوشمند ناموفق بود: {error}",
+  "errPlaceAnswers": "قرار دادن پاسخ‌ها ممکن نشد: {error}",
+  "errDelete": "حذف ممکن نشد: {error}",
+  "errRestore": "بازیابی ممکن نشد: {error}",
+  "errImport": "وارد کردن ناموفق بود: {error}",
+  "errCapture": "گرفتن عکس ممکن نشد: {error}",
+  "errProcessing": "پردازش ناموفق بود: {error}"
 }

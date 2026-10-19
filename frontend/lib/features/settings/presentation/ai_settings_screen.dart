@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/core/utils/error_text.dart';
+
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import '../../../core/config/app_config.dart';
@@ -123,7 +125,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     } catch (e) {
       setState(() {
         _testOk = false;
-        _testResult = 'Failed: $e';
+        _testResult = AppLocalizations.of(context)!.operationFailed(describeError(e, AppLocalizations.of(context)));
       });
     } finally {
       if (mounted) setState(() => _testing = false);

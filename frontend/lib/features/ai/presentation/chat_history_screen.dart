@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
@@ -57,7 +60,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = describeError(e, AppLocalizations.of(context));
       });
     }
   }
@@ -86,7 +89,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.errDelete(describeError(e, AppLocalizations.of(context))))));
       }
     }
   }
@@ -107,7 +110,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.errRestore(describeError(e, AppLocalizations.of(context))))));
       }
     }
   }

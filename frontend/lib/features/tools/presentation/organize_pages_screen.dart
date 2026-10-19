@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
@@ -58,7 +60,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
         }
       }
     } catch (e) {
-      _status = l10n.couldNotAddFile(e.toString());
+      _status = l10n.couldNotAddFile(describeError(e, l10n));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -165,7 +167,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
             paths: [outPath], title: l10n.organizedPdf, subtitle: l10n.nPages(_pages.length));
       }
     } catch (e) {
-      _status = l10n.operationFailed(e.toString());
+      _status = l10n.operationFailed(describeError(e, l10n));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

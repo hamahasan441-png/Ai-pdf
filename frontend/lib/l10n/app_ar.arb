@@ -572,5 +572,17 @@
   "libFileGone": "لم يعد هذا الملف على الجهاز.",
   "libRemoveEntry": "إزالة من المكتبة",
   "libNew": "جديد",
-  "signatureAdded": "تمت إضافة التوقيع. اسحبه لتحريكه واستخدم مقابض الزوايا لتغيير حجمه."
+  "signatureAdded": "تمت إضافة التوقيع. اسحبه لتحريكه واستخدم مقابض الزوايا لتغيير حجمه.",
+  "errReadFile": "تعذّرت قراءة الملف: {error}",
+  "errExport": "فشل التصدير: {error}",
+  "errRotate": "تعذّر تدوير الصفحة: {error}",
+  "errAddImage": "تعذّرت إضافة الصورة: {error}",
+  "errFieldDetection": "تعذّر العثور على حقول النموذج: {error}",
+  "errSmartFill": "فشل الملء الذكي: {error}",
+  "errPlaceAnswers": "تعذّر وضع الإجابات: {error}",
+  "errDelete": "تعذّر الحذف: {error}",
+  "errRestore": "تعذّرت الاستعادة: {error}",
+  "errImport": "فشل الاستيراد: {error}",
+  "errCapture": "تعذّر التقاط الصورة: {error}",
+  "errProcessing": "فشلت المعالجة: {error}"
 }
