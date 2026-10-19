@@ -28,6 +28,7 @@ class AcroFormLayer extends StatelessWidget {
 
   static const fill = Color(0xFFE3ECFD);
   static const border = Color(0xFF6B8EDB);
+  static const requiredBorder = Color(0xFFD32F2F);
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +56,7 @@ class AcroFormLayer extends StatelessWidget {
     final f = p.field;
     final value = fieldValue(f, edits);
     final editable = f.fillable;
+    final missing = editable && f.required && fieldValueEmpty(value);
     final Widget content = switch (f.kind) {
       AcroFieldKind.checkbox => _mark(value != 'Off' ? Icons.check : null),
       AcroFieldKind.radio => _mark(value == p.widget.onState ? Icons.circle : null, round: true),
@@ -83,10 +85,23 @@ class AcroFormLayer extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: editable ? fill : const Color(0xFFEDEDED),
-            border: Border.all(color: editable ? border : Colors.black26, width: 0.8),
+            // A required field still empty is outlined in red.
+            border: Border.all(
+              color: !editable ? Colors.black26 : (missing ? requiredBorder : border),
+              width: missing ? 1.4 : 0.8,
+            ),
             shape: f.kind == AcroFieldKind.radio ? BoxShape.circle : BoxShape.rectangle,
           ),
-          child: content,
+          child: f.required && editable && f.kind != AcroFieldKind.radio
+              ? Stack(children: [
+                  Positioned.fill(child: content),
+                  const Positioned(
+                    right: 1,
+                    top: 0,
+                    child: Text('*', style: TextStyle(color: requiredBorder, fontSize: 12, height: 1)),
+                  ),
+                ])
+              : content,
         ),
       ),
     );

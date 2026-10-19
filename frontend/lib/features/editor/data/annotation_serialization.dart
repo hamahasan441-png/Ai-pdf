@@ -4,6 +4,7 @@ import 'dart:ui' show Offset, Rect, TextAlign, TextDirection;
 import 'package:flutter/material.dart' show Color, Colors;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
@@ -54,8 +55,46 @@ Map<String, dynamic> annotationToJson(EditorAnnotation a) {
   if (a is StampAnnotation) return _stampToJson(a);
   if (a is TextMarkupAnnotation) return _markupToJson(a);
   if (a is StickyNoteAnnotation) return _noteToJson(a);
+  if (a is FormFieldAnnotation) return _fieldToJson(a);
   return {'type': 'unknown', 'id': a.id};
 }
+
+Map<String, dynamic> _fieldToJson(FormFieldAnnotation f) => {
+      'type': 'field',
+      'id': f.id,
+      'posX': f.pos.dx,
+      'posY': f.pos.dy,
+      'width': f.width,
+      'height': f.height,
+      'kind': f.fieldKind.name,
+      'label': f.label,
+      'value': f.value,
+      'required': f.required,
+      'checked': f.checked,
+      'options': f.options,
+      'multiline': f.multiline,
+      'borderColor': f.borderColor.value,
+      'fillColor': f.fillColor.value,
+      'fontSize': f.fontSize,
+      ..._baseToJson(f),
+    };
+
+FormFieldAnnotation _fieldFromJson(Map<String, dynamic> j) => FormFieldAnnotation(
+      pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+      width: (j['width'] as num).toDouble(),
+      height: (j['height'] as num).toDouble(),
+      fieldKind: FormFieldKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => FormFieldKind.text),
+      label: j['label'] as String? ?? '',
+      value: j['value'] as String? ?? '',
+      required: j['required'] as bool? ?? false,
+      checked: j['checked'] as bool? ?? false,
+      options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
+      multiline: j['multiline'] as bool? ?? false,
+      borderColor: Color(j['borderColor'] as int? ?? 0xFF2563EB),
+      fillColor: Color(j['fillColor'] as int? ?? 0x1A2563EB),
+      fontSize: (j['fontSize'] as num?)?.toDouble() ?? 0.018,
+      id: j['id'] as String?,
+    );
 
 Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       'type': 'image',
@@ -215,6 +254,9 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
         break;
       case 'note':
         a = _noteFromJson(j);
+        break;
+      case 'field':
+        a = _fieldFromJson(j);
         break;
       default:
         return null;

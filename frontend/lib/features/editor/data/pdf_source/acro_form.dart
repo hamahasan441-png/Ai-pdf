@@ -4,6 +4,8 @@ import 'dart:ui' show Rect;
 
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 
+export 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart' show textAppearance, winAnsiEncodable;
+
 /// Kinds of interactive form field (PDF 32000-1 §12.7.4).
 enum AcroFieldKind { text, checkbox, radio, choice, pushButton, signature }
 
@@ -48,6 +50,9 @@ class AcroField {
 
   /// From /DA; 0 means "auto size".
   final double fontSize;
+
+  /// Text alignment (/Q): 0 left, 1 centre, 2 right.
+  final int quadding;
   final List<AcroWidget> widgets;
 
   const AcroField({
@@ -59,10 +64,14 @@ class AcroField {
     this.options = const [],
     this.maxLen,
     this.fontSize = 0,
+    this.quadding = 0,
     required this.widgets,
   });
 
   bool get readOnly => flags & 1 != 0;
+
+  /// The form asks for a value before it is submitted (/Ff bit 2).
+  bool get required => flags & (1 << 1) != 0;
   bool get multiline => kind == AcroFieldKind.text && flags & (1 << 12) != 0;
   bool get password => kind == AcroFieldKind.text && flags & (1 << 13) != 0;
   bool get comb => kind == AcroFieldKind.text && flags & (1 << 24) != 0;
@@ -119,6 +128,9 @@ class AcroFormReader {
     final out = <AcroField>[];
     final seen = <int>{};
 
+    // /Q may be set once for the whole form.
+    final formDefaults = <String, PdfValue>{if (acro['/Q'] != null) '/Q': acro['/Q']!};
+
     void walk(PdfValue? node, String prefix, Map<String, PdfValue> inherited, int depth) {
       if (node is! PdfRef || depth > maxDepth || out.length >= maxFields || !seen.add(node.num)) return;
       final dict = s.resolve(node);
@@ -128,7 +140,7 @@ class AcroFormReader {
       final name = partial == null ? prefix : (prefix.isEmpty ? partial : '$prefix.$partial');
       final inh = {
         ...inherited,
-        for (final k in const ['/FT', '/Ff', '/V', '/DA', '/Opt', '/MaxLen'])
+        for (final k in const ['/FT', '/Ff', '/V', '/DA', '/Opt', '/MaxLen', '/Q'])
           if (dict[k] != null) k: dict[k]!,
       };
 
@@ -155,7 +167,7 @@ class AcroFormReader {
     }
 
     for (final r in roots.items) {
-      walk(r, '', const {}, 0);
+      walk(r, '', formDefaults, 0);
     }
     return out;
   }
@@ -218,6 +230,7 @@ class AcroFormReader {
       }
     }
     final maxLen = s.resolve(inh['/MaxLen']);
+    final q = s.resolve(inh['/Q']);
     return AcroField(
       name: name,
       objNum: num,
@@ -227,6 +240,7 @@ class AcroFormReader {
       options: options,
       maxLen: maxLen is PdfNum ? maxLen.toInt() : null,
       fontSize: _daFontSize(s.resolve(inh['/DA'])),
+      quadding: q is PdfNum && q.toInt() >= 0 && q.toInt() <= 2 ? q.toInt() : 0,
       widgets: widgets,
     );
   }
@@ -303,42 +317,6 @@ Rect displayRect(List<double> rect, List<double> crop, int rotate) {
   );
 }
 
-/// Whether [text] can be drawn with the standard Helvetica font in
-/// WinAnsiEncoding (printable ASCII and Latin-1).
-bool winAnsiEncodable(String text) =>
-    text.runes.every((c) => c == 0x0A || (c >= 0x20 && c <= 0x7E) || (c >= 0xA0 && c <= 0xFF));
-
-/// Content of a text-field appearance stream (Helvetica as /Helv) showing
-/// [text] in a [width] × [height] box. [fontSize] 0 fits the box. Returns
-/// null when the text cannot be drawn with Helvetica; the viewer then
-/// draws the value itself (/NeedAppearances).
-Uint8List? textAppearance(String text, double width, double height, double fontSize, {bool multiline = false}) {
-  if (!winAnsiEncodable(text) || width <= 2 || height <= 2) return null;
-  final lines = multiline ? text.split('\n') : [text.replaceAll('\n', ' ')];
-  var size = fontSize > 0 ? fontSize : (multiline ? 10.0 : (height * 0.7).clamp(4.0, 12.0));
-  // Shrink an auto-sized single line that would overflow the box (Helvetica
-  // averages about half an em per character).
-  if (fontSize <= 0 && !multiline) {
-    final longest = lines.first.length;
-    if (longest > 0) size = size.clamp(4.0, (width - 4) / (longest * 0.5)).toDouble();
-  }
-  String n(double v) => PdfNum.of(v).raw;
-  String esc(String s) => s.replaceAll(r'\', r'\\').replaceAll('(', r'\(').replaceAll(')', r'\)');
-  final b = StringBuffer('/Tx BMC\nq\n1 1 ${n(width - 2)} ${n(height - 2)} re W n\nBT\n/Helv ${n(size)} Tf\n0 g\n');
-  if (multiline) {
-    final lead = size * 1.15;
-    b.write('${n(lead)} TL\n2 ${n(height - 2 - size)} Td\n');
-    for (var i = 0; i < lines.length; i++) {
-      b.write('${i == 0 ? '' : 'T* '}(${esc(lines[i])}) Tj\n');
-    }
-  } else {
-    final baseline = (height - size * 0.72) / 2;
-    b.write('2 ${n(baseline)} Td\n(${esc(lines.first)}) Tj\n');
-  }
-  b.write('ET\nQ\nEMC\n');
-  return Uint8List.fromList(latin1.encode(b.toString()));
-}
-
 /// The form of one PDF, with each source page's crop box and /Rotate so
 /// widgets can be placed on the displayed page.
 class AcroFormSnapshot {
@@ -378,3 +356,49 @@ String fieldDisplayText(AcroField f, Object value) => switch (f.kind) {
       AcroFieldKind.text => '$value',
       _ => '',
     };
+
+/// Whether [value] counts as not filled in.
+bool fieldValueEmpty(Object value) => switch (value) {
+      String v => v.isEmpty || v == 'Off',
+      List v => v.isEmpty,
+      _ => false,
+    };
+
+/// Required fields the user can fill that are still empty, among those on
+/// [sourcePages] (the source pages the export keeps), in form order.
+List<AcroField> emptyRequiredFields(AcroFormSnapshot form, Map<String, Object> edits, Iterable<int> sourcePages) {
+  final kept = sourcePages.toSet();
+  return [
+    for (final f in form.fields)
+      if (f.required && f.fillable && f.widgets.any((w) => kept.contains(w.pageIndex)) && fieldValueEmpty(fieldValue(f, edits)))
+        f,
+  ];
+}
+
+/// Text and choice fields in the order a reader fills them: by page as the
+/// editor shows them ([slotOf] maps a source page to its position, -1 when
+/// not shown), then top to bottom and left to right on the displayed page.
+List<(AcroField, AcroWidget, int)> fillOrder(
+  AcroFormSnapshot form,
+  int Function(int sourcePage) slotOf, {
+  int Function(int slot)? quarterTurnsOf,
+}) {
+  final out = <(AcroField, AcroWidget, int, Rect)>[];
+  for (final f in form.fields) {
+    if (!f.fillable || (f.kind != AcroFieldKind.text && f.kind != AcroFieldKind.choice)) continue;
+    for (final w in f.widgets) {
+      final slot = slotOf(w.pageIndex);
+      if (slot < 0) continue;
+      out.add((f, w, slot, form.rectOf(w, quarterTurns: quarterTurnsOf?.call(slot) ?? 0)));
+    }
+  }
+  out.sort((a, b) {
+    if (a.$3 != b.$3) return a.$3.compareTo(b.$3);
+    // Same row when the tops are within half the smaller height.
+    final tol = (a.$4.height < b.$4.height ? a.$4.height : b.$4.height) / 2;
+    if ((a.$4.top - b.$4.top).abs() > tol) return a.$4.top.compareTo(b.$4.top);
+    return a.$4.left.compareTo(b.$4.left);
+  });
+  return [for (final e in out) (e.$1, e.$2, e.$3)];
+}
+

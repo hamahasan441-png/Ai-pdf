@@ -23,6 +23,7 @@ import 'package:ai_pdf/features/editor/data/form_value_marks.dart';
 import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_properties.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_view.dart';
@@ -71,6 +72,7 @@ import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/signature_repository.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
@@ -509,9 +511,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (!mounted) return;
     if (result.annotations.isNotEmpty) {
       setState(() {
-        _layer.items.addAll(result.annotations);
+        // One undo step removes everything the fill added.
+        _editorController.pushAnnotations(_layer, result.annotations);
         _hasUnsavedChanges = true;
       });
+      _schedulePersist();
     }
 
     final l10n = AppLocalizations.of(context)!;
@@ -2339,9 +2343,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (confirmed == null || confirmed.isEmpty || !mounted) return;
 
       setState(() {
-        _annotationApply.applyFilledFieldsToLayer(_layer, confirmed);
+        _editorController.pushAnnotations(_layer, _annotationApply.annotationsForFilledFields(confirmed));
+        _hasUnsavedChanges = true;
         _tool = EditTool.pan;
       });
+      _schedulePersist();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context)!.smartFillPlaced(confirmed.length))),
@@ -2405,6 +2411,42 @@ class _PickEditScreenState extends State<PickEditScreen> {
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
+  }
+
+  /// Add a fillable form field in the middle of the page, selected so it can
+  /// be moved and resized, and open its properties.
+  Future<void> _addFormField() async {
+    final kind = await showAddFormFieldSheet(context);
+    if (kind == null || !mounted) return;
+    final l10n = AppLocalizations.of(context);
+    var n = 1;
+    for (final layer in _layers.values) {
+      n += layer.fields.length;
+    }
+    final field = newFormField(kind, label: '${fieldKindLabel(l10n, kind)} $n', aspect: _aspectFor(_current));
+    setState(() {
+      _pushItem(field);
+      _selected = field;
+      _tool = EditTool.pan;
+      _hasUnsavedChanges = true;
+    });
+    await _editField(field);
+  }
+
+  /// A field's properties, as one undo step.
+  Future<void> _editField(FormFieldAnnotation field) async {
+    _editorController.beginEdit([field], label: 'Field');
+    final saved = await showFormFieldPropertiesDialog(context, field);
+    if (!mounted) return;
+    setState(() {
+      if (saved) {
+        _editorController.commitEdit(_layer, force: true);
+        _hasUnsavedChanges = true;
+      } else {
+        _editorController.revertOpenEdit();
+      }
+    });
+    _schedulePersist();
   }
 
   /// Show the paragraphs of the page's own text as tappable boxes. False
@@ -2853,6 +2895,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final sourcePath = _editorController.filePath;
     final keepsSource = _doc != null && sourcePath != null && sourcePath.toLowerCase().endsWith('.pdf');
     var hides = const <int>[];
+    if (!await _confirmRequiredFields(onlyIndices) || !mounted) return null;
     if (keepsSource) {
       hides = pagesThatHideContent(
         _layers,
@@ -3005,16 +3048,73 @@ class _PickEditScreenState extends State<PickEditScreen> {
     );
   }
 
+  /// The slot (shown page) of source page [source], or -1.
+  int _slotOfSource(int source) => _sourcePages.indexOf(source);
+
+  /// Before saving: required fields of the PDF's form that are still empty.
+  /// Returns false when the user chose to fill them in first (the first one
+  /// is then opened).
+  Future<bool> _confirmRequiredFields(List<int>? onlyIndices) async {
+    final kept = [
+      for (final slot in exportSlots(pageCount: _pageCount, only: onlyIndices))
+        if (slot < _sourcePages.length && _sourcePages[slot] >= 0) _sourcePages[slot],
+    ];
+    final missing = emptyRequiredFields(_form, _formValues, kept);
+    if (missing.isEmpty) return true;
+    final l10n = AppLocalizations.of(context)!;
+    final names = missing.map((f) => f.name).toList();
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.requiredFieldsTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.requiredFieldsBody(names.length)),
+            const SizedBox(height: 8),
+            for (final n in names.take(8)) Text('• $n'),
+            if (names.length > 8) const Text('…'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.exportAnyway)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.fillInFields)),
+        ],
+      ),
+    );
+    if (choice != false || !mounted) return choice == true;
+    // Open the first empty required field.
+    final first = missing.first;
+    final widget = first.widgets.firstWhere((w) => _slotOfSource(w.pageIndex) >= 0, orElse: () => first.widgets.first);
+    final slot = _slotOfSource(widget.pageIndex);
+    if (slot >= 0 && slot != _current) await _goToPage(slot);
+    if (mounted) await _fillFormField(first, widget);
+    return false;
+  }
+
   Future<void> _fillFormField(AcroField field, AcroWidget widget) async {
     final current = fieldValue(field, _formValues);
     final Object? next;
+    var step = 0;
+    // Text and choice fields in reading order, for Previous / Next.
+    final order = fillOrder(_form, _slotOfSource, quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0);
+    final at = order.indexWhere((e) => e.$1.name == field.name && e.$2.objNum == widget.objNum);
     switch (field.kind) {
       case AcroFieldKind.checkbox:
         next = current != 'Off' ? 'Off' : field.checkedState;
       case AcroFieldKind.radio:
         next = widget.onState ?? current;
       case AcroFieldKind.text:
-        next = await showFormTextDialog(context, field: field, initial: '$current');
+        final result = await showFormTextDialog(
+          context,
+          field: field,
+          initial: '$current',
+          hasPrevious: at > 0,
+          hasNext: at >= 0 && at < order.length - 1,
+        );
+        next = result?.value;
+        step = result?.step ?? 0;
       case AcroFieldKind.choice:
         next = await showFormChoiceSheet(context, field: field, current: current);
       default:
@@ -3023,16 +3123,24 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (next == null || !mounted) return;
     bool same(Object a, Object b) =>
         a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
-    if (same(next, current)) return;
-    // Back to the file's value: drop the edit instead of storing a copy.
-    final after = same(next, field.value) ? null : next;
-    setState(() {
-      _editorController.record(
-        FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
-        _layer,
-      );
-    });
-    _schedulePersist();
+    if (!same(next, current)) {
+      // Back to the file's value: drop the edit instead of storing a copy.
+      final after = same(next, field.value) ? null : next;
+      setState(() {
+        _editorController.record(
+          FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
+          _layer,
+        );
+      });
+      _schedulePersist();
+    }
+    if (step == 0 || at < 0) return;
+    final target = at + step;
+    if (target < 0 || target >= order.length) return;
+    final (nextField, nextWidget, slot) = order[target];
+    if (slot != _current) await _goToPage(slot);
+    if (!mounted) return;
+    await _fillFormField(nextField, nextWidget);
   }
 
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
@@ -3300,6 +3408,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             onDeselectSelected: () => setState(() => _selected = null),
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
+            onEditField: _editField,
             onAlignMulti: _alignMulti,
             onDistributeMulti: _distributeMulti,
             onDuplicateMulti: _duplicateMulti,
@@ -3369,6 +3478,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onAutoFill: _autoFill,
           onAiFill: _smartFillPage,
           onEditTextTool: _scanForEdit,
+          onAddFormField: _addFormField,
           onToggleFields: () => setState(() => _showFields = !_showFields),
           onAddSignature: _addSignature,
           onPlaceSignatureDate: _placeSignatureDate,

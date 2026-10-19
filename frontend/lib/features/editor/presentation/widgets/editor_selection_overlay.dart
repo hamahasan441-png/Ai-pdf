@@ -203,6 +203,9 @@ class EditorSelectionActionBar extends StatelessWidget {
   final VoidCallback? onTextIncrease;
   final VoidCallback? onPickTextColor;
   final VoidCallback? onEditShapeStyle;
+
+  /// Opens a form field's properties; shown when set.
+  final VoidCallback? onEditField;
   final VoidCallback onCopy;
   final VoidCallback onDuplicate;
   final VoidCallback onBringToFront;
@@ -215,6 +218,7 @@ class EditorSelectionActionBar extends StatelessWidget {
     required this.showTextActions,
     required this.showShapeActions,
     this.onEditText,
+    this.onEditField,
     this.onTextDecrease,
     this.onTextIncrease,
     this.onPickTextColor,
@@ -255,6 +259,12 @@ class EditorSelectionActionBar extends StatelessWidget {
                 EditorMiniButton(icon: Icons.text_increase, tooltip: 'A+', onTap: onTextIncrease!),
                 EditorMiniButton(
                     icon: Icons.palette_outlined, tooltip: 'Colour', onTap: onPickTextColor!),
+                const SizedBox(width: 4),
+                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
+                const SizedBox(width: 4),
+              ],
+              if (onEditField != null) ...[
+                EditorMiniButton(icon: Icons.tune, tooltip: l10n.fieldProperties, onTap: onEditField!),
                 const SizedBox(width: 4),
                 const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
                 const SizedBox(width: 4),

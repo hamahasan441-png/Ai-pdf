@@ -1,4 +1,5 @@
 import 'annotation.dart';
+import 'form_field_annotation.dart';
 import 'image_annotation.dart';
 import 'stamp_annotation.dart';
 import 'sticky_note_annotation.dart';
@@ -25,6 +26,8 @@ class PageLayer {
       items.whereType<StampAnnotation>().toList();
   List<TextMarkupAnnotation> get markups =>
       items.whereType<TextMarkupAnnotation>().toList();
+  List<FormFieldAnnotation> get fields =>
+      items.whereType<FormFieldAnnotation>().toList();
   List<StickyNoteAnnotation> get notes =>
       items.whereType<StickyNoteAnnotation>().toList();
 

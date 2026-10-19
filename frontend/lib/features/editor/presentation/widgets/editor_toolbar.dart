@@ -35,6 +35,9 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAutoFill;
   final VoidCallback onAiFill;
   final VoidCallback onEditTextTool;
+
+  /// Adds a fillable form field; hidden when null.
+  final VoidCallback? onAddFormField;
   final VoidCallback onToggleFields;
   final VoidCallback onAddSignature;
   final VoidCallback onPlaceSignatureDate;
@@ -78,6 +81,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onAutoFill,
     required this.onAiFill,
     required this.onEditTextTool,
+    this.onAddFormField,
     required this.onToggleFields,
     required this.onAddSignature,
     required this.onPlaceSignatureDate,
@@ -301,6 +305,8 @@ class EditorToolbar extends StatelessWidget {
                   _actionBtn(Icons.image_outlined, l10n.toolImage, () => act(onAddImage), cs),
                   _actionBtn(Icons.event_available, l10n.signatureDate, () => act(onPlaceSignatureDate), cs),
                   _actionBtn(Icons.badge_outlined, l10n.myProfile, () => act(onInsertProfileField), cs),
+                  if (onAddFormField != null)
+                    _actionBtn(Icons.dynamic_form_outlined, l10n.addFormField, () => act(onAddFormField!), cs),
                 ],
               ),
               _moreLabel(l10n.moreDocument, cs),

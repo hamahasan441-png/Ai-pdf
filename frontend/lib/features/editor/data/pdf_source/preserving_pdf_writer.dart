@@ -3,12 +3,16 @@ import 'dart:io' show ZLibEncoder;
 import 'dart:typed_data';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 
 /// One page of the output document.
 sealed class OutputPageSpec {
-  const OutputPageSpec();
+  const OutputPageSpec({this.newFields = const []});
+
+  /// Form fields to add on this page (see [NewFormField]).
+  final List<NewFormField> newFields;
 }
 
 /// Keep a page of the source PDF: its text, vectors, images, links,
@@ -19,7 +23,13 @@ final class SourcePageSpec extends OutputPageSpec {
   final int quarterTurns;
   final int? overlayPage;
 
-  const SourcePageSpec(this.sourceIndex, {this.quarterTurns = 0, this.overlayPage, this.eraseRegions = const []});
+  const SourcePageSpec(
+    this.sourceIndex, {
+    this.quarterTurns = 0,
+    this.overlayPage,
+    this.eraseRegions = const [],
+    super.newFields,
+  });
 
   /// Boxes (0..1 from the displayed top left) whose glyphs are removed from
   /// the page content. Writing fails if they cannot all be removed; check
@@ -36,7 +46,7 @@ final class GeneratedPageSpec extends OutputPageSpec {
   /// links that pointed at that page then point here.
   final int? replacesSource;
 
-  const GeneratedPageSpec(this.generatedPage, {this.replacesSource});
+  const GeneratedPageSpec(this.generatedPage, {this.replacesSource, super.newFields});
 }
 
 /// What the writer kept and dropped, for the caller to report.
@@ -61,7 +71,11 @@ class PreservingWriteReport {
     required this.pageLabelsDropped,
     this.filledFormFields = 0,
     this.erasedGlyphs = 0,
+    this.createdFormFields = 0,
   });
+
+  /// New form fields added from the editor.
+  final int createdFormFields;
 }
 
 /// Writes a new PDF that keeps the source objects of every kept page.
@@ -95,6 +109,11 @@ class PreservingPdfWriter {
 
   PreservingWriteReport? report;
   var _erasedGlyphs = 0;
+
+  /// Fields created on the pages written so far, for the form's /Fields.
+  final List<PdfRef> _newFieldRefs = [];
+  bool _newFieldsNeedAppearances = false;
+  Set<String>? _fieldNames;
 
   /// Writes [pages]. [formValues] sets form fields by full name: a String
   /// for text, single choice, check box and radio (the state name, "Off"
@@ -148,12 +167,20 @@ class PreservingPdfWriter {
           final num = first ? info.ref.num : _alloc();
           var dict = _sourcePageDict(info, spec, pagesRoot, duplicate: !first);
           if (!first) dict = _withCopiedAnnots(dict, info, num);
+          final rotate = (info.rotate + 90 * (spec.quarterTurns % 4)) % 360;
+          dict = _withNewFields(dict, spec.newFields, num, info.cropBox, rotate);
           _overrides[num] = dict;
           kids.add(PdfRef(num, first ? info.ref.gen : 0));
         case GeneratedPageSpec():
           generatedCount++;
           final num = _alloc();
-          _overrides[num] = _generatedPageDict(spec.generatedPage, pagesRoot);
+          _overrides[num] = _withNewFields(
+            _generatedPageDict(spec.generatedPage, pagesRoot),
+            spec.newFields,
+            num,
+            _generatedBox(spec.generatedPage),
+            generated!.pages[spec.generatedPage].rotate,
+          );
           kids.add(PdfRef(num, 0));
           final replaced = spec.replacesSource;
           if (replaced != null && replaced >= 0 && replaced < source.pages.length) {
@@ -176,6 +203,7 @@ class PreservingPdfWriter {
     var labelsDropped = false;
     if (reordered && catalog.remove('/PageLabels') != null) labelsDropped = true;
     final filled = _applyFormValues(catalog, formValues);
+    _addNewFieldsToForm(catalog);
     final open = source.resolve(catalog['/OpenAction']);
     if (open is PdfArray && open.items.isNotEmpty) {
       final target = open.items.first;
@@ -202,6 +230,7 @@ class PreservingPdfWriter {
       pageLabelsDropped: labelsDropped,
       filledFormFields: filled,
       erasedGlyphs: _erasedGlyphs,
+      createdFormFields: _newFieldRefs.length,
     );
     return _assemble(rootRef, info is PdfRef && _out.containsKey(info.num) ? info : null);
   }
@@ -489,7 +518,8 @@ class PreservingPdfWriter {
           if (v is! String) continue;
           field['/V'] = PdfString.ofText(v);
           for (final w in widgets) {
-            _setAppearance(entriesOf(w.objNum), w, f.comb ? null : v, f.fontSize, multiline: f.multiline);
+            _setAppearance(entriesOf(w.objNum), w, f.comb ? null : v, f.fontSize,
+                multiline: f.multiline, quadding: f.quadding);
           }
         case AcroFieldKind.choice:
           if (v is List<String>) {
@@ -502,7 +532,7 @@ class PreservingPdfWriter {
           field.remove('/I'); // selected indices would contradict /V
           for (final w in widgets) {
             final shown = f.combo && v is String ? f.displayOf(v) : null;
-            _setAppearance(entriesOf(w.objNum), w, shown, f.fontSize);
+            _setAppearance(entriesOf(w.objNum), w, shown, f.fontSize, quadding: f.quadding);
           }
         default:
           continue;
@@ -523,10 +553,12 @@ class PreservingPdfWriter {
   /// A new normal appearance showing [text], or none (the viewer draws it)
   /// when [text] is null or cannot be drawn here.
   void _setAppearance(Map<String, PdfValue> widget, AcroWidget w, String? text, double fontSize,
-      {bool multiline = false}) {
+      {bool multiline = false, int quadding = 0}) {
     final mk = source.resolve(widget['/MK']);
     final turned = mk is PdfDict && source.resolve(mk['/R']) is PdfNum && (source.resolve(mk['/R']) as PdfNum).toInt() % 360 != 0;
-    final data = text == null || turned ? null : textAppearance(text, w.width, w.height, fontSize, multiline: multiline);
+    final data = text == null || turned
+        ? null
+        : textAppearance(text, w.width, w.height, fontSize, multiline: multiline, quadding: quadding);
     if (data == null) {
       // An old appearance would keep showing the previous value.
       widget.remove('/AP');
@@ -555,6 +587,163 @@ class PreservingPdfWriter {
       mapped: true,
     );
     widget['/AP'] = PdfDict({'/N': PdfRef(num, 0)});
+  }
+
+  /// [page] with a widget for each of [fields] added to its /Annots. The
+  /// widgets are also the fields (one dictionary each); [_addNewFieldsToForm]
+  /// lists them in the form.
+  PdfDict _withNewFields(PdfDict page, List<NewFormField> fields, int pageNum, List<double> crop, int rotate) {
+    if (fields.isEmpty) return page;
+    final annots = <PdfValue>[];
+    final existing = source.resolve(page['/Annots']);
+    if (existing is PdfArray) annots.addAll(existing.items);
+    for (final f in fields) {
+      final num = _alloc();
+      _overrides[num] = _newFieldDict(f, pageNum, crop, rotate);
+      final ref = PdfRef(num, 0);
+      annots.add(ref);
+      _newFieldRefs.add(ref);
+    }
+    return PdfDict({...page.entries, '/Annots': PdfArray(annots)});
+  }
+
+  PdfDict _newFieldDict(NewFormField f, int pageNum, List<double> crop, int rotate) {
+    final names = _fieldNames ??= {for (final field in const AcroFormReader().read(source)) field.name};
+    final name = uniqueFieldName(f.name, names);
+    names.add(name);
+    final r = userRectOf(f.rect, crop, rotate);
+    final w = r[2] - r[0], h = r[3] - r[1];
+    PdfArray color(int c) =>
+        PdfArray([for (final shift in const [16, 8, 0]) PdfNum.of(((c >> shift) & 0xFF) / 255)]);
+    final mk = <String, PdfValue>{
+      if (f.borderColor != null) '/BC': color(f.borderColor!),
+      if (f.fillColor != null) '/BG': color(f.fillColor!),
+      if (f.kind == NewFieldKind.checkbox) '/CA': PdfString.ofText('4'),
+      // The page is turned: viewers draw the widget turned with it.
+      if (rotate != 0) '/R': PdfNum.of(rotate),
+    };
+    final dict = <String, PdfValue>{
+      '/Type': const PdfName('/Annot'),
+      '/Subtype': const PdfName('/Widget'),
+      '/FT': PdfName(switch (f.kind) {
+        NewFieldKind.text => '/Tx',
+        NewFieldKind.checkbox => '/Btn',
+        NewFieldKind.choice => '/Ch',
+        NewFieldKind.signature => '/Sig',
+      }),
+      '/T': PdfString.ofText(name),
+      '/Rect': PdfArray([for (final v in r) PdfNum.of(v)]),
+      '/F': PdfNum.of(4), // print
+      '/P': PdfRef(pageNum, 0),
+      if (mk.isNotEmpty) '/MK': PdfDict(mk),
+    };
+    final ff = fieldFlags(f);
+    if (ff != 0) dict['/Ff'] = PdfNum.of(ff);
+    if (f.kind == NewFieldKind.text || f.kind == NewFieldKind.choice) {
+      dict['/DA'] = PdfString.ofText('/Helv ${PdfNum.of(f.fontSize).raw} Tf 0 g');
+      if (f.align != 0) dict['/Q'] = PdfNum.of(f.align);
+    }
+    if (f.kind == NewFieldKind.choice) {
+      dict['/Opt'] = PdfArray([for (final o in f.options) PdfString.ofText(o)]);
+    }
+    if (f.value.isNotEmpty && (f.kind == NewFieldKind.text || f.kind == NewFieldKind.choice)) {
+      dict['/V'] = PdfString.ofText(f.value);
+    }
+
+    // Appearances, so every viewer shows the field the same. A turned page
+    // or text Helvetica cannot draw is left to the viewer.
+    PdfRef appearance(Uint8List data, Map<String, PdfValue> fonts) {
+      final num = _alloc();
+      _out[num] = _OutObject(
+        num,
+        0,
+        PdfDict({
+          '/Type': const PdfName('/XObject'),
+          '/Subtype': const PdfName('/Form'),
+          '/BBox': PdfArray([PdfNum.of(0), PdfNum.of(0), PdfNum.of(w), PdfNum.of(h)]),
+          '/Resources': PdfDict({'/Font': PdfDict(fonts)}),
+          '/Length': PdfNum.of(data.length),
+        }),
+        data,
+        mapped: true,
+      );
+      return PdfRef(num, 0);
+    }
+
+    const helv = PdfDict({
+      '/Type': PdfName('/Font'),
+      '/Subtype': PdfName('/Type1'),
+      '/BaseFont': PdfName('/Helvetica'),
+      '/Encoding': PdfName('/WinAnsiEncoding'),
+    });
+    const zadb = PdfDict({'/Type': PdfName('/Font'), '/Subtype': PdfName('/Type1'), '/BaseFont': PdfName('/ZapfDingbats')});
+    switch (f.kind) {
+      case NewFieldKind.checkbox:
+        dict['/V'] = PdfName(f.checked ? '/Yes' : '/Off');
+        dict['/AS'] = PdfName(f.checked ? '/Yes' : '/Off');
+        if (rotate == 0) {
+          final (on, off) = checkboxAppearances(w, h, fill: f.fillColor, border: f.borderColor);
+          dict['/AP'] = PdfDict({
+            '/N': PdfDict({'/Yes': appearance(on, {'/ZaDb': zadb}), '/Off': appearance(off, const {})}),
+          });
+        } else {
+          _newFieldsNeedAppearances = true;
+        }
+      case NewFieldKind.text || NewFieldKind.choice || NewFieldKind.signature:
+        final shown = f.kind == NewFieldKind.signature ? '' : f.value;
+        final data = rotate != 0
+            ? null
+            : textAppearance(shown, w, h, f.fontSize,
+                multiline: f.multiline, quadding: f.align, fill: f.fillColor, border: f.borderColor);
+        if (data == null) {
+          _newFieldsNeedAppearances = true;
+        } else {
+          dict['/AP'] = PdfDict({'/N': appearance(data, {'/Helv': helv})});
+        }
+    }
+    return PdfDict(dict);
+  }
+
+  /// Lists the created fields in the form, creating the form if the PDF has
+  /// none, with the fonts their /DA strings name.
+  void _addNewFieldsToForm(Map<String, PdfValue> catalog) {
+    if (_newFieldRefs.isEmpty) return;
+    final acroRef = catalog['/AcroForm'];
+    final current = acroRef is PdfRef ? (_overrides[acroRef.num] ?? source.resolve(acroRef)) : acroRef;
+    final acro = <String, PdfValue>{if (current is PdfDict) ...current.entries};
+    final fields = <PdfValue>[];
+    final oldFields = source.resolve(acro['/Fields']);
+    if (oldFields is PdfArray) fields.addAll(oldFields.items);
+    fields.addAll(_newFieldRefs);
+    acro['/Fields'] = PdfArray(fields);
+    final dr = <String, PdfValue>{};
+    final oldDr = source.resolve(acro['/DR']);
+    if (oldDr is PdfDict) dr.addAll(oldDr.entries);
+    final fonts = <String, PdfValue>{};
+    final oldFonts = source.resolve(dr['/Font']);
+    if (oldFonts is PdfDict) fonts.addAll(oldFonts.entries);
+    fonts.putIfAbsent(
+      '/Helv',
+      () => const PdfDict({
+        '/Type': PdfName('/Font'),
+        '/Subtype': PdfName('/Type1'),
+        '/BaseFont': PdfName('/Helvetica'),
+        '/Encoding': PdfName('/WinAnsiEncoding'),
+      }),
+    );
+    fonts.putIfAbsent(
+      '/ZaDb',
+      () => const PdfDict({'/Type': PdfName('/Font'), '/Subtype': PdfName('/Type1'), '/BaseFont': PdfName('/ZapfDingbats')}),
+    );
+    dr['/Font'] = PdfDict(fonts);
+    acro['/DR'] = PdfDict(dr);
+    acro.putIfAbsent('/DA', () => PdfString.ofText('/Helv 0 Tf 0 g'));
+    if (_newFieldsNeedAppearances) acro['/NeedAppearances'] = const PdfBool(true);
+    if (acroRef is PdfRef) {
+      _overrides[acroRef.num] = PdfDict(acro);
+    } else {
+      catalog['/AcroForm'] = PdfDict(acro);
+    }
   }
 
   // ─── Graph walk ────────────────────────────────────────────────────────

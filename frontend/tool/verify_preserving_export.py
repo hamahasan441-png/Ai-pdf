@@ -103,6 +103,33 @@ def check(path: pathlib.Path, exp: dict) -> list[str]:
         for name, value in want_fields.items():
             if got.get(name) != value:
                 errors.append(f"field {name!r} is {got.get(name)!r}, expected {value!r}")
+    kinds = {
+        fitz.PDF_WIDGET_TYPE_TEXT: "text",
+        fitz.PDF_WIDGET_TYPE_CHECKBOX: "checkbox",
+        fitz.PDF_WIDGET_TYPE_COMBOBOX: "combobox",
+        fitz.PDF_WIDGET_TYPE_LISTBOX: "listbox",
+        fitz.PDF_WIDGET_TYPE_RADIOBUTTON: "radio",
+        fitz.PDF_WIDGET_TYPE_SIGNATURE: "signature",
+    }
+    for name, want in exp.get("new_fields", {}).items():
+        # A field the editor created: its kind, required flag, and where it
+        # shows on the displayed page (0..1 from the top left).
+        hits = [(p, w) for p in doc for w in p.widgets() if w.field_name == name]
+        if len(hits) != 1:
+            errors.append(f"field {name!r}: {len(hits)} widgets, expected 1")
+            continue
+        page, w = hits[0]
+        kind = kinds.get(w.field_type, str(w.field_type))
+        if kind != want["type"]:
+            errors.append(f"field {name!r} is a {kind}, expected {want['type']}")
+        if bool(w.field_flags & 2) != want.get("required", False):
+            errors.append(f"field {name!r}: required is {bool(w.field_flags & 2)}")
+        if page.number != want["page"]:
+            errors.append(f"field {name!r} is on page {page.number + 1}, expected {want['page'] + 1}")
+        shown = w.rect * page.rotation_matrix
+        box = [shown.x0 / page.rect.width, shown.y0 / page.rect.height, shown.x1 / page.rect.width, shown.y1 / page.rect.height]
+        if max(abs(x - y) for x, y in zip(box, want["rect"])) > 0.01:
+            errors.append(f"field {name!r} shows at {[round(v, 3) for v in box]}, expected {want['rect']}")
     for name in exp.get("fields_drawn", []):
         hits = [(p, w) for p in doc for w in p.widgets() if w.field_name == name]
         if not hits:

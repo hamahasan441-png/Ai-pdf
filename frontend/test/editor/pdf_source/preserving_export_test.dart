@@ -11,10 +11,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:ai_pdf/features/editor/data/document_search_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 
 /// Source-preserving export against synthetic PDFs made by
@@ -618,6 +620,175 @@ void main() {
           'pages': [
             {'text_contains': ['WRAPSTART', 'WRAPEND', 'Invoice', keep]},
           ],
+        });
+      });
+    });
+
+    testWidgets('fields added in the editor become real, fillable PDF fields', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/edit.pdf';
+        File(source).writeAsBytesSync(fixture('edit_text'));
+        FormFieldAnnotation field(FormFieldKind kind, String label, Rect r,
+                {String value = '', bool checked = false, List<String> options = const [], bool required = false}) =>
+            FormFieldAnnotation(
+              pos: r.topLeft,
+              width: r.width,
+              height: r.height,
+              fieldKind: kind,
+              label: label,
+              value: value,
+              checked: checked,
+              options: options,
+              required: required,
+            );
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {
+            0: PageLayer()
+              ..items.addAll([
+                field(FormFieldKind.name, 'Customer', const Rect.fromLTWH(0.1, 0.4, 0.4, 0.03), value: 'Hama Hasan'),
+                field(FormFieldKind.checkbox, 'Paid', const Rect.fromLTWH(0.1, 0.45, 0.03, 0.02), checked: true),
+                field(FormFieldKind.combobox, 'Plan', const Rect.fromLTWH(0.1, 0.5, 0.3, 0.03),
+                    value: 'Pro', options: ['Basic', 'Pro'], required: true),
+                field(FormFieldKind.signature, 'Signature', const Rect.fromLTWH(0.5, 0.8, 0.4, 0.08)),
+                field(FormFieldKind.text, 'Customer', const Rect.fromLTWH(0.1, 0.6, 0.4, 0.03)), // same name
+              ]),
+            1: PageLayer()..items.add(field(FormFieldKind.text, 'Note', const Rect.fromLTWH(0.2, 0.2, 0.3, 0.1), value: 'turned')),
+          },
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty);
+        expect(result.report.createdFormFields, 6);
+        final out = File(result.path).readAsBytesSync();
+        final form = AcroFormSnapshot.read(out);
+        final byName = {for (final f in form.fields) f.name: f};
+        expect(byName.keys, containsAll(['Customer', 'Customer_2', 'Paid', 'Plan', 'Signature', 'Note']));
+        expect(byName['Customer']!.value, 'Hama Hasan');
+        expect(byName['Paid']!.value, 'Yes');
+        expect(byName['Plan']!.kind, AcroFieldKind.choice);
+        expect(byName['Plan']!.required, isTrue);
+        expect(byName['Signature']!.kind, AcroFieldKind.signature);
+        final shown = form.rectOf(byName['Note']!.widgets.single);
+        expect(shown.left, closeTo(0.2, 0.002));
+        expect(shown.top, closeTo(0.2, 0.002));
+        expect(pageText(out, 0), contains(keep), reason: 'the page content is kept');
+        keepFor('service_new_fields', result.path, {
+          'pages': [
+            {'text_contains': [keep, 'Invoice'], 'widgets': 5},
+            {'widgets': 1, 'rotation': 90},
+          ],
+          'fields': {'Customer': 'Hama Hasan', 'Paid': 'Yes', 'Plan': 'Pro', 'Customer_2': '', 'Note': 'turned'},
+          'fields_drawn': ['Customer', 'Plan'],
+          'new_fields': {
+            'Customer': {'type': 'text', 'page': 0, 'rect': [0.1, 0.4, 0.5, 0.43]},
+            'Paid': {'type': 'checkbox', 'page': 0, 'rect': [0.1, 0.45, 0.13, 0.47]},
+            'Plan': {'type': 'combobox', 'page': 0, 'rect': [0.1, 0.5, 0.4, 0.53], 'required': true},
+            'Signature': {'type': 'signature', 'page': 0, 'rect': [0.5, 0.8, 0.9, 0.88]},
+            'Note': {'type': 'text', 'page': 1, 'rect': [0.2, 0.2, 0.5, 0.3]},
+          },
+        });
+      });
+    });
+
+    testWidgets('fields stay fillable when the pages are saved as images', (tester) async {
+      await tester.runAsync(() async {
+        final path = await const EditorExportService().renderToPdfFile(
+          doc: null,
+          pageCache: {0: await whitePng(612, 792)},
+          layers: {
+            0: PageLayer()
+              ..items.addAll([
+                FormFieldAnnotation(
+                  pos: const Offset(0.1, 0.2),
+                  width: 0.4,
+                  height: 0.03,
+                  fieldKind: FormFieldKind.text,
+                  label: 'Name',
+                  value: 'Hama',
+                  required: true,
+                ),
+                FormFieldAnnotation(
+                  pos: const Offset(0.1, 0.3),
+                  width: 0.03,
+                  height: 0.023,
+                  fieldKind: FormFieldKind.checkbox,
+                  label: 'Agree',
+                  checked: true,
+                ),
+                FormFieldAnnotation(
+                  pos: const Offset(0.1, 0.4),
+                  width: 0.3,
+                  height: 0.03,
+                  fieldKind: FormFieldKind.combobox,
+                  label: 'Size',
+                  options: ['S', 'M', 'L'],
+                  value: 'M',
+                ),
+              ]),
+          },
+          pageCount: 1,
+          outputDirectory: () async => tmp,
+        );
+        expect(path, isNotNull);
+        final form = AcroFormSnapshot.read(File(path!).readAsBytesSync());
+        final byName = {for (final f in form.fields) f.name: f};
+        expect(byName.keys, containsAll(['Name', 'Agree', 'Size']));
+        expect(byName['Name']!.value, 'Hama');
+        expect(byName['Name']!.required, isTrue);
+        expect(byName['Size']!.kind, AcroFieldKind.choice);
+        keepFor('service_image_fields', path, {
+          'pages': [
+            {'widgets': 3},
+          ],
+          'fields': {'Name': 'Hama', 'Size': 'M'},
+          'new_fields': {
+            'Name': {'type': 'text', 'page': 0, 'rect': [0.1, 0.2, 0.5, 0.23], 'required': true},
+            'Agree': {'type': 'checkbox', 'page': 0, 'rect': [0.1, 0.3, 0.13, 0.323]},
+            'Size': {'type': 'combobox', 'page': 0, 'rect': [0.1, 0.4, 0.4, 0.43]},
+          },
+        });
+      });
+    });
+
+    testWidgets('a new field keeps the existing form and its values', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/forms.pdf';
+        File(source).writeAsBytesSync(fixture('forms'));
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {
+            0: PageLayer()
+              ..items.add(FormFieldAnnotation(
+                pos: const Offset(0.1, 0.9),
+                width: 0.3,
+                height: 0.03,
+                fieldKind: FormFieldKind.text,
+                label: 'name', // taken by the form
+                value: 'Second',
+              )),
+          },
+          pageCount: 2,
+          sourcePages: const [0, 1],
+          outputDirectory: () async => tmp,
+          formValues: const {'name': 'Hama Hasan'},
+        );
+        expect(result.report.createdFormFields, 1);
+        expect(result.report.filledFormFields, 1);
+        keepFor('service_forms_plus_new', result.path, {
+          'pages': [
+            {'text_contains': [keep], 'widgets': 10},
+            {'widgets': 1, 'rotation': 90},
+          ],
+          'fields': {'name': 'Hama Hasan', 'name_2': 'Second', 'id': 'ID-7'},
+          'new_fields': {
+            'name_2': {'type': 'text', 'page': 0, 'rect': [0.1, 0.9, 0.4, 0.93]},
+          },
         });
       });
     });

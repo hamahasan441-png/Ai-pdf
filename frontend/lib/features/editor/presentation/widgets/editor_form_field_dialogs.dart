@@ -4,19 +4,33 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 
+/// What the text dialog returns: the value, and whether to go on to the
+/// previous (-1) or next (1) field afterwards (0: stay).
+typedef FormTextResult = ({String value, int step});
+
 /// Asks for the text of form field [field]. Returns null when cancelled.
-Future<String?> showFormTextDialog(BuildContext context, {required AcroField field, required String initial}) {
-  return showDialog<String>(
+/// With [hasPrevious] / [hasNext] it offers moving to the neighbouring field,
+/// keeping what was typed.
+Future<FormTextResult?> showFormTextDialog(
+  BuildContext context, {
+  required AcroField field,
+  required String initial,
+  bool hasPrevious = false,
+  bool hasNext = false,
+}) {
+  return showDialog<FormTextResult>(
     context: context,
-    builder: (ctx) => _FormTextDialog(field: field, initial: initial),
+    builder: (ctx) => _FormTextDialog(field: field, initial: initial, hasPrevious: hasPrevious, hasNext: hasNext),
   );
 }
 
 class _FormTextDialog extends StatefulWidget {
   final AcroField field;
   final String initial;
+  final bool hasPrevious;
+  final bool hasNext;
 
-  const _FormTextDialog({required this.field, required this.initial});
+  const _FormTextDialog({required this.field, required this.initial, this.hasPrevious = false, this.hasNext = false});
 
   @override
   State<_FormTextDialog> createState() => _FormTextDialogState();
@@ -36,8 +50,10 @@ class _FormTextDialogState extends State<_FormTextDialog> {
   Widget build(BuildContext context) {
     final f = widget.field;
     final max = f.maxLen;
+    final l10n = AppLocalizations.of(context);
+    void done(int step) => Navigator.pop(context, (value: _c.text, step: step));
     return AlertDialog(
-      title: Text(f.name),
+      title: Text(f.required ? '${f.name} *' : f.name),
       content: TextField(
         controller: _c,
         autofocus: true,
@@ -46,17 +62,31 @@ class _FormTextDialogState extends State<_FormTextDialog> {
         maxLength: max != null && max > 0 ? max : null,
         maxLengthEnforcement: MaxLengthEnforcement.enforced,
         keyboardType: f.multiline ? TextInputType.multiline : TextInputType.text,
-        textInputAction: f.multiline ? TextInputAction.newline : TextInputAction.done,
-        onSubmitted: f.multiline ? null : (v) => Navigator.pop(context, v),
+        textInputAction: f.multiline
+            ? TextInputAction.newline
+            : (widget.hasNext ? TextInputAction.next : TextInputAction.done),
+        onSubmitted: f.multiline ? null : (_) => done(widget.hasNext ? 1 : 0),
         decoration: const InputDecoration(border: OutlineInputBorder()),
       ),
       actions: [
+        if (widget.hasPrevious)
+          IconButton(
+            tooltip: l10n?.formPreviousField ?? 'Previous field',
+            onPressed: () => done(-1),
+            icon: const Icon(Icons.keyboard_arrow_up),
+          ),
+        if (widget.hasNext)
+          IconButton(
+            tooltip: l10n?.formNextField ?? 'Next field',
+            onPressed: () => done(1),
+            icon: const Icon(Icons.keyboard_arrow_down),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _c.text),
+          onPressed: () => done(0),
           child: Text(MaterialLocalizations.of(context).okButtonLabel),
         ),
       ],

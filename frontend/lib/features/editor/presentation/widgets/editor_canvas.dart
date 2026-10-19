@@ -7,6 +7,7 @@ import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
@@ -15,6 +16,7 @@ import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/form_field_box.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
 
@@ -93,6 +95,9 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDeselectMulti;
   final void Function(StickyNoteAnnotation note)? onNoteTap;
   final void Function(StickyNoteAnnotation note)? onNoteDelete;
+
+  /// Opens the properties of a selected form field the user added.
+  final void Function(FormFieldAnnotation field)? onEditField;
   final IconData Function(FieldType type) resolveTypeIcon;
 
   const EditorCanvas({
@@ -163,6 +168,7 @@ class EditorCanvas extends StatelessWidget {
     required this.onDeselectMulti,
     this.onNoteTap,
     this.onNoteDelete,
+    this.onEditField,
     required this.resolveTypeIcon,
   });
 
@@ -244,6 +250,12 @@ class EditorCanvas extends StatelessWidget {
                   ),
                 ),
               ),
+              for (final f in layer.fields.where((f) => f.visible))
+                Positioned(
+                  left: f.pos.dx * size.width,
+                  top: f.pos.dy * size.height,
+                  child: FormFieldBox(field: f, page: size),
+                ),
               ...layer.notes.where((n) => n.visible).map(
                     (note) {
                       final maxX = size.width > 28 ? size.width - 28 : 0.0;
@@ -424,6 +436,9 @@ class EditorCanvas extends StatelessWidget {
                   onTextIncrease: selected is TextAnnotation ? onTextIncrease : null,
                   onPickTextColor: selected is TextAnnotation ? onPickTextColor : null,
                   onEditShapeStyle: selected is ShapeAnnotation ? onEditShapeStyle : null,
+                  onEditField: selected is FormFieldAnnotation && onEditField != null
+                      ? () => onEditField!(selected! as FormFieldAnnotation)
+                      : null,
                   onCopy: onCopySelected,
                   onDuplicate: onDuplicateSelected,
                   onBringToFront: onBringToFront,
