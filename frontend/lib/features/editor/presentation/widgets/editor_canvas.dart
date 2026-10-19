@@ -168,6 +168,21 @@ class EditorCanvas extends StatelessWidget {
 
   bool get _canDragText => tool == EditTool.pan || tool == EditTool.text;
 
+  /// A text box laid out like the export lays it out (AnnotationTextLayout).
+  static Widget _boxText(TextAnnotation t, Size size) {
+    final box = AnnotationTextLayout.of(t, size);
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
+      child: Text.rich(
+        buildAnnotationTextSpan(t, box.style),
+        textAlign: box.align,
+        textDirection: box.direction,
+        // Page text is sized to the page, not to the system font scale.
+        textScaler: TextScaler.noScaling,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -340,8 +355,10 @@ class EditorCanvas extends StatelessWidget {
               // Hidden text is not drawn (export leaves it out too); locked
               // text stays visible but cannot be selected, edited or dragged.
               ...layer.texts.where((t) => t.visible).map((t) => Positioned(
-                    left: t.pos.dx * size.width,
-                    top: t.pos.dy * size.height,
+                    // The 3 px padding below is the tap and selection margin;
+                    // the text itself sits exactly at pos, as in the export.
+                    left: t.pos.dx * size.width - 3,
+                    top: t.pos.dy * size.height - 3,
                     child: GestureDetector(
                       onTap: () {
                         if (t.locked) return;
@@ -363,21 +380,7 @@ class EditorCanvas extends StatelessWidget {
                         ),
                         child: Transform.rotate(
                           angle: -t.rotation,
-                          child: Text.rich(
-                            buildAnnotationTextSpan(
-                              t,
-                              TextStyle(
-                                color: t.color,
-                                fontSize: t.size * size.height,
-                                fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                                fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                                decoration:
-                                    t.underline ? TextDecoration.underline : TextDecoration.none,
-                                decorationColor: t.color,
-                                fontFamily: t.fontFamily,
-                              ),
-                            ),
-                          ),
+                          child: _boxText(t, size),
                         ),
                       ),
                     ),

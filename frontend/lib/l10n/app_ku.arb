@@ -478,5 +478,14 @@
   "replaceWithHint": "بیگۆڕە بە",
   "replaceOne": "گۆڕین",
   "replaceAll": "گۆڕینی هەموو",
-  "replacedCount": "{count, plural, =0{هیچ شتێک نەگۆڕدرا} =1{١ ئەنجام گۆڕدرا} other{{count} ئەنجام گۆڕدران}}"
+  "replacedCount": "{count, plural, =0{هیچ شتێک نەگۆڕدرا} =1{١ ئەنجام گۆڕدرا} other{{count} ئەنجام گۆڕدران}}",
+  "fontSerif": "سێریف",
+  "fontMono": "پانی جێگیر",
+  "textSmaller": "دەقی بچووکتر",
+  "textLarger": "دەقی گەورەتر",
+  "alignJustify": "ڕێکخستنی هەردوولا",
+  "textRightToLeft": "لە ڕاستەوە بۆ چەپ",
+  "lineSpacing": "بۆشایی نێوان دێڕەکان",
+  "wrapText": "پێچانەوە لە پانییەکی جێگیردا",
+  "editTextTapHint": "دەست لە پەرەگرافێک بدە بۆ دەستکاریکردنی. بۆ تەواوکردن دووبارە دەست لە دەستکاریکردنی دەق بدە."
 }

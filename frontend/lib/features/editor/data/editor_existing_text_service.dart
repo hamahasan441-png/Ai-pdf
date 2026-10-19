@@ -82,10 +82,17 @@ class EditorExistingTextService {
   /// Words that do not share a style become separate [TextRun]s. The base
   /// size stays the first word's size so a single-style selection is unchanged.
   /// An empty list returns an empty draft instead of throwing.
+  ///
+  /// With [reflow] (a paragraph from "Edit text"), the lines join with spaces
+  /// into one flowing text, and a box of more than one line gets the
+  /// paragraph's width (it rewraps there as you type) and, from [linePitch]
+  /// (line top to line top, fraction of page height), its line spacing.
   ExistingLineEditDraft draftForWords(
     List<PdfTextElement> words, {
     double pageHeightPt = 0,
     Set<String> loadedFamilies = const {},
+    bool reflow = false,
+    double linePitch = 0,
   }) {
     if (words.isEmpty) {
       final draft = ExistingLineEditDraft(
@@ -118,12 +125,15 @@ class EditorExistingTextService {
     var bottom = words.first.rect.bottom;
     final buffer = StringBuffer();
     final runs = <TextRun>[];
+    var lines = 1;
     for (var i = 0; i < words.length; i++) {
       final word = words[i];
       final style = styles[i];
       var gap = '';
       if (i > 0) {
-        gap = TextSelectionService.sameVisualLine(words[i - 1].rect, word.rect) ? ' ' : '\n';
+        final sameLine = TextSelectionService.sameVisualLine(words[i - 1].rect, word.rect);
+        if (!sameLine) lines++;
+        gap = sameLine || reflow ? ' ' : '\n';
         buffer.write(gap);
       }
       buffer.write(word.text);
@@ -167,6 +177,8 @@ class EditorExistingTextService {
         textDirection: base.direction,
         textAlign: base.direction == TextDirection.rtl ? TextAlign.right : TextAlign.left,
         runs: multi ? runs : null,
+        width: reflow && lines > 1 ? right - left : null,
+        lineHeight: _lineHeight(reflow && lines > 1 ? linePitch : 0, base.normalizedSize),
       ),
     );
     _labelOverlay(
@@ -212,6 +224,13 @@ class EditorExistingTextService {
       if (kind.name == name) return kind;
     }
     return FontMatchKind.unknown;
+  }
+
+  /// Line height multiplier for lines [pitch] apart (both as fractions of
+  /// page height). 1.0 when unknown.
+  double _lineHeight(double pitch, double size) {
+    if (pitch <= 0 || size <= 0) return 1.0;
+    return (pitch / size).clamp(1.0, 3.0);
   }
 
   bool _sameStyle(RecognizedTextStyle a, RecognizedTextStyle b) {

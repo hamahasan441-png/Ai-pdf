@@ -56,6 +56,8 @@ import 'package:ai_pdf/features/editor/data/editor_file_picker_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
+import 'package:ai_pdf/features/editor/data/text_block_service.dart';
 import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_rich_text_service.dart';
@@ -187,7 +189,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
   EditTool _tool = EditTool.draw;
   Color _color = Colors.red;
   double _stroke = 3;
-  double _textSize = 0.032; // normalized to page height
+  // Normalized to page height: about 12 pt on an A4 or Letter page.
+  double _textSize = 0.0145;
   bool _bold = false;
 
   List<Offset> _drawing = [];
@@ -247,6 +250,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorSmartFillService _smartFill = const EditorSmartFillService();
   final EditorExistingTextService _existingText = const EditorExistingTextService();
   final TextReplaceService _textReplace = const TextReplaceService();
+  final TextBlockService _textBlocks = const TextBlockService();
   final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
   final EditorRichTextService _richText = const EditorRichTextService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
@@ -255,6 +259,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
   // --- Edit existing text (OCR line -> cover + editable box) ---
   final Map<int, List<OcrLine>> _editLines = {}; // page -> recognized lines
   bool _showEditLines = false;
+
+  /// "Edit text" on a page with its own text: the paragraphs shown as boxes,
+  /// and the words each box stands for.
+  bool _editTextMode = false;
+  final Map<OcrLine, (TextBlock, List<PdfTextElement>)> _nativeBlocks = {};
+
+  /// The whiteout added with the replacement box being edited; clearing the
+  /// box keeps it, which deletes the original text.
+  ShapeAnnotation? _inlineReplacing;
   bool _detecting = false;
   List<DetectedField> get _pageFields => _fields[_current] ?? const [];
 
@@ -1234,19 +1247,23 @@ class _PickEditScreenState extends State<PickEditScreen> {
       picked,
       pageHeightPt: _pageHeightPt[_current] ?? 0,
     );
+    _openReplacement(draft);
+  }
+
+  /// Put [draft] on the page as one undo step and open its text for typing.
+  /// Clearing the text deletes the original (the whiteout stays).
+  void _openReplacement(ExistingLineEditDraft draft) {
     setState(() {
       _wordSelection = null;
-      _pushItem(draft.whiteout);
+      _showEditLines = false;
+      _editorController.pushAnnotations(_layer, [draft.whiteout, draft.textBox]);
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
     });
-    final before = _layer.items.length;
-    await _editTextBox(draft.textBox, isNew: true);
-    if (_layer.items.length == before &&
-        _layer.items.isNotEmpty &&
-        _layer.items.last is ShapeAnnotation &&
-        (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
-      setState(() => _layer.items.removeLast());
-    }
-    setState(_syncSearchPages);
+    _schedulePersist();
+    _inlineReplacing = draft.whiteout;
+    // Already in the layer, so this only opens the inline editor.
+    _editTextBox(draft.textBox, isNew: true);
   }
 
   void _copyWords() {
@@ -1338,6 +1355,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _wordSelection = null;
         _markupPreview = const [];
       });
+      if (_editTextMode) _showNativeBlocks();
     } else {
       setState(() {});
     }
@@ -1354,6 +1372,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _wordSelection = null;
         _markupPreview = const [];
       });
+      if (_editTextMode) _showNativeBlocks();
     }
     await _renderPage(index, maxEdge: _renderMaxEdge);
     if (!mounted || ticket != _navTicket) return;
@@ -2350,8 +2369,17 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// editable text box on top — a practical, on-device "edit text" for both
   /// scanned and flat PDFs. (Overlay-based, not glyph-level reflow.)
   Future<void> _scanForEdit() async {
-    if (_showEditLines) {
-      setState(() => _showEditLines = false);
+    if (_showEditLines || _editTextMode) {
+      setState(() {
+        _showEditLines = false;
+        _editTextMode = false;
+      });
+      return;
+    }
+    if (_showNativeBlocks()) {
+      _editTextMode = true;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.editTextTapHint)));
       return;
     }
     final bytes = _pageCache[_current];
@@ -2379,21 +2407,43 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
-  /// Cover an existing OCR line with white and open a pre-filled editable box.
-  Future<void> _editExistingLine(OcrLine line) async {
-    final draft = _existingText.draftForLine(line);
-    setState(() {
-      _showEditLines = false;
-      _pushItem(draft.whiteout);
-    });
-    final before = _layer.items.length;
-    await _editTextBox(draft.textBox, isNew: true);
-    if (_layer.items.length == before &&
-        _layer.items.isNotEmpty &&
-        _layer.items.last is ShapeAnnotation &&
-        (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
-      setState(() => _layer.items.removeLast());
+  /// Show the paragraphs of the page's own text as tappable boxes. False
+  /// when the page has no text of its own (a scan): then OCR is the way.
+  bool _showNativeBlocks() {
+    final words = _textReplace.unreplaced({_current: _textLayer[_current] ?? const []}, _layers)[_current]!;
+    if (words.isEmpty) return false;
+    final blocks = _textBlocks.blocks(words, aspect: _aspectFor(_current));
+    _nativeBlocks.clear();
+    final lines = <OcrLine>[
+      for (final b in blocks)
+        OcrLine(b.words.map((i) => words[i].text).join(' '), b.rect.left, b.rect.top, b.rect.width, b.rect.height),
+    ];
+    for (var i = 0; i < blocks.length; i++) {
+      _nativeBlocks[lines[i]] = (blocks[i], words);
     }
+    setState(() {
+      _editLines[_current] = lines;
+      _showEditLines = lines.isNotEmpty;
+      _tool = EditTool.pan;
+    });
+    return true;
+  }
+
+  /// Edit a tapped box: a paragraph of the page's own text is replaced in
+  /// place (its glyphs are removed on export); an OCR line is covered.
+  Future<void> _editExistingLine(OcrLine line) async {
+    final native = _nativeBlocks[line];
+    if (native != null) {
+      final (block, words) = native;
+      _openReplacement(_existingText.draftForWords(
+        [for (final i in block.words) words[i]],
+        pageHeightPt: _pageHeightPt[_current] ?? 0,
+        reflow: true,
+        linePitch: block.linePitch,
+      ));
+      return;
+    }
+    _openReplacement(_existingText.draftForLine(line));
   }
 
 
@@ -2507,48 +2557,97 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Apply bold toggle to the currently selected range in the inline editor.
   void _toggleSelectionBold() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleBold(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleBold(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleBold(editing, 0, editing.text.length);
+      } else {
+        editing.bold = !editing.bold;
+      }
       _hasUnsavedChanges = true;
     });
   }
+
 
   void _toggleSelectionItalic() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleItalic(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleItalic(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleItalic(editing, 0, editing.text.length);
+      } else {
+        editing.italic = !editing.italic;
+      }
       _hasUnsavedChanges = true;
     });
   }
+
 
   void _toggleSelectionUnderline() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleUnderline(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleUnderline(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleUnderline(editing, 0, editing.text.length);
+      } else {
+        editing.underline = !editing.underline;
+      }
       _hasUnsavedChanges = true;
     });
   }
 
+
   Future<void> _pickSelectionColor() async {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
+    final range = _inlineSelection;
     final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: AppLocalizations.of(context)!.colorText);
     if (picked == null || !mounted) return;
     setState(() {
-      editing.runs = _richText.applyStyle(
-        editing,
-        start: _inlineSelection.start,
-        end: _inlineSelection.end,
-        color: picked,
-      );
+      if (!range.isCollapsed) {
+        editing.runs = _richText.applyStyle(editing, start: range.start, end: range.end, color: picked);
+      } else {
+        // No selection: the whole box. Runs drop their own colour.
+        editing.color = picked;
+        final runs = editing.runs;
+        if (runs != null) {
+          editing.runs = [
+            for (final r in runs)
+              TextRun(r.text,
+                  bold: r.bold, italic: r.italic, underline: r.underline, fontFamily: r.fontFamily, sizeScale: r.sizeScale),
+          ];
+        }
+      }
       _hasUnsavedChanges = true;
     });
+  }
+
+  /// Whole-box changes from the formatting bar while typing.
+  void _styleInlineBox(void Function(TextAnnotation box) change) {
+    final editing = _inlineEditing;
+    if (editing == null) return;
+    setState(() {
+      change(editing);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleInlineWrap(TextAnnotation box) {
+    if (box.width != null) {
+      box.width = null;
+    } else {
+      // Wrap at the box's current width (at least a fifth of the page).
+      box.width = box.bounds.width.clamp(0.2, 1 - box.pos.dx);
+    }
   }
 
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
@@ -2578,7 +2677,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (editing == null) return;
     setState(() {
       _inlineEditing = null;
-      if (editing.text.isEmpty) {
+      final replacing = _inlineReplacing;
+      _inlineReplacing = null;
+      if (editing.text.trim().isEmpty && !_inlineEditTxnOpen && replacing != null && _layer.items.contains(editing)) {
+        // An emptied replacement deletes the original text: keep only the
+        // whiteout, as its own undo step.
+        _editorController.undo(_layer);
+        _pushItem(replacing);
+      } else if (editing.text.isEmpty) {
         if (_inlineEditTxnOpen) {
           // Put the original text back, then delete that object so one undo
           // restores the box the user had before this edit.
@@ -2595,7 +2701,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _inlineEditTxnOpen = false;
       _hasUnsavedChanges = true;
       _schedulePersist();
+      _syncSearchPages();
     });
+    // "Edit text" stays on: show the page's paragraphs again.
+    if (_editTextMode) _showNativeBlocks();
   }
 
   void _onInlineTextChanged(String newText) {
@@ -3077,7 +3186,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                         Positioned(
                           left: origin.dx,
                           top: origin.dy,
-                          width: (pageW * (1 - editing.pos.dx)).clamp(50.0, pageW),
+                          width: AnnotationTextLayout.of(editing, Size(pageW, pageH)).maxWidth.clamp(50.0, pageW),
                           child: InlineTextEditor(
                             annotation: editing,
                             canvasSize: Size(pageW, pageH),
@@ -3206,6 +3315,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onItalic: _toggleSelectionItalic,
           onUnderline: _toggleSelectionUnderline,
           onColor: _pickSelectionColor,
+          box: _inlineEditing,
+          onFont: (f) => _styleInlineBox((b) => b.fontFamily = f),
+          onSizeStep: (d) => _styleInlineBox((b) => b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2)),
+          onAlign: (a) => _styleInlineBox((b) => b.textAlign = a),
+          onToggleRtl: () => _styleInlineBox((b) => b.textDirection =
+              b.textDirection == TextDirection.rtl ? TextDirection.ltr : TextDirection.rtl),
+          onLineHeight: (v) => _styleInlineBox((b) => b.lineHeight = v),
+          onToggleWrap: () => _styleInlineBox(_toggleInlineWrap),
         ),
         pageOpsDialog: _pageOpsController.state.visible
             ? EditorPageOpsDialog(

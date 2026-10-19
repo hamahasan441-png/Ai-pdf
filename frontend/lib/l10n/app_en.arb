@@ -544,5 +544,14 @@
   "replaceOne": "Replace",
   "replaceAll": "Replace all",
   "replacedCount": "{count, plural, =0{Nothing was replaced} =1{Replaced 1 match} other{Replaced {count} matches}}",
-  "@replacedCount": {"placeholders": {"count": {"type": "int"}}}
+  "@replacedCount": {"placeholders": {"count": {"type": "int"}}},
+  "fontSerif": "Serif",
+  "fontMono": "Monospace",
+  "textSmaller": "Smaller text",
+  "textLarger": "Larger text",
+  "alignJustify": "Justify",
+  "textRightToLeft": "Right to left",
+  "lineSpacing": "Line spacing",
+  "wrapText": "Wrap in a fixed width",
+  "editTextTapHint": "Tap a paragraph to edit it. Tap Edit text again to finish."
 }

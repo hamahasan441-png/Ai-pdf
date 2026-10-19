@@ -478,5 +478,14 @@
   "replaceWithHint": "جایگزین با",
   "replaceOne": "جایگزینی",
   "replaceAll": "جایگزینی همه",
-  "replacedCount": "{count, plural, =0{چیزی جایگزین نشد} =1{۱ مورد جایگزین شد} other{{count} مورد جایگزین شد}}"
+  "replacedCount": "{count, plural, =0{چیزی جایگزین نشد} =1{۱ مورد جایگزین شد} other{{count} مورد جایگزین شد}}",
+  "fontSerif": "سریف",
+  "fontMono": "تک‌فاصله",
+  "textSmaller": "متن کوچک‌تر",
+  "textLarger": "متن بزرگ‌تر",
+  "alignJustify": "تراز دوطرفه",
+  "textRightToLeft": "راست به چپ",
+  "lineSpacing": "فاصلهٔ خطوط",
+  "wrapText": "شکستن در عرض ثابت",
+  "editTextTapHint": "برای ویرایش، روی یک پاراگراف بزنید. برای پایان دوباره ویرایش متن را بزنید."
 }

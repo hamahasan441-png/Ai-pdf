@@ -19,6 +19,7 @@ import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
@@ -556,24 +557,28 @@ class EditorExportService {
         (t.textDirection == null && rtlDetect.isRtl(t.text));
     // RTL text with no explicit alignment defaults to right-aligned.
     final align = (t.textAlign == TextAlign.left && isRtl) ? TextAlign.right : t.textAlign;
-    // Same box as RtlTextRenderer and the on-screen Text: anchored at pos,
-    // as wide as the text until it wraps at the page edge. A fixed-width box
-    // would push a one-line RTL label to the right margin.
+    // Same box as the screen (AnnotationTextLayout): anchored at pos, as
+    // wide as the text until it wraps at the page edge, or exactly the box
+    // width when the box has one.
+    final box = AnnotationTextLayout.of(t, Size(pageW, pageH));
+    final fontSize = t.size * pageH;
     return pw.Positioned(
       left: t.pos.dx * pageW,
       top: t.pos.dy * pageH,
       child: pw.ConstrainedBox(
-        constraints: pw.BoxConstraints(maxWidth: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW)),
+        constraints: pw.BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
         child: pw.Text(
           t.text,
           textAlign: _pwAlign(align),
           textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
           style: pw.TextStyle(
             font: font,
-            fontSize: t.size * pageH,
+            fontSize: fontSize,
             color: PdfColor.fromInt(t.color.value),
             decoration:
                 t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
+            letterSpacing: t.charSpacing != 0 ? t.charSpacing : null,
+            lineSpacing: t.lineHeight > 1 ? (t.lineHeight - 1) * fontSize : null,
           ),
         ),
       ),

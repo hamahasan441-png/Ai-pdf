@@ -591,6 +591,37 @@ void main() {
       });
     });
 
+    testWidgets('a fixed-width text box wraps inside its width in the PDF', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/edit.pdf';
+        File(source).writeAsBytesSync(fixture('edit_text'));
+        final box = TextAnnotation(const Offset(0.1, 0.5), 'WRAPSTART alpha beta gamma delta epsilon zeta WRAPEND',
+            Colors.black, 0.016, false, width: 0.3);
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {0: PageLayer()..items.add(box)},
+          pageCount: 1,
+          sourcePages: const [0],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty);
+        final words = const PdfContentTextExtractor().extract(File(result.path).readAsBytesSync())[0]!;
+        Rect at(String t) => words.firstWhere((w) => w.text == t).rect;
+        expect(at('WRAPEND').top, greaterThan(at('WRAPSTART').bottom), reason: 'the text wrapped to more lines');
+        for (final w in words.where((w) => w.rect.top >= 0.49 && w.rect.top < 0.7)) {
+          expect(w.rect.left, greaterThanOrEqualTo(0.1 - 0.002), reason: w.text);
+          expect(w.rect.right, lessThanOrEqualTo(0.4 + 0.002), reason: '${w.text} stays inside the box');
+        }
+        keepFor('service_wrapped_text', result.path, {
+          'pages': [
+            {'text_contains': ['WRAPSTART', 'WRAPEND', 'Invoice', keep]},
+          ],
+        });
+      });
+    });
+
     testWidgets('text that cannot be removed cleanly falls back to a flattened page', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/edit.pdf';

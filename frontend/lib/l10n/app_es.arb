@@ -478,5 +478,14 @@
   "replaceWithHint": "Reemplazar con",
   "replaceOne": "Reemplazar",
   "replaceAll": "Reemplazar todo",
-  "replacedCount": "{count, plural, =0{No se reemplazó nada} =1{Se reemplazó 1 coincidencia} other{Se reemplazaron {count} coincidencias}}"
+  "replacedCount": "{count, plural, =0{No se reemplazó nada} =1{Se reemplazó 1 coincidencia} other{Se reemplazaron {count} coincidencias}}",
+  "fontSerif": "Con serifa",
+  "fontMono": "Monoespaciada",
+  "textSmaller": "Texto más pequeño",
+  "textLarger": "Texto más grande",
+  "alignJustify": "Justificar",
+  "textRightToLeft": "De derecha a izquierda",
+  "lineSpacing": "Interlineado",
+  "wrapText": "Ajustar a un ancho fijo",
+  "editTextTapHint": "Toca un párrafo para editarlo. Vuelve a tocar Editar texto para terminar."
 }

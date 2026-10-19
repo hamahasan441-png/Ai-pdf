@@ -478,5 +478,14 @@
   "replaceWithHint": "Ersetzen durch",
   "replaceOne": "Ersetzen",
   "replaceAll": "Alle ersetzen",
-  "replacedCount": "{count, plural, =0{Nichts wurde ersetzt} =1{1 Treffer ersetzt} other{{count} Treffer ersetzt}}"
+  "replacedCount": "{count, plural, =0{Nichts wurde ersetzt} =1{1 Treffer ersetzt} other{{count} Treffer ersetzt}}",
+  "fontSerif": "Serifen",
+  "fontMono": "Festbreite",
+  "textSmaller": "Kleinerer Text",
+  "textLarger": "Größerer Text",
+  "alignJustify": "Blocksatz",
+  "textRightToLeft": "Rechts nach links",
+  "lineSpacing": "Zeilenabstand",
+  "wrapText": "In fester Breite umbrechen",
+  "editTextTapHint": "Tippe auf einen Absatz, um ihn zu bearbeiten. Tippe erneut auf „Text bearbeiten“, um fertig zu werden."
 }

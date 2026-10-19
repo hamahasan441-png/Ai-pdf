@@ -478,5 +478,14 @@
   "replaceWithHint": "استبدال بـ",
   "replaceOne": "استبدال",
   "replaceAll": "استبدال الكل",
-  "replacedCount": "{count, plural, =0{لم يُستبدل شيء} =1{تم استبدال نتيجة واحدة} other{تم استبدال {count} نتيجة}}"
+  "replacedCount": "{count, plural, =0{لم يُستبدل شيء} =1{تم استبدال نتيجة واحدة} other{تم استبدال {count} نتيجة}}",
+  "fontSerif": "خط مذيّل",
+  "fontMono": "عرض ثابت",
+  "textSmaller": "نص أصغر",
+  "textLarger": "نص أكبر",
+  "alignJustify": "ضبط",
+  "textRightToLeft": "من اليمين إلى اليسار",
+  "lineSpacing": "تباعد الأسطر",
+  "wrapText": "التفاف ضمن عرض ثابت",
+  "editTextTapHint": "اضغط على فقرة لتحريرها. اضغط تحرير النص مرة أخرى للإنهاء."
 }

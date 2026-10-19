@@ -190,7 +190,7 @@ class EditorToolbar extends StatelessWidget {
                       Expanded(
                         child: Slider(
                           value: textSize,
-                          min: 0.015,
+                          min: 0.008,
                           max: 0.08,
                           onChanged: onTextSizeChanged,
                         ),
