@@ -487,7 +487,6 @@
   "textRightToLeft": "Rechts nach links",
   "lineSpacing": "Zeilenabstand",
   "wrapText": "In fester Breite umbrechen",
-  "editTextTapHint": "Tippe auf einen Absatz, um ihn zu bearbeiten. Tippe erneut auf „Text bearbeiten“, um fertig zu werden.",
   "addFormField": "Formularfeld hinzufügen",
   "fieldProperties": "Feldeigenschaften",
   "fieldName": "Feldname",
@@ -509,5 +508,6 @@
   "requiredFieldsTitle": "Pflichtfelder sind leer",
   "requiredFieldsBody": "{count, plural, =1{Dieses Formular verlangt noch 1 Feld:} other{Dieses Formular verlangt noch {count} Felder:}}",
   "exportAnyway": "Trotzdem speichern",
-  "fillInFields": "Ausfüllen"
+  "fillInFields": "Ausfüllen",
+  "editTextModeHint": "Tippe auf einen Absatz, um seinen Text zu ändern"
 }

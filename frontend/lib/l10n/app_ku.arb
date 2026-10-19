@@ -487,7 +487,6 @@
   "textRightToLeft": "لە ڕاستەوە بۆ چەپ",
   "lineSpacing": "بۆشایی نێوان دێڕەکان",
   "wrapText": "پێچانەوە لە پانییەکی جێگیردا",
-  "editTextTapHint": "دەست لە پەرەگرافێک بدە بۆ دەستکاریکردنی. بۆ تەواوکردن دووبارە دەست لە دەستکاریکردنی دەق بدە.",
   "addFormField": "زیادکردنی خانەی فۆرم",
   "fieldProperties": "تایبەتمەندییەکانی خانە",
   "fieldName": "ناوی خانە",
@@ -509,5 +508,6 @@
   "requiredFieldsTitle": "خانە پێویستەکان بەتاڵن",
   "requiredFieldsBody": "{count, plural, =1{ئەم فۆرمە ١ خانەی تری پێویستە:} other{ئەم فۆرمە {count} خانەی تری پێویستە:}}",
   "exportAnyway": "هەر پاشەکەوتی بکە",
-  "fillInFields": "پڕکردنەوە"
+  "fillInFields": "پڕکردنەوە",
+  "editTextModeHint": "دەست لە پەرەگرافێک بدە بۆ گۆڕینی دەقەکەی"
 }

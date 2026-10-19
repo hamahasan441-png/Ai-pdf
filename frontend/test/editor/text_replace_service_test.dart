@@ -112,7 +112,7 @@ void main() {
     ));
     expect(find.byKey(const ValueKey('replaceField')), findsNothing);
     await tester.tap(find.byTooltip('Find and replace'));
-    await tester.pump();
+    await tester.pumpAndSettle(); // the replace row grows open
     await tester.enterText(find.byKey(const ValueKey('replaceField')), 'Bill');
     await tester.tap(find.text('Replace'));
     await tester.tap(find.text('Replace all'));

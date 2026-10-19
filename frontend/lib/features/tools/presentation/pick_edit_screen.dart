@@ -24,6 +24,7 @@ import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_properties.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_banner.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_view.dart';
@@ -2383,9 +2384,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       return;
     }
     if (_showNativeBlocks()) {
-      _editTextMode = true;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.editTextTapHint)));
+      // The mode bar over the page says what to do and how to finish.
+      setState(() => _editTextMode = true);
       return;
     }
     final bytes = _pageCache[_current];
@@ -3200,6 +3200,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
+        modeBanner: _editTextMode && _inlineEditing == null
+            ? EditorModeBanner(
+                icon: Icons.edit_note,
+                title: l10n.editText,
+                hint: l10n.editTextModeHint,
+                doneLabel: l10n.done,
+                onDone: () => setState(() {
+                  _editTextMode = false;
+                  _showEditLines = false;
+                }),
+              )
+            : null,
         searchBar: _searchController.state.active
             ? EditorSearchBar(
                 searchState: _searchController.state,

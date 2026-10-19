@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/core/theme/motion.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_empty_state.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_loading_overlay.dart';
 
@@ -17,6 +18,9 @@ class EditorScreenBody extends StatelessWidget {
   final Widget? richTextToolbar;
   final Widget? thumbnailStrip;
   final Widget? searchBar;
+
+  /// A bar naming the current mode (such as Edit text) with a Done button.
+  final Widget? modeBanner;
   final Widget? textSelectionBar;
   final Widget? redactionOverlay;
   final Widget? outlinePanel;
@@ -38,6 +42,7 @@ class EditorScreenBody extends StatelessWidget {
     this.richTextToolbar,
     this.thumbnailStrip,
     this.searchBar,
+    this.modeBanner,
     this.textSelectionBar,
     this.redactionOverlay,
     this.outlinePanel,
@@ -67,15 +72,26 @@ class EditorScreenBody extends StatelessWidget {
         if (thumbnailStrip != null)
           Positioned(left: 0, right: 0, bottom: 96, child: thumbnailStrip!),
         if (richTextToolbar != null) richTextToolbar!,
-        if (searchBar != null)
-          Positioned(left: 16, right: 16, top: 8, child: searchBar!),
-        if (textSelectionBar != null)
-          Positioned(
-            left: 8,
-            right: 8,
-            bottom: thumbnailStrip != null ? 168 : 112,
-            child: textSelectionBar!,
+        // The bars over the page slide in and out instead of popping.
+        Positioned(
+          left: 16,
+          right: 16,
+          top: 8,
+          child: MotionReveal(
+            child: searchBar == null && modeBanner == null
+                ? null
+                : KeyedSubtree(
+                    key: ValueKey(searchBar != null ? 'search' : 'mode'),
+                    child: searchBar ?? modeBanner!,
+                  ),
           ),
+        ),
+        Positioned(
+          left: 8,
+          right: 8,
+          bottom: thumbnailStrip != null ? 168 : 112,
+          child: MotionReveal(from: const Offset(0, 0.3), child: textSelectionBar),
+        ),
         if (outlinePanel != null)
           Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
         if (layerPanel != null)

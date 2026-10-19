@@ -199,6 +199,8 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                 const DropdownMenuItem(value: 'de', child: Text('Deutsch')),
                 const DropdownMenuItem(value: 'es', child: Text('Español')),
                 const DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                const DropdownMenuItem(value: 'ku', child: Text('کوردی')),
+                const DropdownMenuItem(value: 'fa', child: Text('فارسی')),
               ],
               onChanged: (v) => LocaleController.instance
                   .set((v == null || v.isEmpty) ? null : Locale(v)),

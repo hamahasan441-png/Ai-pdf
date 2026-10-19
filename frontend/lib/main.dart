@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/ads/ads_service.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
+import 'core/config/kurdish_localizations.dart';
 import 'core/config/locale_controller.dart';
 import 'core/observability/crash_reporter.dart';
 import 'core/theme/app_theme.dart';
@@ -70,8 +71,12 @@ class AiPdfApp extends ConsumerWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
           locale: locale,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          localizationsDelegates: const [
+            ...AppLocalizations.localizationsDelegates,
+            ...kurdishFallbackDelegates,
+          ],
           supportedLocales: AppLocalizations.supportedLocales,
+          localeListResolutionCallback: resolveAppLocale,
           routerConfig: router,
         ),
       ),

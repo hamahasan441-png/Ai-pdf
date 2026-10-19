@@ -487,7 +487,6 @@
   "textRightToLeft": "راست به چپ",
   "lineSpacing": "فاصلهٔ خطوط",
   "wrapText": "شکستن در عرض ثابت",
-  "editTextTapHint": "برای ویرایش، روی یک پاراگراف بزنید. برای پایان دوباره ویرایش متن را بزنید.",
   "addFormField": "افزودن فیلد فرم",
   "fieldProperties": "ویژگی‌های فیلد",
   "fieldName": "نام فیلد",
@@ -509,5 +508,6 @@
   "requiredFieldsTitle": "فیلدهای الزامی خالی هستند",
   "requiredFieldsBody": "{count, plural, =1{این فرم ۱ فیلد دیگر می‌خواهد:} other{این فرم {count} فیلد دیگر می‌خواهد:}}",
   "exportAnyway": "به هر حال ذخیره کن",
-  "fillInFields": "پر کردن"
+  "fillInFields": "پر کردن",
+  "editTextModeHint": "برای تغییر متن، روی یک پاراگراف بزنید"
 }

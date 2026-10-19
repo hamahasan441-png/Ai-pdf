@@ -487,7 +487,6 @@
   "textRightToLeft": "من اليمين إلى اليسار",
   "lineSpacing": "تباعد الأسطر",
   "wrapText": "التفاف ضمن عرض ثابت",
-  "editTextTapHint": "اضغط على فقرة لتحريرها. اضغط تحرير النص مرة أخرى للإنهاء.",
   "addFormField": "إضافة حقل نموذج",
   "fieldProperties": "خصائص الحقل",
   "fieldName": "اسم الحقل",
@@ -509,5 +508,6 @@
   "requiredFieldsTitle": "حقول مطلوبة فارغة",
   "requiredFieldsBody": "{count, plural, =1{يطلب هذا النموذج حقلاً واحداً آخر:} other{يطلب هذا النموذج {count} حقول أخرى:}}",
   "exportAnyway": "احفظ على أي حال",
-  "fillInFields": "املأ الحقول"
+  "fillInFields": "املأ الحقول",
+  "editTextModeHint": "اضغط على فقرة لتغيير نصها"
 }

@@ -36,28 +36,70 @@ IconData fieldKindIcon(FormFieldKind kind) => switch (kind) {
       _ => Icons.short_text,
     };
 
-/// Asks which kind of field to add.
+/// Asks which kind of field to add, as a grid of tiles.
 Future<FormFieldKind?> showAddFormFieldSheet(BuildContext context) {
   final l10n = AppLocalizations.of(context);
   return showModalBottomSheet<FormFieldKind>(
     context: context,
+    isScrollControlled: true,
     showDragHandle: true,
-    builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(title: Text(l10n?.addFormField ?? 'Add form field', style: Theme.of(ctx).textTheme.titleMedium)),
-            for (final k in addableFieldKinds)
-              ListTile(
-                leading: Icon(fieldKindIcon(k)),
-                title: Text(fieldKindLabel(l10n, k)),
-                onTap: () => Navigator.pop(ctx, k),
+    builder: (ctx) {
+      final cs = Theme.of(ctx).colorScheme;
+      return SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n?.addFormField ?? 'Add form field', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.74,
+                children: [
+                  for (final k in addableFieldKinds)
+                    Material(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => Navigator.pop(ctx, k),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(color: cs.primaryContainer, shape: BoxShape.circle),
+                                child: Icon(fieldKindIcon(k), size: 21, color: cs.primary),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                fieldKindLabel(l10n, k),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.15),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -82,10 +124,17 @@ FormFieldAnnotation newFormField(FormFieldKind kind, {required String label, dou
 
 /// Edits [field]'s name, required flag and value or options. Changes apply
 /// to [field] only on Save; returns whether they did.
+///
+/// Shown as a bottom sheet that rises above the keyboard.
 Future<bool> showFormFieldPropertiesDialog(BuildContext context, FormFieldAnnotation field) async {
-  final saved = await showDialog<bool>(
+  final saved = await showModalBottomSheet<bool>(
     context: context,
-    builder: (ctx) => _FieldPropertiesDialog(field: field),
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+      child: _FieldPropertiesDialog(field: field),
+    ),
   );
   return saved == true;
 }
@@ -115,7 +164,10 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
     super.dispose();
   }
 
-  List<String> get _opts => [for (final o in _options.text.split('\n')) if (o.trim().isNotEmpty) o.trim()];
+  List<String> get _opts => [
+        for (final o in _options.text.split('\n'))
+          if (o.trim().isNotEmpty) o.trim()
+      ];
 
   void _save() {
     final field = widget.field;
@@ -139,22 +191,37 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
     final opts = _opts;
     final textKind =
         !field.isCheckable && field.fieldKind != FormFieldKind.combobox && field.fieldKind != FormFieldKind.signature;
-    return AlertDialog(
-      title: Row(children: [
-        Icon(fieldKindIcon(field.fieldKind)),
-        const SizedBox(width: 8),
-        Expanded(child: Text(fieldKindLabel(l10n, field.fieldKind))),
-      ]),
-      content: SingleChildScrollView(
+    final cs = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Row(children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: cs.primaryContainer, shape: BoxShape.circle),
+                child: Icon(fieldKindIcon(field.fieldKind), size: 21, color: cs.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(fieldKindLabel(l10n, field.fieldKind), style: Theme.of(context).textTheme.titleMedium),
+                  Text(l10n?.fieldProperties ?? 'Field properties',
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 18),
             TextField(
               key: const ValueKey('fieldName'),
               controller: _name,
               decoration: InputDecoration(labelText: l10n?.fieldName ?? 'Field name'),
             ),
+            const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(l10n?.fieldRequired ?? 'Required'),
@@ -210,13 +277,20 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
                 onChanged: (v) => setState(() => _value.text = v ?? ''),
               ),
             ],
+            const SizedBox(height: 20),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(l10n?.cancel ?? 'Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: FilledButton(onPressed: _save, child: Text(l10n?.save ?? 'Save'))),
+            ]),
           ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l10n?.cancel ?? 'Cancel')),
-        FilledButton(onPressed: _save, child: Text(l10n?.save ?? 'Save')),
-      ],
     );
   }
 }

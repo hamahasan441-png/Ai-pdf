@@ -23,52 +23,58 @@ class EditorTextSelectionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      elevation: 6,
-      borderRadius: BorderRadius.circular(12),
-      color: cs.surface,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: l10n.copy,
-              icon: const Icon(Icons.copy),
-              onPressed: onCopy,
+    Widget icon(IconData i, String tip, VoidCallback onTap, {Color? color}) => IconButton(
+          tooltip: tip,
+          icon: Icon(i, size: 21, color: color ?? cs.onSurface),
+          onPressed: onTap,
+          constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+          padding: EdgeInsets.zero,
+        );
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [BoxShadow(color: Color(0x261B2130), blurRadius: 22, offset: Offset(0, 8))],
+        ),
+        child: Material(
+          color: cs.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: cs.outlineVariant),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Editing the words is the main action here.
+                if (onEdit != null) ...[
+                  FilledButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: Text(l10n.editText),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      minimumSize: const Size(0, 40),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                icon(Icons.copy, l10n.copy, onCopy),
+                Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: cs.outlineVariant),
+                icon(Icons.highlight, l10n.toolHighlight, () => onMarkup(EditTool.highlight), color: const Color(0xFFE0A800)),
+                icon(Icons.format_underlined, l10n.toolUnderline, () => onMarkup(EditTool.underline)),
+                icon(Icons.format_strikethrough, l10n.toolStrikeout, () => onMarkup(EditTool.strikeout)),
+                icon(Icons.waves, l10n.toolSquiggly, () => onMarkup(EditTool.squiggly)),
+                Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: cs.outlineVariant),
+                icon(Icons.close, l10n.deselect, onClose, color: cs.onSurfaceVariant),
+              ],
             ),
-            if (onEdit != null)
-              IconButton(
-                tooltip: l10n.toolText,
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit,
-              ),
-            IconButton(
-              tooltip: l10n.toolHighlight,
-              icon: const Icon(Icons.highlight),
-              onPressed: () => onMarkup(EditTool.highlight),
-            ),
-            IconButton(
-              tooltip: l10n.toolUnderline,
-              icon: const Icon(Icons.format_underlined),
-              onPressed: () => onMarkup(EditTool.underline),
-            ),
-            IconButton(
-              tooltip: l10n.toolStrikeout,
-              icon: const Icon(Icons.format_strikethrough),
-              onPressed: () => onMarkup(EditTool.strikeout),
-            ),
-            IconButton(
-              tooltip: l10n.toolSquiggly,
-              icon: const Icon(Icons.waves),
-              onPressed: () => onMarkup(EditTool.squiggly),
-            ),
-            IconButton(
-              tooltip: l10n.deselect,
-              icon: const Icon(Icons.close),
-              onPressed: onClose,
-            ),
-          ],
+          ),
         ),
       ),
     );

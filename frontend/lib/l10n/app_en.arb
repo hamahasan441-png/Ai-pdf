@@ -553,7 +553,6 @@
   "textRightToLeft": "Right to left",
   "lineSpacing": "Line spacing",
   "wrapText": "Wrap in a fixed width",
-  "editTextTapHint": "Tap a paragraph to edit it. Tap Edit text again to finish.",
   "addFormField": "Add form field",
   "fieldProperties": "Field properties",
   "fieldName": "Field name",
@@ -576,5 +575,6 @@
   "requiredFieldsBody": "{count, plural, =1{This form asks for 1 more field:} other{This form asks for {count} more fields:}}",
   "@requiredFieldsBody": {"placeholders": {"count": {"type": "int"}}},
   "exportAnyway": "Save anyway",
-  "fillInFields": "Fill in"
+  "fillInFields": "Fill in",
+  "editTextModeHint": "Tap a paragraph to change its text"
 }

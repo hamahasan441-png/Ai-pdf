@@ -16,6 +16,7 @@ import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/edit_text_target.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/form_field_box.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
@@ -302,21 +303,13 @@ class EditorCanvas extends StatelessWidget {
                 );
               }),
               if (showEditLines)
+                // A little room around the text, so the box does not touch it.
                 ...editLines.map((line) => Positioned(
-                      left: line.x * size.width,
-                      top: line.y * size.height,
-                      width: (line.w * size.width).clamp(10.0, size.width),
-                      height: (line.h * size.height).clamp(12.0, 80.0),
-                      child: GestureDetector(
-                        onTap: () => onEditLineTap(line),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.14),
-                            border: Border.all(color: Colors.blueAccent, width: 1),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      ),
+                      left: line.x * size.width - 3,
+                      top: line.y * size.height - 2,
+                      width: (line.w * size.width + 6).clamp(12.0, size.width),
+                      height: (line.h * size.height + 4).clamp(14.0, size.height),
+                      child: EditTextTarget(label: line.text, onTap: () => onEditLineTap(line)),
                     )),
               if (guideX != null)
                 Positioned(

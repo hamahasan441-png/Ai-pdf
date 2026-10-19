@@ -487,7 +487,6 @@
   "textRightToLeft": "De derecha a izquierda",
   "lineSpacing": "Interlineado",
   "wrapText": "Ajustar a un ancho fijo",
-  "editTextTapHint": "Toca un párrafo para editarlo. Vuelve a tocar Editar texto para terminar.",
   "addFormField": "Añadir campo de formulario",
   "fieldProperties": "Propiedades del campo",
   "fieldName": "Nombre del campo",
@@ -509,5 +508,6 @@
   "requiredFieldsTitle": "Hay campos obligatorios vacíos",
   "requiredFieldsBody": "{count, plural, =1{Este formulario pide 1 campo más:} other{Este formulario pide {count} campos más:}}",
   "exportAnyway": "Guardar de todos modos",
-  "fillInFields": "Rellenar"
+  "fillInFields": "Rellenar",
+  "editTextModeHint": "Toca un párrafo para cambiar su texto"
 }

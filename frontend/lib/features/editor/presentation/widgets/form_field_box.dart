@@ -52,7 +52,11 @@ class FormFieldBox extends StatelessWidget {
         child: Stack(children: [
           Positioned.fill(
             child: DecoratedBox(
-              decoration: BoxDecoration(color: f.fillColor, border: Border.all(color: f.borderColor)),
+              decoration: BoxDecoration(
+                color: f.fillColor,
+                border: Border.all(color: f.borderColor),
+                borderRadius: BorderRadius.circular(3),
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Align(alignment: f.multiline ? Alignment.topLeft : Alignment.centerLeft, child: content),
