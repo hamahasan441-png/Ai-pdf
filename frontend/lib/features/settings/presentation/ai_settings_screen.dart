@@ -224,7 +224,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             items: AppConfig.providers
                 .map((p) => DropdownMenuItem(
                       value: p.id,
-                      child: Text(p.label, overflow: TextOverflow.ellipsis, maxLines: 1),
+                      child: Text(p.id == AppConfig.providerCustom ? l10n.aiProviderCustom : p.label, overflow: TextOverflow.ellipsis, maxLines: 1),
                     ))
                 .toList(),
             onChanged: (v) {
@@ -317,7 +317,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               items: [
                 ..._def.models.map((m) => DropdownMenuItem(
                       value: m.$1,
-                      child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
+                      child: Text(m.$1 == 'auto' ? l10n.aiModelAuto : m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
                     )),
                 DropdownMenuItem(value: '__custom__', child: Text(l10n.aSettingsCustomModel)),
               ],

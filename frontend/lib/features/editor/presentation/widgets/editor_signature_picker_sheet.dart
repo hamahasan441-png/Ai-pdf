@@ -37,6 +37,7 @@ Future<SignatureChoiceResult?> showEditorSignaturePickerSheet(
               leading: const Icon(Icons.gesture),
               title: Text(AppLocalizations.of(ctx)!.savedSignatureN(i + 1)),
               trailing: IconButton(
+                tooltip: AppLocalizations.of(ctx)!.a11yDeleteSignature,
                 icon: const Icon(Icons.delete_outline, size: 20),
                 onPressed: () => Navigator.pop(ctx, SignatureChoiceResult(deleteIndex: i)),
               ),

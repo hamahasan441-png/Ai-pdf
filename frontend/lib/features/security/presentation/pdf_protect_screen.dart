@@ -113,6 +113,7 @@ class _PdfProtectScreenState extends State<PdfProtectScreen> {
               labelText: l10n.protectPassword,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
+                tooltip: _obscure ? l10n.a11yShowPassword : l10n.a11yHidePassword,
                 icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),

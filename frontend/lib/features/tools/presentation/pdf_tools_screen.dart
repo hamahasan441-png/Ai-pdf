@@ -91,7 +91,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
         title: Text(title),
         actions: [
           if (_outputs.isNotEmpty)
-            IconButton(icon: const Icon(Icons.share), onPressed: _shareAll),
+            IconButton(icon: const Icon(Icons.share), tooltip: AppLocalizations.of(context)!.a11yShareAll, onPressed: _shareAll),
         ],
       ),
       body: Padding(
@@ -117,6 +117,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                                 leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
                                 title: Text(e.value.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 trailing: IconButton(
+                                  tooltip: AppLocalizations.of(context)!.a11yRemoveFile,
                                   icon: const Icon(Icons.close),
                                   onPressed: () => setState(() => _files.removeAt(e.key)),
                                 ),

@@ -137,6 +137,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
                 prefixIcon: const Icon(Icons.link),
                 suffixIcon: _urlController.text.isNotEmpty
                     ? IconButton(
+                        tooltip: AppLocalizations.of(context)!.a11yClearText,
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _urlController.clear();

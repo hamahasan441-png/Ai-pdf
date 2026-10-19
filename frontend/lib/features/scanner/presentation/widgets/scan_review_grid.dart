@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
+import 'package:ai_pdf/features/scanner/presentation/widgets/scan_filter_label.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
 
 /// Reorderable grid of captured pages for the review stage (Phase 51).
@@ -81,7 +81,7 @@ class ScanReviewGrid extends StatelessWidget {
                           ],
                         ],
                       ),
-                      Text(page.filter.label,
+                      Text(scanFilterLabel(AppLocalizations.of(context)!, page.filter),
                           style: TextStyle(
                               fontSize: 12, color: cs.onSurfaceVariant)),
                       if (page.hasOcrText)

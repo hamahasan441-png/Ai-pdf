@@ -220,7 +220,7 @@ class _EditorSearchBarState extends State<EditorSearchBar> {
         onPressed: onTap,
         tooltip: tooltip,
         visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
       );
 
   Widget _actionButton(String label, VoidCallback? onTap, {bool tonal = false}) {

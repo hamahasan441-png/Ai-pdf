@@ -75,7 +75,7 @@ class EditorPageOpsDialog extends StatelessWidget {
           icon: const Icon(Icons.close, size: 18),
           onPressed: onClose,
           tooltip: l10n.cEditorClose,
-          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
         ),
       ],
     );

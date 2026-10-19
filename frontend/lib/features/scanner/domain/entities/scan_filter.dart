@@ -17,20 +17,3 @@ enum ScanFilter {
   /// Photo mode — gentle contrast/saturation boost, preserves gradients.
   photo,
 }
-
-extension ScanFilterLabel on ScanFilter {
-  String get label {
-    switch (this) {
-      case ScanFilter.original:
-        return 'Original';
-      case ScanFilter.auto:
-        return 'Auto';
-      case ScanFilter.grayscale:
-        return 'Grayscale';
-      case ScanFilter.blackWhite:
-        return 'B&W';
-      case ScanFilter.photo:
-        return 'Photo';
-    }
-  }
-}

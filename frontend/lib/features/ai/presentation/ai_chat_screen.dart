@@ -1013,6 +1013,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
           const SizedBox(width: 6),
           IconButton.filled(
+            tooltip: AppLocalizations.of(context)!.a11ySend,
             onPressed: _busy ? null : () => _send(),
             icon: const Icon(Icons.send),
           ),

@@ -128,7 +128,15 @@ class PaywallScreen extends ConsumerWidget {
 
                 if (state.error != null) ...[
                   const SizedBox(height: 12),
-                  _InfoBanner(icon: Icons.error_outline, color: cs.error, text: state.error!),
+                  _InfoBanner(icon: Icons.error_outline, color: cs.error, text: switch (state.error!) {
+                      SubscriptionError.store => l10n.subErrStore,
+                      SubscriptionError.loadPlans => l10n.subErrLoadPlans,
+                      SubscriptionError.startPurchase => l10n.subErrStartPurchase,
+                      SubscriptionError.purchaseFailed => l10n.subErrPurchaseFailed,
+                      SubscriptionError.restoreFailed => l10n.subErrRestoreFailed,
+                      SubscriptionError.notCompleted => l10n.subErrNotCompleted,
+                      SubscriptionError.notVerified => l10n.subErrNotVerified,
+                    }),
                 ],
 
                 const SizedBox(height: 8),
