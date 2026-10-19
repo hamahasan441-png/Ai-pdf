@@ -13,14 +13,14 @@ import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 class EditorSignatureInsertService {
   const EditorSignatureInsertService();
 
-  /// Convert raw pad [points] into a normalised page-space signature stroke.
+  /// Convert raw pad [padPoints] into a normalised page-space signature stroke.
   ///
   /// [targetW] is the default width of the signature as a fraction of the page
   /// width (the height follows from the drawing's aspect ratio). [centerX] /
   /// [centerY] are the normalised page coordinates the signature is centred on
   /// (default: middle of the page). The user can drag/resize it afterwards.
   StrokeAnnotation signatureFromPadPoints(
-    List<Offset> points, {
+    List<Offset> padPoints, {
     double targetW = 0.32,
     double centerX = 0.5,
     double centerY = 0.5,
@@ -28,6 +28,8 @@ class EditorSignatureInsertService {
     const color = Color(0xFF000000);
     const strokeWidth = 2.5;
 
+    final split = StrokeAnnotation.splitStrokes(padPoints);
+    final points = split.points;
     if (points.isEmpty) {
       return StrokeAnnotation(const [], color, strokeWidth, false);
     }
@@ -61,6 +63,6 @@ class EditorSignatureInsertService {
       );
     }).toList();
 
-    return StrokeAnnotation(normalized, color, strokeWidth, false);
+    return StrokeAnnotation(normalized, color, strokeWidth, false, breaks: split.breaks);
   }
 }

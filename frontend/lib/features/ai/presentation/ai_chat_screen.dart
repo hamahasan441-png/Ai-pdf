@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -739,7 +740,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           child: FilledButton.icon(
             onPressed: _placing ? null : _placeOnForm,
             icon: _placing
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const ButtonSpinner(size: 16)
                 : const Icon(Icons.auto_fix_high),
             label: Text(_placing ? 'Placing answers…' : 'Place answers on the form'),
           ),

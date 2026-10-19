@@ -89,7 +89,9 @@ class AnnotationDraw {
     }
   }
 
-  static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
+  /// A polyline; each index in [breaks] starts a new stroke.
+  static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width,
+      [List<int> breaks = const []]) {
     if (pts.length < 2) return;
     final k = size.height / _refHeight;
     final paint = Paint()
@@ -100,7 +102,11 @@ class AnnotationDraw {
       ..style = PaintingStyle.stroke;
     final path = Path()..moveTo(pts[0].dx * size.width, pts[0].dy * size.height);
     for (var i = 1; i < pts.length; i++) {
-      path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      if (breaks.contains(i)) {
+        path.moveTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      } else {
+        path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      }
     }
     canvas.drawPath(path, paint);
   }
@@ -216,7 +222,7 @@ class AnnotationDraw {
       markup(canvas, size, m);
     }
     for (final s in layer.strokes) {
-      stroke(canvas, size, s.points, s.color, s.width);
+      stroke(canvas, size, s.points, s.color, s.width, s.breaks);
     }
     for (final s in layer.shapes) {
       shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);

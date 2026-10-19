@@ -60,6 +60,7 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:ai_pdf/core/theme/motion.dart';
 import 'package:ai_pdf/features/editor/data/form_fill_smarts.dart';
 import 'package:ai_pdf/features/editor/data/text_block_service.dart';
@@ -2856,9 +2857,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Signature added — drag to move, use the corner handles to resize.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.signatureAdded),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -2869,9 +2870,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final points = await Navigator.of(context).push<List<Offset>>(
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => const SignaturePadSheet()),
     );
-    if (!mounted) return null;
+    // Closed or left empty: nothing to place, nothing to offer to save.
+    if (!mounted || points == null || points.length <= 1) return null;
     final save = await showEditorSaveSignatureDialog(context);
-    await _signatureFlow.persistDrawnSignatureIfRequested(_savedSignatures, points, save);
+    try {
+      await _signatureFlow.persistDrawnSignatureIfRequested(_savedSignatures, points, save);
+    } catch (e) {
+      // It is still placed; only keeping it for next time failed.
+      if (mounted) _showError(describeError(e, AppLocalizations.of(context)));
+    }
     return points;
   }
 

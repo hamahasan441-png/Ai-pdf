@@ -251,8 +251,8 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
                                         const SizedBox(width: 8),
                                         TextButton.icon(
                                           onPressed: () => _delete(p),
-                                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                          label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                          icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                                          label: Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
                                         ),
                                       ],
                                     ),

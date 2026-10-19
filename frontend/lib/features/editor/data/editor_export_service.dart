@@ -942,7 +942,7 @@ class EditorExportService {
         for (final s in layer.strokes) {
           if (!s.visible) continue;
           final ink = s.color.withValues(alpha: (s.color.a * s.opacity).clamp(0.0, 1.0));
-          AnnotationDraw.stroke(canvas, size, s.points, ink, s.width);
+          AnnotationDraw.stroke(canvas, size, s.points, ink, s.width, s.breaks);
         }
         for (final s in layer.shapes) {
           if (!s.visible) continue;

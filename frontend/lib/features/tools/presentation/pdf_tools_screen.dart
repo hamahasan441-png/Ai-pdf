@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -146,7 +147,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                 child: FilledButton.icon(
                   onPressed: (_files.isEmpty || _busy) ? null : _run,
                   icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const ButtonSpinner()
                       : const Icon(Icons.play_arrow),
                   label: Text(_busy ? l10n.working : l10n.run),
                 ),

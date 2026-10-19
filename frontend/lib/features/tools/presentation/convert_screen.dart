@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -193,7 +194,7 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
             FilledButton.icon(
               onPressed: (_path == null || _busy) ? null : _convert,
               icon: _busy
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const ButtonSpinner()
                   : const Icon(Icons.sync_alt),
               label: Text(_busy ? l10n.converting : l10n.convert),
             ),

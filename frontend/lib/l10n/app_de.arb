@@ -571,5 +571,6 @@
   "libRetry": "Erneut versuchen",
   "libFileGone": "Diese Datei ist nicht mehr auf dem Gerät.",
   "libRemoveEntry": "Aus Bibliothek entfernen",
-  "libNew": "Neu"
+  "libNew": "Neu",
+  "signatureAdded": "Unterschrift hinzugefügt. Zum Verschieben ziehen, Größe über die Eckgriffe ändern."
 }

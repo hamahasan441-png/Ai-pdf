@@ -115,6 +115,11 @@ class StrokeAnnotation extends EditorAnnotation {
   final double width;
   final bool highlight;
 
+  /// Indices into [points] where a new pen stroke starts (the pen was lifted
+  /// before it), so a multi-stroke signature is one item without lines
+  /// joining its strokes. Empty for a single stroke.
+  final List<int> breaks;
+
   /// Copies [points]: [restoreFrom] rewrites the list in place, which throws
   /// on a const or fixed-length list (an empty signature was `const []`).
   StrokeAnnotation(
@@ -123,7 +128,27 @@ class StrokeAnnotation extends EditorAnnotation {
     this.width,
     this.highlight, {
     super.id,
-  }) : points = List.of(points);
+    List<int> breaks = const [],
+  })  : points = List.of(points),
+        breaks = List.of(breaks);
+
+  /// Splits pad output, where [Offset.infinite] marks a lifted pen, into the
+  /// finite points and the indices where each later stroke starts.
+  static ({List<Offset> points, List<int> breaks}) splitStrokes(List<Offset> raw) {
+    final points = <Offset>[];
+    final breaks = <int>[];
+    var lifted = false;
+    for (final p in raw) {
+      if (!p.isFinite) {
+        lifted = true;
+        continue;
+      }
+      if (lifted && points.isNotEmpty && (breaks.isEmpty || breaks.last != points.length)) breaks.add(points.length);
+      lifted = false;
+      points.add(p);
+    }
+    return (points: points, breaks: breaks);
+  }
 
   @override
   Rect get bounds {
@@ -167,6 +192,7 @@ class StrokeAnnotation extends EditorAnnotation {
       width,
       highlight,
       id: id,
+      breaks: breaks,
     );
     c.copyBaseFrom(this);
     return c;
@@ -177,6 +203,9 @@ class StrokeAnnotation extends EditorAnnotation {
     points
       ..clear()
       ..addAll(o.points.map((p) => Offset(p.dx, p.dy)));
+    breaks
+      ..clear()
+      ..addAll(o.breaks);
     copyBaseFrom(o);
   }
 }

@@ -35,7 +35,7 @@ class EditorHitTestService {
       return item.bounds.inflate(lineSlop).contains(n);
     }
     if (item is StrokeAnnotation) {
-      return _nearPolyline(item.points, n, lineSlop);
+      return _nearPolyline(item.points, n, lineSlop, item.breaks);
     }
     // Text, images, stamps, notes, markup and form fields use their box.
     return item.bounds.inflate(boxSlop).contains(n);
@@ -46,15 +46,19 @@ class EditorHitTestService {
   StrokeAnnotation? strokeNear(PageLayer layer, Offset n, {double slop = 0.02}) {
     for (final item in layer.items.reversed) {
       if (item is! StrokeAnnotation || !item.visible || item.locked) continue;
-      if (_nearPolyline(item.points, n, slop)) return item;
+      if (_nearPolyline(item.points, n, slop, item.breaks)) return item;
     }
     return null;
   }
 
-  bool _nearPolyline(List<Offset> points, Offset n, double slop) {
+  bool _nearPolyline(List<Offset> points, Offset n, double slop, [List<int> breaks = const []]) {
     if (points.isEmpty) return false;
     if (points.length == 1) return (points.first - n).distance <= slop;
     for (var i = 1; i < points.length; i++) {
+      if (breaks.contains(i)) {
+        if ((points[i] - n).distance <= slop) return true;
+        continue;
+      }
       if (_distanceToSegment(n, points[i - 1], points[i]) <= slop) return true;
     }
     return false;

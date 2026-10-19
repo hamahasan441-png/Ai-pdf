@@ -647,5 +647,6 @@
   "libRetry": "Try again",
   "libFileGone": "This file is no longer on the device.",
   "libRemoveEntry": "Remove from library",
-  "libNew": "New"
+  "libNew": "New",
+  "signatureAdded": "Signature added. Drag to move it; use the corner handles to resize."
 }

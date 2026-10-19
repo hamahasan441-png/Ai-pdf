@@ -571,5 +571,6 @@
   "libRetry": "Reintentar",
   "libFileGone": "Este archivo ya no está en el dispositivo.",
   "libRemoveEntry": "Quitar de la biblioteca",
-  "libNew": "Nuevo"
+  "libNew": "Nuevo",
+  "signatureAdded": "Firma añadida. Arrástrala para moverla y usa las esquinas para cambiar su tamaño."
 }

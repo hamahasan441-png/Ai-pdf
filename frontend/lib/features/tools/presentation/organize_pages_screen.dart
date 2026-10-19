@@ -291,7 +291,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
           ),
           IconButton(
             tooltip: l10n.delete,
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
             onPressed: () => _delete(i),
           ),
           ReorderableDragStartListener(

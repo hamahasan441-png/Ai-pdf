@@ -4,8 +4,9 @@ import 'dart:ui' show Offset;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists hand-drawn signatures across app restarts so they can be reused
-/// instantly and stamped onto forms. Each signature is a polyline: a list of
-/// points in the signature pad's own coordinate space.
+/// instantly and stamped onto forms. Each signature is a list of points in
+/// the signature pad's own coordinate space; [Offset.infinite] marks a lifted
+/// pen between strokes (stored as `null`).
 ///
 /// Stored locally via SharedPreferences (no cloud, no account needed). Points
 /// are plain drawing geometry — not personal identity data — but they still
@@ -30,13 +31,15 @@ class SignatureStore {
         if (sig is! List) continue;
         final pts = <Offset>[];
         for (final p in sig) {
-          if (p is Map) {
+          if (p == null) {
+            pts.add(Offset.infinite);
+          } else if (p is Map) {
             final x = (p['x'] as num?)?.toDouble();
             final y = (p['y'] as num?)?.toDouble();
             if (x != null && y != null) pts.add(Offset(x, y));
           }
         }
-        if (pts.length > 1) out.add(pts);
+        if (pts.where((p) => p.isFinite).length > 1) out.add(pts);
       }
       return out;
     } catch (_) {
@@ -45,22 +48,21 @@ class SignatureStore {
   }
 
   /// Persist the full set of signatures (bounded to the most recent ones).
+  /// Throws when it cannot be stored, so the caller can say so.
   Future<void> save(List<List<Offset>> signatures) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      var list = signatures;
-      if (list.length > _maxSignatures) {
-        list = list.sublist(list.length - _maxSignatures);
-      }
-      final encoded = jsonEncode([
-        for (final sig in list)
-          [
-            for (final p in sig) {'x': p.dx, 'y': p.dy}
-          ]
-      ]);
-      await prefs.setString(_key, encoded);
-    } catch (_) {
-      // Non-fatal: persistence is best-effort.
+    final prefs = await SharedPreferences.getInstance();
+    var list = signatures;
+    if (list.length > _maxSignatures) {
+      list = list.sublist(list.length - _maxSignatures);
+    }
+    final encoded = jsonEncode([
+      for (final sig in list)
+        [
+          for (final p in sig) p.isFinite ? {'x': p.dx, 'y': p.dy} : null
+        ]
+    ]);
+    if (!await prefs.setString(_key, encoded)) {
+      throw StateError('The signature could not be stored');
     }
   }
 }

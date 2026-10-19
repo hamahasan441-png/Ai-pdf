@@ -78,7 +78,7 @@ class EditorCanvasPainter extends CustomPainter {
     for (final s in strokes) {
       if (!s.visible) continue;
       final color = s.color.withValues(alpha: (s.color.a * s.opacity).clamp(0.0, 1.0));
-      AnnotationDraw.stroke(canvas, size, s.points, color, s.width);
+      AnnotationDraw.stroke(canvas, size, s.points, color, s.width, s.breaks);
     }
     for (final s in shapes) {
       if (!s.visible) continue;

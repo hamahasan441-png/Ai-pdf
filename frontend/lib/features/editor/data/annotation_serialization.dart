@@ -151,6 +151,7 @@ Map<String, dynamic> _strokeToJson(StrokeAnnotation s) => {
       'type': 'stroke',
       'id': s.id,
       'points': s.points.map((p) => [p.dx, p.dy]).toList(),
+      if (s.breaks.isNotEmpty) 'breaks': s.breaks,
       'color': s.color.toARGB32(),
       'width': s.width,
       'highlight': s.highlight,
@@ -323,6 +324,10 @@ StrokeAnnotation _strokeFromJson(Map<String, dynamic> j) {
     (j['width'] as num).toDouble(),
     j['highlight'] as bool? ?? false,
     id: j['id'] as String?,
+    breaks: [
+      for (final b in (j['breaks'] as List?) ?? const [])
+        if (b is int && b > 0 && b < points.length) b,
+    ],
   );
 }
 
