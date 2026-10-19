@@ -47,13 +47,16 @@ void main() {
       [
         // Acrobat's own date format script, as a string and as a stream.
         '/FT /Tx /T (d1) /Rect [10 10 100 20] /AA << /F << /S /JavaScript /JS (AFDate_FormatEx\\("dd.mm.yyyy"\\);) >> >>',
-        '/FT /Tx /T (n1) /Rect [10 30 100 40] /AA << /K << /S /JavaScript /JS 12 0 R >> >>',
+        '/FT /Tx /T (n1) /Rect [10 30 100 40] /AA << /K << /S /JavaScript /JS 15 0 R >> >>', // the stream after the 11 fields
         '/FT /Tx /T (zip) /Rect [10 50 100 60] /AA << /F << /S /JavaScript /JS (AFSpecial_Format\\(0\\);) >> >>',
         '/FT /Tx /T (txtGeburtsdatum) /TU (Geburtsdatum) /Rect [10 70 100 80]',
         '/FT /Tx /T (Telefon) /Rect [10 90 100 100]',
         '/FT /Tx /T (Mail) /Rect [10 110 100 120]',
         '/FT /Tx /T (Bemerkung) /Rect [10 130 100 160] /Ff 4096',
         '/FT /Tx /T (Vorname) /Rect [10 170 100 180]',
+        '/FT /Tx /T (OrtDatum) /TU (Ort, Datum) /Rect [10 190 100 200]',
+        '/FT /Tx /T (pob) /TU (Place of birth) /Rect [10 210 100 220]',
+        '/FT /Tx /T (Exportdatum) /Rect [10 230 100 240]',
       ],
       extra: ['<< /Length 30 >>\nstream\nAFNumber_Keystroke(2, 0, 0, 0);\nendstream'],
     ));
@@ -78,6 +81,10 @@ void main() {
       expect(smarts.of(f['Mail']!).input, FieldInput.email);
       expect(smarts.of(f['Bemerkung']!).input, FieldInput.multiline);
       expect(smarts.of(f['Vorname']!).input, FieldInput.text);
+      // A place goes in these too: letters must be typable.
+      expect(smarts.of(f['OrtDatum']!).input, FieldInput.text);
+      expect(smarts.of(f['pob']!).input, FieldInput.text);
+      expect(smarts.of(f['Exportdatum']!).input, FieldInput.date, reason: '"ort" inside a word is not a place');
     });
 
     test('the printed label above a field names it and sets its date pattern', () {
@@ -113,7 +120,8 @@ void main() {
     expect(type('1', '12').text, '12.');
     expect(type('12.', '12.0').text, '12.0');
     expect(type('12.0', '12.03').text, '12.03.');
-    expect(type('12.03.', '12.03.2026x').text, '12.03.2026', reason: 'only digits, and no more than the pattern');
+    expect(type('12.03.', '12.03.20261').text, '12.03.2026', reason: 'no more digits than the pattern');
+    expect(type('', 'Berlin, 1').text, 'Berlin, 1', reason: 'letters are kept: not only a date');
     expect(type('12.', '12').text, '12', reason: 'deleting the separator is allowed');
     expect(DateMaskFormatter('d. MMMM yyyy').usable, isFalse);
   });

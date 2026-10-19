@@ -42,6 +42,9 @@ class FormFillSmarts {
   static const _email = ['e-mail', 'email', 'mail', 'ئیمەیڵ', 'البريد', 'ایمیل', 'correo'];
   static const _phone = ['telefon', 'phone', 'tel.', 'mobil', 'handy', 'fax', 'تەلەفۆن', 'مۆبایل', 'هاتف', 'تلفن', 'teléfono'];
   static const _zip = ['plz', 'postleitzahl', 'zip', 'postal', 'postcode', 'código postal'];
+  /// Words for a place. "Place of birth" or "Ort, Datum" also holds a
+  /// place name, so it must not get a digits-only date keyboard.
+  static const _place = ['place', 'city', 'town', 'stadt', 'wohnort', 'geburtsort', 'شوێن', 'مكان', 'محل', 'lugar', 'ciudad'];
   static const _number = ['hausnummer', 'hausnr', 'betrag', 'amount', 'anzahl', 'summe', 'menge', 'quantity', 'ژمارە', 'رقم', 'عدد'];
 
   FieldSmarts of(AcroField field, {Rect? rect, List<PdfTextElement> words = const []}) {
@@ -64,7 +67,8 @@ class FormFillSmarts {
     final words0 = '$label ${field.alternateName ?? ''} ${field.name}'.toLowerCase();
     bool any(List<String> keys) => keys.any(words0.contains);
     if (any(_email)) return FieldSmarts(FieldInput.email, label);
-    if (any(_date)) return FieldSmarts(FieldInput.date, label, datePattern: _patternIn(label) ?? 'dd.MM.yyyy');
+    final place = any(_place) || RegExp(r'(^|[^a-z])ort([^a-z]|$)').hasMatch(words0);
+    if (any(_date) && !place) return FieldSmarts(FieldInput.date, label, datePattern: _patternIn(label) ?? 'dd.MM.yyyy');
     if (any(_phone)) return FieldSmarts(FieldInput.phone, label);
     if (any(_zip)) return FieldSmarts(FieldInput.zip, label);
     if (any(_number)) return FieldSmarts(FieldInput.number, label);
@@ -160,6 +164,9 @@ class DateMaskFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     if (!usable) return newValue;
+    // Letters mean this is not only a date ("Berlin, 01.02.2024"): stop
+    // masking rather than silently dropping what was typed.
+    if (RegExp(r'[^\d\s./\-]').hasMatch(newValue.text)) return newValue;
     // Deleting a separator deletes it; do not put it straight back.
     if (newValue.text.length < oldValue.text.length) return newValue;
     final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
