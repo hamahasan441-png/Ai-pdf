@@ -51,7 +51,7 @@ class _ReadAloudScreenState extends State<ReadAloudScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
-    if (path == null) return;
+    if (path == null || !mounted) return;
     final l10n = AppLocalizations.of(context)!;
 
     await _tts.stop();

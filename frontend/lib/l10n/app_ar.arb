@@ -510,5 +510,21 @@
   "exportAnyway": "احفظ على أي حال",
   "fillInFields": "املأ الحقول",
   "editTextModeHint": "اضغط على فقرة لتغيير نصها",
-  "formReset": "مسح"
+  "formReset": "مسح",
+  "errorFile": "تعذّر فتح الملف أو حفظه. تأكد من أنه ما زال موجوداً.",
+  "errorNoSpace": "لا توجد مساحة كافية على هذا الجهاز.",
+  "errorNetwork": "لا يوجد اتصال. تحقق من الإنترنت وحاول مرة أخرى.",
+  "errorTimeout": "استغرق الأمر وقتاً طويلاً. حاول مرة أخرى.",
+  "errorPermission": "تم رفض الإذن. يمكنك السماح به من إعدادات النظام.",
+  "errorBadFile": "هذا الملف تالف أو بتنسيق غير مدعوم.",
+  "errorEncrypted": "ملف PDF هذا محمي بكلمة مرور. افتح قفله أولاً.",
+  "errorTooLarge": "هذا الملف كبير جداً لهذا الجهاز.",
+  "errorGeneric": "حدث خطأ ما. حاول مرة أخرى.",
+  "fileMissing": "الملف لم يعد موجوداً",
+  "saveToDevice": "حفظ على الجهاز",
+  "savedToDevice": "تم الحفظ على الجهاز",
+  "savedToAppFolder": "تم الحفظ في مجلد Pdoczy",
+  "saveCancelled": "تم إلغاء الحفظ",
+  "couldNotShare": "تعذّرت المشاركة: {error}",
+  "noFilesToShare": "لا توجد ملفات للمشاركة"
 }

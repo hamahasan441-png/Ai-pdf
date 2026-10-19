@@ -43,7 +43,7 @@ class _OcrScreenState extends State<OcrScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     final path = result.files.first.path;
-    if (path == null) return;
+    if (path == null || !mounted) return;
     final l10n = AppLocalizations.of(context)!;
 
     setState(() {
@@ -157,7 +157,7 @@ class _OcrScreenState extends State<OcrScreen> {
               icon: const Icon(Icons.copy),
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: _text));
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context)
                       .showSnackBar(SnackBar(content: Text(l10n.copied)));
                 }

@@ -119,7 +119,7 @@ class AnnotationDraw {
     final k = size.height / _refHeight;
     final p1 = Offset(a.dx * size.width, a.dy * size.height);
     final p2 = Offset(b.dx * size.width, b.dy * size.height);
-    final effColor = color.withOpacity((color.opacity * opacity).clamp(0.0, 1.0));
+    final effColor = color.withValues(alpha: (color.a * opacity).clamp(0.0, 1.0));
     final paint = Paint()
       ..color = effColor
       ..strokeWidth = width * k
@@ -127,7 +127,7 @@ class AnnotationDraw {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     final fillPaint = Paint()
-      ..color = effColor.withOpacity((effColor.opacity * 0.25).clamp(0.0, 1.0))
+      ..color = effColor.withValues(alpha: (effColor.a * 0.25).clamp(0.0, 1.0))
       ..style = PaintingStyle.fill;
 
     switch (type) {

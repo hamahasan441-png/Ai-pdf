@@ -56,7 +56,7 @@ class PaywallScreen extends ConsumerWidget {
                       Text(l10n.proUnlockTitle,
                           style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
-                      Text(l10n.proTagline, style: TextStyle(color: Colors.white.withOpacity(0.9))),
+                      Text(l10n.proTagline, style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
                     ],
                   ),
                 ),
@@ -176,7 +176,7 @@ class _PlanCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: highlighted ? AppColors.primary.withOpacity(0.06) : cs.surface,
+        color: highlighted ? AppColors.primary.withValues(alpha: 0.06) : cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: highlighted ? AppColors.primary : cs.outlineVariant,
@@ -256,9 +256,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(children: [
         Icon(icon, color: color, size: 20),

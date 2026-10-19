@@ -44,7 +44,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       allowMultiple: true,
     );
-    if (result == null || result.files.isEmpty) return;
+    if (result == null || result.files.isEmpty || !mounted) return;
     final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {

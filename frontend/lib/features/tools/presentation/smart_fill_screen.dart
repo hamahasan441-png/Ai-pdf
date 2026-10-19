@@ -212,7 +212,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.35),
+              color: cs.primaryContainer.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(children: [
@@ -254,7 +254,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
               margin: const EdgeInsets.only(bottom: 14),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.errorContainer.withOpacity(0.5),
+                color: cs.errorContainer.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(children: [

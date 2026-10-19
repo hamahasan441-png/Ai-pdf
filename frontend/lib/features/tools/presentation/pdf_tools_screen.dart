@@ -123,7 +123,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                           const Divider(height: 32),
                           Text(l10n.resultsCount(_outputs.length), style: const TextStyle(fontWeight: FontWeight.w700)),
                           ..._outputs.map((o) => Card(
-                                color: cs.primaryContainer.withOpacity(0.3),
+                                color: cs.primaryContainer.withValues(alpha: 0.3),
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle, color: Color(0xFF10B981)),
                                   title: Text(o.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),

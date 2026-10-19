@@ -149,9 +149,9 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.error.withOpacity(0.08),
+                  color: cs.error.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.error.withOpacity(0.3)),
+                  border: Border.all(color: cs.error.withValues(alpha: 0.3)),
                 ),
                 child: Row(children: [
                   Icon(Icons.cloud_off_outlined, color: cs.error, size: 20),
@@ -211,7 +211,7 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.08) : cs.surface,
+          color: selected ? color.withValues(alpha: 0.08) : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: selected ? color : cs.outlineVariant, width: selected ? 2 : 1),
         ),

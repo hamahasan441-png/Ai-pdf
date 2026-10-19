@@ -47,7 +47,7 @@ class EditorLoadingOverlay extends StatelessWidget {
               color: cs.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12),
               ],
             ),
             child: Column(

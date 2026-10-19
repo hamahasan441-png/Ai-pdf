@@ -577,5 +577,22 @@
   "exportAnyway": "Save anyway",
   "fillInFields": "Fill in",
   "editTextModeHint": "Tap a paragraph to change its text",
-  "formReset": "Reset"
+  "formReset": "Reset",
+  "errorFile": "The file could not be opened or saved. Check that it still exists.",
+  "errorNoSpace": "There is not enough free space on this device.",
+  "errorNetwork": "No connection. Check your internet and try again.",
+  "errorTimeout": "This took too long. Please try again.",
+  "errorPermission": "Permission was denied. You can allow it in the system settings.",
+  "errorBadFile": "This file is damaged or not in a supported format.",
+  "errorEncrypted": "This PDF is password protected. Unlock it first.",
+  "errorTooLarge": "This file is too large for this device.",
+  "errorGeneric": "Something went wrong. Please try again.",
+  "fileMissing": "The file no longer exists",
+  "saveToDevice": "Save to device",
+  "savedToDevice": "Saved to device",
+  "savedToAppFolder": "Saved to the Pdoczy folder",
+  "saveCancelled": "Save cancelled",
+  "couldNotShare": "Could not share: {error}",
+  "@couldNotShare": {"placeholders": {"error": {"type": "String"}}},
+  "noFilesToShare": "No files to share"
 }

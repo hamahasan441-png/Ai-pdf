@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color;
+import 'package:ai_pdf/core/utils/color_bits.dart';
 
 /// Color helpers for the editor's pickers and accessibility checks (Phase 24).
 ///
@@ -39,20 +40,20 @@ class ColorUtilsService {
   /// Format a color as an uppercase hex string. `#RRGGBB` by default, or
   /// `#AARRGGBB` when [includeAlpha] is true.
   String toHex(Color color, {bool includeAlpha = false}) {
-    final r = _hex2(color.red);
-    final g = _hex2(color.green);
-    final b = _hex2(color.blue);
+    final r = _hex2(color.red8);
+    final g = _hex2(color.green8);
+    final b = _hex2(color.blue8);
     if (includeAlpha) {
-      return '#${_hex2(color.alpha)}$r$g$b';
+      return '#${_hex2(color.alpha8)}$r$g$b';
     }
     return '#$r$g$b';
   }
 
   /// WCAG relative luminance in 0..1.
   double relativeLuminance(Color c) {
-    final r = _linearize(c.red / 255.0);
-    final g = _linearize(c.green / 255.0);
-    final b = _linearize(c.blue / 255.0);
+    final r = _linearize(c.red8 / 255.0);
+    final g = _linearize(c.green8 / 255.0);
+    final b = _linearize(c.blue8 / 255.0);
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   }
 
@@ -84,10 +85,10 @@ class ColorUtilsService {
   Color lighten(Color c, double amount) {
     final t = amount.clamp(0.0, 1.0);
     return Color.fromARGB(
-      c.alpha,
-      _mix(c.red, 255, t),
-      _mix(c.green, 255, t),
-      _mix(c.blue, 255, t),
+      c.alpha8,
+      _mix(c.red8, 255, t),
+      _mix(c.green8, 255, t),
+      _mix(c.blue8, 255, t),
     );
   }
 
@@ -95,10 +96,10 @@ class ColorUtilsService {
   Color darken(Color c, double amount) {
     final t = amount.clamp(0.0, 1.0);
     return Color.fromARGB(
-      c.alpha,
-      _mix(c.red, 0, t),
-      _mix(c.green, 0, t),
-      _mix(c.blue, 0, t),
+      c.alpha8,
+      _mix(c.red8, 0, t),
+      _mix(c.green8, 0, t),
+      _mix(c.blue8, 0, t),
     );
   }
 

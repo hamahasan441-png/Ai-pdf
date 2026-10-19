@@ -510,5 +510,21 @@
   "exportAnyway": "Guardar de todos modos",
   "fillInFields": "Rellenar",
   "editTextModeHint": "Toca un párrafo para cambiar su texto",
-  "formReset": "Borrar"
+  "formReset": "Borrar",
+  "errorFile": "No se pudo abrir ni guardar el archivo. Comprueba que todavía existe.",
+  "errorNoSpace": "No hay suficiente espacio libre en este dispositivo.",
+  "errorNetwork": "Sin conexión. Revisa tu internet e inténtalo de nuevo.",
+  "errorTimeout": "Tardó demasiado. Inténtalo de nuevo.",
+  "errorPermission": "Se denegó el permiso. Puedes concederlo en los ajustes del sistema.",
+  "errorBadFile": "Este archivo está dañado o no tiene un formato compatible.",
+  "errorEncrypted": "Este PDF está protegido con contraseña. Desbloquéalo primero.",
+  "errorTooLarge": "Este archivo es demasiado grande para este dispositivo.",
+  "errorGeneric": "Algo salió mal. Inténtalo de nuevo.",
+  "fileMissing": "El archivo ya no existe",
+  "saveToDevice": "Guardar en el dispositivo",
+  "savedToDevice": "Guardado en el dispositivo",
+  "savedToAppFolder": "Guardado en la carpeta Pdoczy",
+  "saveCancelled": "Guardado cancelado",
+  "couldNotShare": "No se pudo compartir: {error}",
+  "noFilesToShare": "No hay archivos para compartir"
 }

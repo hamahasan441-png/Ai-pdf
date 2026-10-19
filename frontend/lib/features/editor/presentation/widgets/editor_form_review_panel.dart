@@ -154,15 +154,15 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
 
   Widget _fieldRow(ProposedFieldValue field, ColorScheme cs, {bool isFocused = false}) {
     final isInvalid = !field.isValid;
-    final borderColor = isInvalid ? cs.error : field.isAccepted ? const Color(0xFF4CAF50).withOpacity(0.6) : cs.outlineVariant.withOpacity(0.5);
+    final borderColor = isInvalid ? cs.error : field.isAccepted ? const Color(0xFF4CAF50).withValues(alpha: 0.6) : cs.outlineVariant.withValues(alpha: 0.5);
     final bgColor = isFocused
-        ? cs.errorContainer.withOpacity(0.3)
+        ? cs.errorContainer.withValues(alpha: 0.3)
         : field.isAccepted
             ? const Color(0x0D4CAF50)
             : field.isRejected
                 ? const Color(0x0DF44336)
                 : isInvalid
-                    ? cs.errorContainer.withOpacity(0.15)
+                    ? cs.errorContainer.withValues(alpha: 0.15)
                     : null;
 
     return AnimatedContainer(
@@ -200,7 +200,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(color: cs.errorContainer.withOpacity(0.7), borderRadius: BorderRadius.circular(6), border: Border.all(color: cs.error.withOpacity(0.4))),
+              decoration: BoxDecoration(color: cs.errorContainer.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(6), border: Border.all(color: cs.error.withValues(alpha: 0.4))),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -217,7 +217,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
                             onTap: () => widget.onUseSuggestion?.call(field.fieldId, field.validationSuggestion!),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(color: cs.primary.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                              decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
                               child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.lightbulb, size: 12, color: cs.primary), const SizedBox(width: 4), Text('Use "${field.validationSuggestion}"', style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600))]),
                             ),
                           ),

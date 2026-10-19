@@ -213,7 +213,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
                       Text(isA ? 'Variant A: flexible monthly, yearly best value' : 'Variant B: pay once, own forever — experimental',
-                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12)),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12)),
                     ],
                   ),
                 ),
@@ -316,7 +316,7 @@ class _OnboardingPage extends StatelessWidget {
           Container(
             width: 64,
             height: 64,
-            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, color: color, size: 36),
           ),
           const SizedBox(height: 20),
@@ -372,7 +372,7 @@ class _ABPlanCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: highlighted ? AppColors.primary.withOpacity(0.08) : cs.surface,
+          color: highlighted ? AppColors.primary.withValues(alpha: 0.08) : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: highlighted ? AppColors.primary : cs.outlineVariant, width: highlighted ? 2 : 1),
         ),

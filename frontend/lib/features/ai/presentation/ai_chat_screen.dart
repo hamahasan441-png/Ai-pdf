@@ -731,7 +731,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Widget _placeBar(ColorScheme cs) {
     return Material(
-      color: cs.primaryContainer.withOpacity(0.4),
+      color: cs.primaryContainer.withValues(alpha: 0.4),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
         child: SizedBox(
@@ -785,7 +785,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Widget _errorBar(ColorScheme cs) => Container(
         width: double.infinity,
-        color: cs.errorContainer.withOpacity(0.5),
+        color: cs.errorContainer.withValues(alpha: 0.5),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(children: [
           Icon(Icons.error_outline, size: 18, color: cs.error),

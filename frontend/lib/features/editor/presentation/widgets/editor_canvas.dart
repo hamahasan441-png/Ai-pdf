@@ -293,7 +293,7 @@ class EditorCanvas extends StatelessWidget {
                       height: (f.rect.height * size.height).clamp(18.0, 60.0),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
-                        color: base.withOpacity(0.18),
+                        color: base.withValues(alpha: 0.18),
                         border: Border.all(color: base.shade700, width: 1.5),
                         borderRadius: isRadio ? BorderRadius.circular(100) : BorderRadius.circular(4),
                       ),
@@ -336,7 +336,7 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blue, width: 1.5),
-                        color: Colors.blue.withOpacity(0.08),
+                        color: Colors.blue.withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -352,7 +352,7 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blueAccent),
-                        color: Colors.blue.withOpacity(0.12),
+                        color: Colors.blue.withValues(alpha: 0.12),
                       ),
                     ),
                   ),

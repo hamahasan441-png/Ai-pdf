@@ -33,10 +33,10 @@ class LibraryItemTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? cs.primaryContainer.withOpacity(0.3) : null,
+          color: selected ? cs.primaryContainer.withValues(alpha: 0.3) : null,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? cs.primary : cs.outlineVariant.withOpacity(0.5),
+            color: selected ? cs.primary : cs.outlineVariant.withValues(alpha: 0.5),
           ),
         ),
         child: Row(
@@ -55,7 +55,7 @@ class LibraryItemTile extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: _typeColor(item.type).withOpacity(0.1),
+                color: _typeColor(item.type).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(_typeIcon(item.type), color: _typeColor(item.type), size: 22),

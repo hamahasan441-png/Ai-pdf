@@ -29,6 +29,8 @@ import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
+import 'package:ai_pdf/core/utils/color_bits.dart';
+import 'package:ai_pdf/core/utils/error_text.dart';
 
 /// Searchable vector export is only used when it matches the preview.
 /// Rotated text and multi-style runs are painted into the page image,
@@ -48,11 +50,14 @@ bool textExportsAsSearchableVector({
 ///
 /// The export stops instead of writing a PDF with that page missing. The
 /// message names the 1-based page and never includes document text.
-class ExportPageException implements Exception {
+class ExportPageException implements Exception, KindedError {
   final int pageIndex;
   final String reason;
 
   const ExportPageException(this.pageIndex, this.reason);
+
+  @override
+  ErrorKind get errorKind => ErrorKind.badFile;
 
   @override
   String toString() => 'Page ${pageIndex + 1}: $reason';
@@ -63,11 +68,18 @@ class ExportPageException implements Exception {
 /// to an image-only export; it must not do so silently.
 enum ExportUnavailableKind { unreadableFile, encrypted, damaged, writeFailed }
 
-class PreservingExportUnavailable implements Exception {
+class PreservingExportUnavailable implements Exception, KindedError {
   final String reason;
   final ExportUnavailableKind kind;
 
   const PreservingExportUnavailable(this.reason, [this.kind = ExportUnavailableKind.damaged]);
+
+  @override
+  ErrorKind get errorKind => switch (kind) {
+        ExportUnavailableKind.unreadableFile || ExportUnavailableKind.writeFailed => ErrorKind.file,
+        ExportUnavailableKind.encrypted => ErrorKind.encrypted,
+        ExportUnavailableKind.damaged => ErrorKind.badFile,
+      };
 
   @override
   String toString() => reason;
@@ -134,17 +146,17 @@ List<NewFormField> newFieldsOf(PageLayer? layer) => [
             options: f.options,
             required: f.required,
             multiline: f.multiline,
-            borderColor: f.borderColor.value & 0xFFFFFF,
-            fillColor: f.fillColor.alpha == 0 ? null : _onWhite(f.fillColor),
+            borderColor: f.borderColor.toARGB32() & 0xFFFFFF,
+            fillColor: f.fillColor.alpha8 == 0 ? null : _onWhite(f.fillColor),
           ),
     ];
 
 /// [c] painted over white, as an opaque 0xRRGGBB (PDF field colours have no
 /// alpha).
 int _onWhite(Color c) {
-  final a = c.alpha / 255;
+  final a = c.alpha8 / 255;
   int ch(int v) => (v * a + 255 * (1 - a)).round();
-  return (ch(c.red) << 16) | (ch(c.green) << 8) | ch(c.blue);
+  return (ch(c.red8) << 16) | (ch(c.green8) << 8) | ch(c.blue8);
 }
 
 /// Pages that must be saved as images because a mark hides content: a
@@ -674,7 +686,7 @@ class EditorExportService {
           style: pw.TextStyle(
             font: font,
             fontSize: fontSize,
-            color: PdfColor.fromInt(t.color.value),
+            color: PdfColor.fromInt(t.color.toARGB32()),
             decoration:
                 t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
             letterSpacing: t.charSpacing != 0 ? t.charSpacing : null,
@@ -709,7 +721,7 @@ class EditorExportService {
   }
 
   PdfColor _pdfColor(Color c, [double opacity = 1.0]) {
-    final v = c.value;
+    final v = c.toARGB32();
     return PdfColor(
       ((v >> 16) & 0xFF) / 255.0,
       ((v >> 8) & 0xFF) / 255.0,
@@ -929,7 +941,7 @@ class EditorExportService {
         }
         for (final s in layer.strokes) {
           if (!s.visible) continue;
-          final ink = s.color.withOpacity((s.color.opacity * s.opacity).clamp(0.0, 1.0));
+          final ink = s.color.withValues(alpha: (s.color.a * s.opacity).clamp(0.0, 1.0));
           AnnotationDraw.stroke(canvas, size, s.points, ink, s.width);
         }
         for (final s in layer.shapes) {

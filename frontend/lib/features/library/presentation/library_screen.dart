@@ -256,13 +256,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.folder_open, size: 64, color: cs.onSurfaceVariant.withOpacity(0.3)),
+          Icon(Icons.folder_open, size: 64, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
           const SizedBox(height: 12),
           Text('No documents yet',
               style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant)),
           const SizedBox(height: 4),
           Text('Scan, import, or create to get started',
-              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant.withOpacity(0.6))),
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
         ],
       ),
     );

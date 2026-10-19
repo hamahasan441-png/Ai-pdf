@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/services/permission_service.dart';
+import '../../../core/utils/error_text.dart';
 
 /// Unified output actions for any generated file.
 ///
@@ -24,10 +26,11 @@ class OutputActions {
   /// Save a file to a user-chosen location using the system Save dialog.
   /// Requests storage/gallery permission first (only prompts when needed).
   static Future<void> save(BuildContext context, String path) async {
+    final l10n = AppLocalizations.of(context);
     try {
       final file = File(path);
       if (!await file.exists()) {
-        _snack(context, 'File no longer exists');
+        if (context.mounted) _snack(context, l10n?.fileMissing ?? 'The file no longer exists');
         return;
       }
 
@@ -38,7 +41,7 @@ class OutputActions {
       final name = path.split('/').last;
 
       final saved = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save to device',
+        dialogTitle: l10n?.saveToDevice ?? 'Save to device',
         fileName: name,
         bytes: bytes,
       );
@@ -48,15 +51,15 @@ class OutputActions {
 
       if (context.mounted) {
         if (saved != null) {
-          _snack(context, 'Saved to device');
+          _snack(context, l10n?.savedToDevice ?? 'Saved to device');
         } else if (mirrored != null) {
-          _snack(context, 'Saved to "Pdoczy" folder');
+          _snack(context, l10n?.savedToAppFolder ?? 'Saved to the Pdoczy folder');
         } else {
-          _snack(context, 'Save cancelled');
+          _snack(context, l10n?.saveCancelled ?? 'Save cancelled');
         }
       }
     } catch (e) {
-      if (context.mounted) _snack(context, 'Could not save: $e');
+      if (context.mounted) _snack(context, l10n?.saveFailed(describeError(e, l10n)) ?? 'Could not save');
     }
   }
 
@@ -88,30 +91,32 @@ class OutputActions {
   /// Share a file to any app.
   static Future<void> share(BuildContext context, String path,
       {String? text}) async {
+    final l10n = AppLocalizations.of(context);
     try {
       final file = File(path);
       if (!await file.exists()) {
-        _snack(context, 'File no longer exists');
+        if (context.mounted) _snack(context, l10n?.fileMissing ?? 'The file no longer exists');
         return;
       }
       await Share.shareXFiles([XFile(path)], text: text);
     } catch (e) {
-      if (context.mounted) _snack(context, 'Could not share: $e');
+      if (context.mounted) _snack(context, l10n?.couldNotShare(describeError(e, l10n)) ?? 'Could not share');
     }
   }
 
   /// Share multiple files at once.
   static Future<void> shareMany(BuildContext context, List<String> paths,
       {String? text}) async {
+    final l10n = AppLocalizations.of(context);
     try {
       final existing = paths.where((p) => File(p).existsSync()).toList();
       if (existing.isEmpty) {
-        _snack(context, 'No files to share');
+        _snack(context, l10n?.noFilesToShare ?? 'No files to share');
         return;
       }
       await Share.shareXFiles(existing.map((p) => XFile(p)).toList(), text: text);
     } catch (e) {
-      if (context.mounted) _snack(context, 'Could not share: $e');
+      if (context.mounted) _snack(context, l10n?.couldNotShare(describeError(e, l10n)) ?? 'Could not share');
     }
   }
 

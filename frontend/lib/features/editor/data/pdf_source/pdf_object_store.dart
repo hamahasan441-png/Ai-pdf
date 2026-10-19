@@ -1,6 +1,7 @@
 import 'dart:convert' show latin1, utf8;
 import 'dart:io' show ZLibCodec, ZLibDecoder;
 import 'dart:typed_data';
+import 'package:ai_pdf/core/utils/error_text.dart';
 
 /// Raw PDF objects read from an existing file, for the source-preserving
 /// export. Pure Dart, no Flutter, so it can run in an isolate.
@@ -544,11 +545,14 @@ class PdfPageInfo {
   }
 }
 
-class PdfSourceException implements Exception {
+class PdfSourceException implements Exception, KindedError {
   final String message;
   final bool encrypted;
 
   const PdfSourceException(this.message, {this.encrypted = false});
+
+  @override
+  ErrorKind get errorKind => encrypted ? ErrorKind.encrypted : ErrorKind.badFile;
 
   @override
   String toString() => message;

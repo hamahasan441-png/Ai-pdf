@@ -406,7 +406,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: Colors.orange.shade900.withOpacity(0.3),
+            color: Colors.orange.shade900.withValues(alpha: 0.3),
             child: Row(
               children: [
                 const Icon(Icons.warning_amber_rounded,

@@ -2873,6 +2873,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final points = await Navigator.of(context).push<List<Offset>>(
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => const SignaturePadSheet()),
     );
+    if (!mounted) return null;
     final save = await showEditorSaveSignatureDialog(context);
     await _signatureFlow.persistDrawnSignatureIfRequested(_savedSignatures, points, save);
     return points;
@@ -3366,14 +3367,14 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           return;
         }
         final action = await showEditorUnsavedChangesDialog(context);
-        if (action == 'discard' && mounted) {
+        if (action == 'discard' && context.mounted) {
           setState(() {
             _editorController.clearDirty();
           });
           Navigator.of(context).pop();
-        } else if (action == 'save' && mounted) {
+        } else if (action == 'save' && context.mounted) {
           await _export();
-          if (mounted) Navigator.of(context).pop();
+          if (context.mounted) Navigator.of(context).pop();
         }
       },
       // Hardware keyboard shortcuts. Keys go to a focused text field first.

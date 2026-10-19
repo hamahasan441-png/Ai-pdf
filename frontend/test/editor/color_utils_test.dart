@@ -3,6 +3,7 @@ import 'dart:ui' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_pdf/features/editor/domain/services/color_utils_service.dart';
+import 'package:ai_pdf/core/utils/color_bits.dart';
 
 void main() {
   const svc = ColorUtilsService();
@@ -58,11 +59,11 @@ void main() {
       expect(svc.darken(white, 1.0), const Color(0xFF000000));
       // half-lighten black -> mid gray (128)
       final g = svc.lighten(black, 0.5);
-      expect(g.red, 128);
-      expect(g.green, 128);
-      expect(g.blue, 128);
+      expect(g.red8, 128);
+      expect(g.green8, 128);
+      expect(g.blue8, 128);
       // alpha preserved
-      expect(svc.lighten(const Color(0x80FF0000), 0.5).alpha, 0x80);
+      expect(svc.lighten(const Color(0x80FF0000), 0.5).alpha8, 0x80);
     });
 
     test('lighten/darken clamp the amount', () {

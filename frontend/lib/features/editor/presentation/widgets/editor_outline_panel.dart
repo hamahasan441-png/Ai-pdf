@@ -104,7 +104,7 @@ class EditorOutlinePanel extends StatelessWidget {
     return InkWell(
       onTap: () => onJumpToPage(row.node.page),
       child: Container(
-        color: isActive ? cs.primaryContainer.withOpacity(0.3) : null,
+        color: isActive ? cs.primaryContainer.withValues(alpha: 0.3) : null,
         padding: EdgeInsets.only(
           left: 12.0 + row.depth * 16.0,
           right: 8,

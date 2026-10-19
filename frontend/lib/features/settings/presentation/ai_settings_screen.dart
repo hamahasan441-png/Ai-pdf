@@ -146,7 +146,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.3),
+              color: cs.primaryContainer.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(children: [
@@ -363,7 +363,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (_testOk ? const Color(0xFF2E9E7B) : cs.error).withOpacity(0.12),
+                color: (_testOk ? const Color(0xFF2E9E7B) : cs.error).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(children: [
@@ -389,7 +389,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
   Widget _badge(String text, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
         child: Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
       );
 }

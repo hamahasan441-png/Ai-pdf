@@ -100,7 +100,7 @@ void main() {
       );
       final restored = annotationFromJson(annotationToJson(st))! as StampAnnotation;
       expect(restored.kind, StampKind.confidential);
-      expect(restored.color.value, Colors.red.value);
+      expect(restored.color.toARGB32(), Colors.red.toARGB32());
       expect(restored.width, closeTo(0.25, 1e-9));
       expect(restored.rotation, closeTo(0.1, 1e-9));
       expect(restored.displayText, 'CONFIDENTIAL');

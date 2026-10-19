@@ -510,5 +510,21 @@
   "exportAnyway": "Trotzdem speichern",
   "fillInFields": "Ausfüllen",
   "editTextModeHint": "Tippe auf einen Absatz, um seinen Text zu ändern",
-  "formReset": "Zurücksetzen"
+  "formReset": "Zurücksetzen",
+  "errorFile": "Die Datei konnte nicht geöffnet oder gespeichert werden. Prüfe, ob sie noch vorhanden ist.",
+  "errorNoSpace": "Auf diesem Gerät ist nicht genug Speicher frei.",
+  "errorNetwork": "Keine Verbindung. Prüfe dein Internet und versuche es erneut.",
+  "errorTimeout": "Das hat zu lange gedauert. Bitte versuche es erneut.",
+  "errorPermission": "Die Berechtigung wurde verweigert. Du kannst sie in den Systemeinstellungen erlauben.",
+  "errorBadFile": "Diese Datei ist beschädigt oder hat kein unterstütztes Format.",
+  "errorEncrypted": "Dieses PDF ist passwortgeschützt. Entsperre es zuerst.",
+  "errorTooLarge": "Diese Datei ist für dieses Gerät zu groß.",
+  "errorGeneric": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+  "fileMissing": "Die Datei existiert nicht mehr",
+  "saveToDevice": "Auf dem Gerät speichern",
+  "savedToDevice": "Auf dem Gerät gespeichert",
+  "savedToAppFolder": "Im Pdoczy-Ordner gespeichert",
+  "saveCancelled": "Speichern abgebrochen",
+  "couldNotShare": "Teilen nicht möglich: {error}",
+  "noFilesToShare": "Keine Dateien zum Teilen"
 }

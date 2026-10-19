@@ -54,7 +54,7 @@ class EditorCanvasInteractionService {
     final points = tool == EditTool.draw ? _ink.smooth(drawing) : List<Offset>.of(drawing);
     return StrokeAnnotation(
       points,
-      tool == EditTool.highlight ? color.withOpacity(0.35) : color,
+      tool == EditTool.highlight ? color.withValues(alpha: 0.35) : color,
       tool == EditTool.highlight ? 16 : stroke,
       tool == EditTool.highlight,
     );

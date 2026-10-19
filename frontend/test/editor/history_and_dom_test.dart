@@ -239,7 +239,7 @@ void main() {
         'posX': 0.2,
         'posY': 0.3,
         'text': 'old',
-        'color': Colors.black.value,
+        'color': Colors.black.toARGB32(),
         'size': 0.04,
         'bold': false,
       };

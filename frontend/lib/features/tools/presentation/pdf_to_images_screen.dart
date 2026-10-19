@@ -143,7 +143,7 @@ class _PdfToImagesScreenState extends State<PdfToImagesScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(children: [

@@ -171,7 +171,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
   Widget _header(ColorScheme cs) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF2563EB).withOpacity(0.08),
+          color: const Color(0xFF2563EB).withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -180,7 +180,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFF2563EB).withOpacity(0.15),
+                color: const Color(0xFF2563EB).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(Icons.cloud_download,
@@ -238,7 +238,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cs.errorContainer.withOpacity(0.5),
+          color: cs.errorContainer.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -269,9 +269,9 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.08),
+        color: AppColors.success.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.success.withOpacity(0.3)),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,7 +351,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: cs.primary.withOpacity(0.1),
+          color: cs.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(_iconForMime(r.mimeType), color: cs.primary, size: 30),

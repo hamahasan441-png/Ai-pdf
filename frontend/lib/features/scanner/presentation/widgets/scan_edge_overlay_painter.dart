@@ -44,7 +44,7 @@ class ScanEdgeOverlayPainter extends CustomPainter {
 
     // Rule-of-thirds grid inside the quad (interpolated across edges).
     final grid = Paint()
-      ..color = color.withOpacity(0.35)
+      ..color = color.withValues(alpha: 0.35)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
     for (var i = 1; i < 3; i++) {
