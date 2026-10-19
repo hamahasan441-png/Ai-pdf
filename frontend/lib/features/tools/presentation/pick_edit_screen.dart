@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:share_plus/share_plus.dart';
 
@@ -25,6 +26,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_properties.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_banner.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/form_fill_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_view.dart';
@@ -59,6 +61,8 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
+import 'package:ai_pdf/core/theme/motion.dart';
+import 'package:ai_pdf/features/editor/data/form_fill_smarts.dart';
 import 'package:ai_pdf/features/editor/data/text_block_service.dart';
 import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
@@ -145,7 +149,7 @@ class PickEditScreen extends StatefulWidget {
   State<PickEditScreen> createState() => _PickEditScreenState();
 }
 
-class _PickEditScreenState extends State<PickEditScreen> {
+class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStateMixin {
   static const int _renderMaxEdge = 2400;
   /// Shown immediately on a page turn. The sharp 2400px frame replaces it.
   static const int _previewEdge = 1280;
@@ -163,6 +167,27 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, int> _pageQuarterTurns = {};
   List<int> _sourcePages = const [];
   final TransformationController _viewTransform = TransformationController();
+  final GlobalKey _viewerKey = GlobalKey();
+
+  // --- Filling the PDF's form in place ---
+  /// The field (and which of its widgets) in focus while filling the form.
+  ({AcroField field, AcroWidget widget})? _fill;
+  FieldSmarts? _fillSmarts;
+  final TextEditingController _fillText = TextEditingController();
+  final FocusNode _fillFocus = FocusNode();
+  final GlobalKey _formLayerKey = GlobalKey();
+  static const _smarts = FormFillSmarts();
+
+  /// The view before filling moved it to show a field; Done puts it back.
+  Matrix4? _fillSavedView;
+  late final AnimationController _viewAnim = AnimationController(vsync: this, duration: Motion.medium)
+    ..addListener(() {
+      final t = _viewTween;
+      if (t != null) _viewTransform.value = t.value;
+    });
+  Animation<Matrix4>? _viewTween;
+  Timer? _revealTimer;
+  double _lastInset = 0;
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
   List<Rect> _markupPreview = const [];
@@ -315,6 +340,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   @override
   void dispose() {
+    _revealTimer?.cancel();
+    _viewAnim.dispose();
+    _fillText.dispose();
+    _fillFocus.dispose();
     _viewTransform.removeListener(_onViewTransform);
     _viewTransform.dispose();
     _doc?.close();
@@ -1359,6 +1388,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showEditLines = false;
         _wordSelection = null;
         _markupPreview = const [];
+        _fill = null;
       });
       if (_editTextMode) _showNativeBlocks();
     } else {
@@ -1376,6 +1406,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showEditLines = false;
         _wordSelection = null;
         _markupPreview = const [];
+        _fill = null;
       });
       if (_editTextMode) _showNativeBlocks();
     }
@@ -3039,12 +3070,31 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (w.pageIndex == source) (field: f, widget: w, rect: _form.rectOf(w, quarterTurns: turns)),
     ];
     if (placed.isEmpty) return null;
+    final fill = interactive ? _fill : null;
+    final typing = fill != null && fill.field.kind == AcroFieldKind.text;
     return AcroFormLayer(
+      key: interactive ? _formLayerKey : null,
       widgets: placed,
       edits: _formValues,
       // Drawing tools keep drawing over fields; Move and Select fill them.
       interactive: interactive && (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
       onTap: _fillFormField,
+      focusName: fill?.field.name,
+      focusObjNum: fill?.widget.objNum,
+      editing: typing
+          ? AcroInlineEditing(
+              fieldName: fill.field.name,
+              widgetObjNum: fill.widget.objNum,
+              controller: _fillText,
+              focusNode: _fillFocus,
+              keyboard: _fillSmarts?.keyboard ?? TextInputType.text,
+              formatters: [
+                if (_fillSmarts?.input == FieldInput.date && _fillSmarts?.datePattern != null)
+                  DateMaskFormatter(_fillSmarts!.datePattern!),
+              ],
+              onSubmitted: (_) => _moveFill(1),
+            )
+          : null,
     );
   }
 
@@ -3093,54 +3143,208 @@ class _PickEditScreenState extends State<PickEditScreen> {
     return false;
   }
 
+  /// Tap on a form field: text fields take the keyboard right in the
+  /// field, check boxes and radio buttons switch, a list opens its choices.
   Future<void> _fillFormField(AcroField field, AcroWidget widget) async {
-    final current = fieldValue(field, _formValues);
-    final Object? next;
-    var step = 0;
-    // Text and choice fields in reading order, for Previous / Next.
-    final order = fillOrder(_form, _slotOfSource, quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0);
-    final at = order.indexWhere((e) => e.$1.name == field.name && e.$2.objNum == widget.objNum);
+    final same = _fill?.field.name == field.name && _fill?.widget.objNum == widget.objNum;
     switch (field.kind) {
       case AcroFieldKind.checkbox:
-        next = current != 'Off' ? 'Off' : field.checkedState;
+        _focusField(field, widget);
+        final current = fieldValue(field, _formValues);
+        _setFieldValue(field, current != 'Off' ? 'Off' : field.checkedState);
       case AcroFieldKind.radio:
-        next = widget.onState ?? current;
+        _focusField(field, widget);
+        if (widget.onState != null) _setFieldValue(field, widget.onState!);
       case AcroFieldKind.text:
-        final result = await showFormTextDialog(
-          context,
-          field: field,
-          initial: '$current',
-          hasPrevious: at > 0,
-          hasNext: at >= 0 && at < order.length - 1,
-        );
-        next = result?.value;
-        step = result?.step ?? 0;
+        if (!same) _focusField(field, widget);
       case AcroFieldKind.choice:
-        next = await showFormChoiceSheet(context, field: field, current: current);
+        _focusField(field, widget);
+        final next = await showFormChoiceSheet(context, field: field, current: fieldValue(field, _formValues));
+        if (next != null && mounted) _setFieldValue(field, next);
       default:
         return;
     }
-    if (next == null || !mounted) return;
-    bool same(Object a, Object b) =>
-        a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
-    if (!same(next, current)) {
-      // Back to the file's value: drop the edit instead of storing a copy.
-      final after = same(next, field.value) ? null : next;
-      setState(() {
-        _editorController.record(
-          FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
-          _layer,
-        );
+  }
+
+  /// Puts [field] in focus: a text field opens for typing in place and the
+  /// page moves so it shows above the keyboard.
+  void _focusField(AcroField field, AcroWidget widget) {
+    _commitFillText();
+    final turns = _pageQuarterTurns[_current] ?? 0;
+    final rect = _form.rectOf(widget, quarterTurns: turns);
+    final smarts = _smarts.of(field, rect: rect, words: _textLayer[_current] ?? const []);
+    setState(() {
+      _fill = (field: field, widget: widget);
+      _fillSmarts = smarts;
+      _selected = null;
+      if (field.kind == AcroFieldKind.text) {
+        final value = '${fieldValue(field, _formValues)}';
+        _fillText.value = TextEditingValue(text: value, selection: TextSelection.collapsed(offset: value.length));
+      }
+    });
+    if (field.kind == AcroFieldKind.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _fill?.field.name == field.name) _fillFocus.requestFocus();
       });
-      _schedulePersist();
+    } else {
+      _fillFocus.unfocus();
     }
-    if (step == 0 || at < 0) return;
+    _scheduleRevealFill(const Duration(milliseconds: 60));
+  }
+
+  /// Stores [value] for [field] as one undo step (no step when unchanged).
+  void _setFieldValue(AcroField field, Object value) {
+    final current = fieldValue(field, _formValues);
+    bool same(Object a, Object b) => a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
+    if (same(value, current)) return;
+    // Back to the file's value: drop the edit instead of storing a copy.
+    final after = same(value, field.value) ? null : value;
+    setState(() {
+      _editorController.record(
+        FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
+        _layer,
+      );
+      _hasUnsavedChanges = true;
+    });
+    _schedulePersist();
+  }
+
+  /// What was typed in the focused text field becomes its value.
+  void _commitFillText() {
+    final fill = _fill;
+    if (fill == null || fill.field.kind != AcroFieldKind.text) return;
+    _setFieldValue(fill.field, _fillText.text);
+  }
+
+  /// Previous (-1) or next (1) field, in reading order across pages.
+  Future<void> _moveFill(int step) async {
+    final fill = _fill;
+    if (fill == null) return;
+    final order = fillOrder(_form, _slotOfSource,
+        quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0, includeButtons: true);
+    final at = order.indexWhere((e) => e.$1.name == fill.field.name && e.$2.objNum == fill.widget.objNum);
     final target = at + step;
-    if (target < 0 || target >= order.length) return;
-    final (nextField, nextWidget, slot) = order[target];
-    if (slot != _current) await _goToPage(slot);
-    if (!mounted) return;
-    await _fillFormField(nextField, nextWidget);
+    if (at < 0 || target < 0 || target >= order.length) return;
+    _commitFillText();
+    final (field, widget, slot) = order[target];
+    if (slot != _current) {
+      setState(() => _fill = null);
+      await _goToPage(slot);
+      if (!mounted) return;
+    }
+    _focusField(field, widget);
+  }
+
+  bool _canMoveFill(int step) {
+    final fill = _fill;
+    if (fill == null) return false;
+    final order = fillOrder(_form, _slotOfSource,
+        quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0, includeButtons: true);
+    final at = order.indexWhere((e) => e.$1.name == fill.field.name && e.$2.objNum == fill.widget.objNum);
+    return at >= 0 && at + step >= 0 && at + step < order.length;
+  }
+
+  /// Clears the focused field.
+  void _resetFill() {
+    final fill = _fill;
+    if (fill == null) return;
+    switch (fill.field.kind) {
+      case AcroFieldKind.text:
+        _fillText.clear();
+      case AcroFieldKind.checkbox || AcroFieldKind.radio:
+        _setFieldValue(fill.field, 'Off');
+      case AcroFieldKind.choice:
+        _setFieldValue(fill.field, fill.field.multiSelect ? <String>[] : '');
+      default:
+    }
+  }
+
+  /// Done: keeps what was typed, hides the keyboard and puts the view back.
+  void _endFill() {
+    _commitFillText();
+    _fillFocus.unfocus();
+    _revealTimer?.cancel();
+    setState(() {
+      _fill = null;
+      _fillSmarts = null;
+    });
+    final saved = _fillSavedView;
+    _fillSavedView = null;
+    if (saved != null) _animateView(saved);
+  }
+
+  Future<void> _pickFillDate() async {
+    final pattern = _fillSmarts?.datePattern ?? 'dd.MM.yyyy';
+    final format = DateFormat(pattern);
+    DateTime? initial;
+    try {
+      initial = _fillText.text.isEmpty ? null : format.parseStrict(_fillText.text);
+    } on FormatException {
+      initial = null;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    final text = format.format(picked);
+    _fillText.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    _commitFillText();
+  }
+
+  void _animateView(Matrix4 target) {
+    _viewTween = Matrix4Tween(begin: _viewTransform.value.clone(), end: target)
+        .animate(CurvedAnimation(parent: _viewAnim, curve: Motion.enter));
+    _viewAnim.duration = Motion.of(context, Motion.medium);
+    _viewAnim.forward(from: 0);
+  }
+
+  void _scheduleRevealFill(Duration delay) {
+    _revealTimer?.cancel();
+    _revealTimer = Timer(delay, () {
+      if (mounted) _revealFill();
+    });
+  }
+
+  /// Moves (and if it is small, zooms) the page so the focused field sits
+  /// in the part of the screen the keyboard and the bar leave free.
+  void _revealFill() {
+    final fill = _fill;
+    final layerBox = _formLayerKey.currentContext?.findRenderObject();
+    final viewerBox = _viewerKey.currentContext?.findRenderObject();
+    if (fill == null || layerBox is! RenderBox || viewerBox is! RenderBox || !layerBox.hasSize) return;
+    final norm = _form.rectOf(fill.widget, quarterTurns: _pageQuarterTurns[_current] ?? 0);
+    final size = layerBox.size;
+    Offset toViewer(Offset local) => viewerBox.globalToLocal(layerBox.localToGlobal(local));
+    final field = Rect.fromPoints(
+      toViewer(Offset(norm.left * size.width, norm.top * size.height)),
+      toViewer(Offset(norm.right * size.width, norm.bottom * size.height)),
+    );
+    final screen = MediaQuery.sizeOf(context);
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    const barHeight = 64.0;
+    final top = 8.0;
+    final bottom = viewerBox.globalToLocal(Offset(0, screen.height - inset - barHeight)).dy - 8;
+    if (bottom - top < 40) return;
+    final scale = _viewTransform.value.getMaxScaleOnAxis();
+    // A field shown smaller than a finger-friendly height is zoomed to it.
+    final grow = field.height < 30 ? (34 / field.height).clamp(1.0, 3.0 / scale) : 1.0;
+    final fits = field.top >= top && field.bottom <= bottom && field.left >= 0 && field.right <= viewerBox.size.width;
+    if (grow <= 1.01 && fits) return;
+    _fillSavedView ??= _viewTransform.value.clone();
+    final c = field.center;
+    final grownWidth = field.width * grow;
+    final width = viewerBox.size.width;
+    // Keep the field's left edge in view when it is wider than the screen.
+    final targetX = grownWidth > width - 16 ? 8 + grownWidth / 2 : (grow > 1.01 ? width / 2 : c.dx.clamp(grownWidth / 2 + 8, width - grownWidth / 2 - 8));
+    final targetY = top + (bottom - top) * 0.4;
+    final move = Matrix4.identity()
+      ..translate(targetX.toDouble(), targetY)
+      ..scale(grow, grow)
+      ..translate(-c.dx, -c.dy);
+    _animateView(move.multiplied(_viewTransform.value));
   }
 
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
@@ -3149,6 +3353,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final bytes = _pageCache[_current];
+    // The keyboard opening or closing changes where a focused field must be.
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    if (inset != _lastInset) {
+      _lastInset = inset;
+      if (_fill != null) _scheduleRevealFill(const Duration(milliseconds: 90));
+    }
 
     return PopScope(
       canPop: !_hasUnsavedChanges && !_readingView,
@@ -3200,6 +3410,19 @@ class _PickEditScreenState extends State<PickEditScreen> {
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
+        formFillBar: _fill == null
+            ? null
+            : FormFillBar(
+                label: _fillSmarts?.label ?? _fill!.field.name,
+                required: _fill!.field.required,
+                onPrevious: _canMoveFill(-1) ? () => _moveFill(-1) : null,
+                onNext: _canMoveFill(1) ? () => _moveFill(1) : null,
+                onPickDate: _fillSmarts?.input == FieldInput.date && _fill!.field.kind == AcroFieldKind.text
+                    ? _pickFillDate
+                    : null,
+                onReset: _resetFill,
+                onDone: _endFill,
+              ),
         modeBanner: _editTextMode && _inlineEditing == null
             ? EditorModeBanner(
                 icon: Icons.edit_note,
@@ -3342,6 +3565,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           scaleEnabled: !_redactionController.state.active,
           pageAspect: _aspectFor(_current),
           transformationController: _viewTransform,
+          viewerKey: _viewerKey,
           viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),

@@ -509,5 +509,6 @@
   "requiredFieldsBody": "{count, plural, =1{Dieses Formular verlangt noch 1 Feld:} other{Dieses Formular verlangt noch {count} Felder:}}",
   "exportAnyway": "Trotzdem speichern",
   "fillInFields": "Ausfüllen",
-  "editTextModeHint": "Tippe auf einen Absatz, um seinen Text zu ändern"
+  "editTextModeHint": "Tippe auf einen Absatz, um seinen Text zu ändern",
+  "formReset": "Zurücksetzen"
 }

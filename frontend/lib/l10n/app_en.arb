@@ -576,5 +576,6 @@
   "@requiredFieldsBody": {"placeholders": {"count": {"type": "int"}}},
   "exportAnyway": "Save anyway",
   "fillInFields": "Fill in",
-  "editTextModeHint": "Tap a paragraph to change its text"
+  "editTextModeHint": "Tap a paragraph to change its text",
+  "formReset": "Reset"
 }

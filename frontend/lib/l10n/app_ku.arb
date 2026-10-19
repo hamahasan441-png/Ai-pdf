@@ -509,5 +509,6 @@
   "requiredFieldsBody": "{count, plural, =1{ئەم فۆرمە ١ خانەی تری پێویستە:} other{ئەم فۆرمە {count} خانەی تری پێویستە:}}",
   "exportAnyway": "هەر پاشەکەوتی بکە",
   "fillInFields": "پڕکردنەوە",
-  "editTextModeHint": "دەست لە پەرەگرافێک بدە بۆ گۆڕینی دەقەکەی"
+  "editTextModeHint": "دەست لە پەرەگرافێک بدە بۆ گۆڕینی دەقەکەی",
+  "formReset": "سڕینەوە"
 }

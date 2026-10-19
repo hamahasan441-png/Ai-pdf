@@ -509,5 +509,6 @@
   "requiredFieldsBody": "{count, plural, =1{این فرم ۱ فیلد دیگر می‌خواهد:} other{این فرم {count} فیلد دیگر می‌خواهد:}}",
   "exportAnyway": "به هر حال ذخیره کن",
   "fillInFields": "پر کردن",
-  "editTextModeHint": "برای تغییر متن، روی یک پاراگراف بزنید"
+  "editTextModeHint": "برای تغییر متن، روی یک پاراگراف بزنید",
+  "formReset": "پاک کردن"
 }

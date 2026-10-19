@@ -509,5 +509,6 @@
   "requiredFieldsBody": "{count, plural, =1{Este formulario pide 1 campo más:} other{Este formulario pide {count} campos más:}}",
   "exportAnyway": "Guardar de todos modos",
   "fillInFields": "Rellenar",
-  "editTextModeHint": "Toca un párrafo para cambiar su texto"
+  "editTextModeHint": "Toca un párrafo para cambiar su texto",
+  "formReset": "Borrar"
 }

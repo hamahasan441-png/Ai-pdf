@@ -509,5 +509,6 @@
   "requiredFieldsBody": "{count, plural, =1{يطلب هذا النموذج حقلاً واحداً آخر:} other{يطلب هذا النموذج {count} حقول أخرى:}}",
   "exportAnyway": "احفظ على أي حال",
   "fillInFields": "املأ الحقول",
-  "editTextModeHint": "اضغط على فقرة لتغيير نصها"
+  "editTextModeHint": "اضغط على فقرة لتغيير نصها",
+  "formReset": "مسح"
 }

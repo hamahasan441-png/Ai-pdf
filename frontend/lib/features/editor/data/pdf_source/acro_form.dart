@@ -32,6 +32,11 @@ class AcroWidget {
   double get height => rect[3] - rect[1];
 }
 
+/// What a text field's own scripts (/AA) say its value is: the formats of
+/// Acrobat's standard form functions (AFNumber_Format, AFDate_FormatEx,
+/// AFSpecial_Format…).
+enum AcroValueFormat { none, number, date, time, zip, phone }
+
 /// A terminal form field with its inherited attributes resolved.
 class AcroField {
   /// Fully qualified name: the /T of every ancestor joined with dots.
@@ -53,6 +58,14 @@ class AcroField {
 
   /// Text alignment (/Q): 0 left, 1 centre, 2 right.
   final int quadding;
+
+  /// The name shown to people (/TU), when the form gives one.
+  final String? alternateName;
+
+  /// The value format the field's scripts enforce, and for dates their
+  /// pattern ("dd.mm.yyyy").
+  final AcroValueFormat format;
+  final String? datePattern;
   final List<AcroWidget> widgets;
 
   const AcroField({
@@ -65,6 +78,9 @@ class AcroField {
     this.maxLen,
     this.fontSize = 0,
     this.quadding = 0,
+    this.alternateName,
+    this.format = AcroValueFormat.none,
+    this.datePattern,
     required this.widgets,
   });
 
@@ -140,7 +156,7 @@ class AcroFormReader {
       final name = partial == null ? prefix : (prefix.isEmpty ? partial : '$prefix.$partial');
       final inh = {
         ...inherited,
-        for (final k in const ['/FT', '/Ff', '/V', '/DA', '/Opt', '/MaxLen', '/Q'])
+        for (final k in const ['/FT', '/Ff', '/V', '/DA', '/Opt', '/MaxLen', '/Q', '/TU', '/AA'])
           if (dict[k] != null) k: dict[k]!,
       };
 
@@ -231,6 +247,8 @@ class AcroFormReader {
     }
     final maxLen = s.resolve(inh['/MaxLen']);
     final q = s.resolve(inh['/Q']);
+    final tu = s.resolve(inh['/TU']);
+    final (format, datePattern) = kind == AcroFieldKind.text ? _format(s, inh['/AA']) : (AcroValueFormat.none, null);
     return AcroField(
       name: name,
       objNum: num,
@@ -241,8 +259,37 @@ class AcroFormReader {
       maxLen: maxLen is PdfNum ? maxLen.toInt() : null,
       fontSize: _daFontSize(s.resolve(inh['/DA'])),
       quadding: q is PdfNum && q.toInt() >= 0 && q.toInt() <= 2 ? q.toInt() : 0,
+      alternateName: tu is PdfString && tu.text.trim().isNotEmpty ? tu.text.trim() : null,
+      format: format,
+      datePattern: datePattern,
       widgets: widgets,
     );
+  }
+
+  /// The format the field's format (/F) or keystroke (/K) script sets.
+  static (AcroValueFormat, String?) _format(PdfObjectStore s, PdfValue? aa) {
+    final actions = s.resolve(aa);
+    if (actions is! PdfDict) return (AcroValueFormat.none, null);
+    final js = StringBuffer();
+    for (final key in const ['/F', '/K']) {
+      final action = s.resolve(actions[key]);
+      if (action is! PdfDict) continue;
+      final code = action['/JS'];
+      final value = s.resolve(code);
+      if (value is PdfString) {
+        js.writeln(latin1.decode(value.bytes, allowInvalid: true));
+      } else if (code is PdfRef) {
+        final obj = s.object(code.num);
+        if (obj?.stream != null) {
+          try {
+            js.writeln(latin1.decode(s.decodeStream(obj!), allowInvalid: true));
+          } on PdfSourceException {
+            // A script we cannot decode tells us nothing.
+          }
+        }
+      }
+    }
+    return parseFieldFormat(js.toString());
   }
 
   static String _str(PdfObjectStore s, PdfValue v) {
@@ -375,17 +422,21 @@ List<AcroField> emptyRequiredFields(AcroFormSnapshot form, Map<String, Object> e
   ];
 }
 
-/// Text and choice fields in the order a reader fills them: by page as the
-/// editor shows them ([slotOf] maps a source page to its position, -1 when
-/// not shown), then top to bottom and left to right on the displayed page.
+/// Fields in the order a reader fills them: by page as the editor shows
+/// them ([slotOf] maps a source page to its position, -1 when not shown),
+/// then top to bottom and left to right on the displayed page. Text and
+/// choice fields only, unless [includeButtons] (check boxes and radios).
 List<(AcroField, AcroWidget, int)> fillOrder(
   AcroFormSnapshot form,
   int Function(int sourcePage) slotOf, {
   int Function(int slot)? quarterTurnsOf,
+  bool includeButtons = false,
 }) {
   final out = <(AcroField, AcroWidget, int, Rect)>[];
   for (final f in form.fields) {
-    if (!f.fillable || (f.kind != AcroFieldKind.text && f.kind != AcroFieldKind.choice)) continue;
+    final typed = f.kind == AcroFieldKind.text || f.kind == AcroFieldKind.choice;
+    final button = f.kind == AcroFieldKind.checkbox || f.kind == AcroFieldKind.radio;
+    if (!f.fillable || !(typed || (includeButtons && button))) continue;
     for (final w in f.widgets) {
       final slot = slotOf(w.pageIndex);
       if (slot < 0) continue;
@@ -400,5 +451,33 @@ List<(AcroField, AcroWidget, int)> fillOrder(
     return a.$4.left.compareTo(b.$4.left);
   });
   return [for (final e in out) (e.$1, e.$2, e.$3)];
+}
+
+/// The value format named by a field's JavaScript, for the calls Acrobat's
+/// own forms use. Anything else is [AcroValueFormat.none].
+(AcroValueFormat, String?) parseFieldFormat(String js) {
+  final date = RegExp(r'''AFDate_(?:Format|Keystroke)Ex\s*\(\s*["']([^"']+)["']''').firstMatch(js);
+  if (date != null) return (AcroValueFormat.date, date.group(1));
+  final dateIndex = RegExp(r'AFDate_(?:Format|Keystroke)\s*\(\s*(\d+)').firstMatch(js);
+  if (dateIndex != null) {
+    // Acrobat's numbered date formats (AFDate_Format(n)).
+    const patterns = [
+      'm/d', 'm/d/yy', 'mm/dd/yy', 'mm/yy', 'd-mmm', 'd-mmm-yy', 'dd-mmm-yy', 'yy-mm-dd', //
+      'mmm-yy', 'mmmm-yy', 'mmm d, yyyy', 'mmmm d, yyyy', 'm/d/yy h:MM tt', 'm/d/yy HH:MM',
+    ];
+    final i = int.parse(dateIndex.group(1)!);
+    return (AcroValueFormat.date, i < patterns.length ? patterns[i] : null);
+  }
+  if (RegExp(r'AFTime_(?:Format|Keystroke)').hasMatch(js)) return (AcroValueFormat.time, null);
+  final special = RegExp(r'AFSpecial_(?:Format|Keystroke)\s*\(\s*(\d+)').firstMatch(js);
+  if (special != null) {
+    return switch (special.group(1)) {
+      '0' || '1' => (AcroValueFormat.zip, null),
+      '2' => (AcroValueFormat.phone, null),
+      _ => (AcroValueFormat.number, null),
+    };
+  }
+  if (RegExp(r'AF(?:Number|Percent)_(?:Format|Keystroke)').hasMatch(js)) return (AcroValueFormat.number, null);
+  return (AcroValueFormat.none, null);
 }
 

@@ -21,6 +21,9 @@ class EditorScreenBody extends StatelessWidget {
 
   /// A bar naming the current mode (such as Edit text) with a Done button.
   final Widget? modeBanner;
+
+  /// The bar on top of the keyboard while filling a form.
+  final Widget? formFillBar;
   final Widget? textSelectionBar;
   final Widget? redactionOverlay;
   final Widget? outlinePanel;
@@ -43,6 +46,7 @@ class EditorScreenBody extends StatelessWidget {
     this.thumbnailStrip,
     this.searchBar,
     this.modeBanner,
+    this.formFillBar,
     this.textSelectionBar,
     this.redactionOverlay,
     this.outlinePanel,
@@ -91,6 +95,13 @@ class EditorScreenBody extends StatelessWidget {
           right: 8,
           bottom: thumbnailStrip != null ? 168 : 112,
           child: MotionReveal(from: const Offset(0, 0.3), child: textSelectionBar),
+        ),
+        // Rides on the keyboard (or the bottom edge when it is closed).
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+          child: MotionReveal(from: const Offset(0, 0.5), child: formFillBar),
         ),
         if (outlinePanel != null)
           Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
