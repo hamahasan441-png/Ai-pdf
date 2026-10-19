@@ -127,8 +127,8 @@ class EditorPageThumbnailStrip extends StatelessWidget {
             ),
             if (pageCount > 1)
               ListTile(
-                leading: Icon(Icons.delete_outline, color: Colors.red.shade700),
-                title: Text(l10n.pageDelete, style: TextStyle(color: Colors.red.shade700)),
+                leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                title: Text(l10n.pageDelete, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 onTap: () {
                   Navigator.pop(ctx);
                   onPageAction?.call(index, 'delete');

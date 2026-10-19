@@ -15,9 +15,9 @@ void main() {
   const matcher = TextStyleMatcher();
 
   test('a bundled Noto name is a substitute until that font file is loaded', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'کوردی',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
       fontSize: 14,
       fontName: 'NotoSansArabic-Bold',
       isBold: true,
@@ -39,9 +39,9 @@ void main() {
   });
 
   test('Times-Bold is a substitute, not the original font', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'Hello',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.02),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.2, 0.02),
       fontSize: 12,
       fontName: 'Times-Bold',
     );
@@ -53,9 +53,9 @@ void main() {
   });
 
   test('without a page height the size is marked as an estimate', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'ABC',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.3, 0.04),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.3, 0.04),
       fontSize: 0,
     );
     final style = matcher.match(word);
@@ -84,15 +84,15 @@ void main() {
 
   test('selected words keep the first size and do not average a second size', () {
     final words = [
-      PdfTextElement(
+      const PdfTextElement(
         text: 'PDF',
-        rect: const Rect.fromLTWH(0.1, 0.1, 0.1, 0.02),
+        rect: Rect.fromLTWH(0.1, 0.1, 0.1, 0.02),
         fontSize: 18,
         fontName: 'NotoSansArabic-Regular',
       ),
-      PdfTextElement(
+      const PdfTextElement(
         text: 'و',
-        rect: const Rect.fromLTWH(0.22, 0.1, 0.04, 0.015),
+        rect: Rect.fromLTWH(0.22, 0.1, 0.04, 0.015),
         fontSize: 10,
       ),
     ];
@@ -104,9 +104,9 @@ void main() {
   });
 
   test('a subset prefix names the bundled face only after the file loads', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'کوردی',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
       fontSize: 14,
       fontName: 'ABCDEF+NotoSansArabic-Bold',
     );
@@ -122,9 +122,9 @@ void main() {
   });
 
   test('a name that merely contains Noto Sans Arabic is not an exact face', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'کوردی',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.2, 0.03),
       fontSize: 14,
       fontName: 'MyNotoSansArabicClone',
     );
@@ -134,9 +134,9 @@ void main() {
   });
 
   test('LiberationMono is monospace, not serif', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'code',
-      rect: const Rect.fromLTWH(0.1, 0.2, 0.2, 0.02),
+      rect: Rect.fromLTWH(0.1, 0.2, 0.2, 0.02),
       fontSize: 10,
       fontName: 'LiberationMono',
     );
@@ -146,9 +146,9 @@ void main() {
   });
 
   test('a large point size is not silently clamped', () {
-    final word = PdfTextElement(
+    const word = PdfTextElement(
       text: 'Title',
-      rect: const Rect.fromLTWH(0.1, 0.1, 0.5, 0.3),
+      rect: Rect.fromLTWH(0.1, 0.1, 0.5, 0.3),
       fontSize: 200,
       fontName: 'Times-Roman',
     );
@@ -160,15 +160,15 @@ void main() {
 
   test('different sizes in one selection stay separate runs', () {
     final words = [
-      PdfTextElement(
+      const PdfTextElement(
         text: 'PDF',
-        rect: const Rect.fromLTWH(0.1, 0.1, 0.1, 0.02),
+        rect: Rect.fromLTWH(0.1, 0.1, 0.1, 0.02),
         fontSize: 18,
         fontName: 'NotoSansArabic-Regular',
       ),
-      PdfTextElement(
+      const PdfTextElement(
         text: 'و',
-        rect: const Rect.fromLTWH(0.22, 0.1, 0.04, 0.015),
+        rect: Rect.fromLTWH(0.22, 0.1, 0.04, 0.015),
         fontSize: 10,
       ),
     ];
@@ -198,6 +198,25 @@ void main() {
     expect(word.fontName, 'Times-Bold');
     expect(word.fontSize, 18);
     expect(word.isBold, isTrue);
+  });
+
+  test('the replacement keeps the fill colour of the words it replaces', () {
+    const words = [
+      PdfTextElement(text: 'Total', rect: Rect.fromLTWH(0.1, 0.2, 0.1, 0.02), fontSize: 12, color: Color(0xFF1F4E79)),
+      PdfTextElement(text: 'due', rect: Rect.fromLTWH(0.21, 0.2, 0.06, 0.02), fontSize: 12, color: Color(0xFFC00000)),
+    ];
+    final draft = const EditorExistingTextService().draftForWords(words, pageHeightPt: 800);
+    expect(draft.textBox.color, const Color(0xFF1F4E79));
+    expect(draft.textBox.runs, isNotNull);
+    expect(draft.textBox.runs!.first.color, isNull);
+    expect(draft.textBox.runs!.last.color, const Color(0xFFC00000));
+
+    // Unknown colour (null) falls back to black, as before.
+    final plain = const EditorExistingTextService().draftForWords([
+      const PdfTextElement(text: 'x', rect: Rect.fromLTWH(0.1, 0.2, 0.05, 0.02), fontSize: 12),
+    ], pageHeightPt: 800);
+    expect(plain.textBox.color, Colors.black);
+    expect(plain.textBox.runs, isNull);
   });
 }
 

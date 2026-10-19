@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
+import 'package:ai_pdf/features/scanner/presentation/widgets/scan_filter_label.dart';
 
 /// Horizontal selector for the scan enhancement filter (Phase 51).
 class ScanFilterBar extends StatelessWidget {
@@ -17,56 +19,60 @@ class ScanFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.black.withOpacity(0.6),
+      color: Colors.black.withValues(alpha: 0.6),
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            for (final f in ScanFilter.values) _chip(f, cs),
+            for (final f in ScanFilter.values) _chip(context, f, cs),
           ],
         ),
       ),
     );
   }
 
-  Widget _chip(ScanFilter filter, ColorScheme cs) {
+  Widget _chip(BuildContext context, ScanFilter filter, ColorScheme cs) {
     final active = filter == selected;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: () => onSelected(filter),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: active ? cs.primaryContainer : Colors.white24,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: active ? cs.primary : Colors.transparent,
-                  width: 2,
+      child: Semantics(
+        button: true,
+        selected: active,
+        child: GestureDetector(
+          onTap: () => onSelected(filter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: active ? cs.primaryContainer : Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: active ? cs.primary : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  _iconFor(filter),
+                  color: active ? cs.primary : Colors.white,
+                  size: 22,
                 ),
               ),
-              child: Icon(
-                _iconFor(filter),
-                color: active ? cs.primary : Colors.white,
-                size: 22,
+              const SizedBox(height: 4),
+              Text(
+                scanFilterLabel(AppLocalizations.of(context)!, filter),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: active ? cs.primary : Colors.white,
+                  fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              filter.label,
-              style: TextStyle(
-                fontSize: 10,
-                color: active ? cs.primary : Colors.white,
-                fontWeight: active ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -24,6 +24,10 @@ class EditorDocumentViewport extends StatefulWidget {
   final double pageAspect;
   final TransformationController? transformationController;
 
+  /// Put on the InteractiveViewer, so callers can map screen points into the
+  /// space its transformation works in (to bring a spot into view).
+  final GlobalKey? viewerKey;
+
   /// Changes only how the page looks on screen (reading mode).
   final ColorFilter? viewFilter;
   final Widget child;
@@ -34,6 +38,7 @@ class EditorDocumentViewport extends StatefulWidget {
     required this.scaleEnabled,
     this.pageAspect = PageFit.a4PortraitAspect,
     this.transformationController,
+    this.viewerKey,
     this.viewFilter,
     required this.child,
   });
@@ -116,6 +121,7 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
           );
 
           final viewer = InteractiveViewer(
+            key: widget.viewerKey,
             transformationController: _controller,
             maxScale: 5,
             panEnabled: widget.panEnabled,

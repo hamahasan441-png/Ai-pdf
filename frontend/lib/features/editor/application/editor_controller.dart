@@ -15,17 +15,16 @@ import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 
 import 'editor_state.dart';
 
-final editorControllerProvider =
-    StateNotifierProvider<EditorController, EditorState>((ref) {
-  return EditorController();
-});
-
 /// Editor controller with Command-pattern undo/redo.
 ///
 /// Internally uses [EditorHistory] for unlimited, object-level undo/redo.
 /// The public API is unchanged from the previous flat implementation so
 /// pick_edit_screen.dart requires zero modifications.
 class EditorController extends StateNotifier<EditorState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorState get current => state;
+
   EditorController() : super(const EditorState());
 
   /// Per-page history stacks. Keyed by page index.
@@ -60,15 +59,6 @@ class EditorController extends StateNotifier<EditorState> {
   void setLoading(bool value) {
     state = state.copyWith(loading: value);
   }
-
-  void setExporting(bool value) {
-    state = state.copyWith(exporting: value);
-  }
-
-  void setPage({required int currentPage, required int pageCount}) {
-    state = state.copyWith(currentPage: currentPage, pageCount: pageCount);
-  }
-
   void setCurrentPage(int currentPage) {
     state = state.copyWith(currentPage: currentPage);
   }
@@ -240,15 +230,6 @@ class EditorController extends StateNotifier<EditorState> {
     _currentHistory.push(command, layer);
     markDirty();
   }
-
-  bool eraseLast(PageLayer layer) {
-    if (layer.items.isEmpty) return false;
-    final removed = layer.items.last;
-    _currentHistory.push(RemoveCommand(removed, layer), layer);
-    markDirty();
-    return true;
-  }
-
   // ─── Annotation mutations (all go through history) ──────────────────────
 
   /// Add [annotation] to [layer]. [page] is the page that owns [layer]; it
@@ -256,6 +237,14 @@ class EditorController extends StateNotifier<EditorState> {
   /// could not be undone there, because undo runs against that page's layer.
   void pushAnnotation(PageLayer layer, EditorAnnotation annotation, {int? page}) {
     _historyFor(page ?? state.currentPage).push(AddCommand(annotation), layer);
+    markDirty();
+  }
+
+  /// Add [annotations] to [layer] as one undo step. [page] as in
+  /// [pushAnnotation].
+  void pushAnnotations(PageLayer layer, List<EditorAnnotation> annotations, {int? page}) {
+    if (annotations.isEmpty) return;
+    _historyFor(page ?? state.currentPage).push(AddBatchCommand(annotations), layer);
     markDirty();
   }
 

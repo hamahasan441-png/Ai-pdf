@@ -135,17 +135,6 @@ class PageCoordinateTransform {
     );
   }
 
-  /// Convert a canvas-pixel rect to normalised 0..1 rect.
-  Rect canvasRectToPdf(Rect canvasRect) {
-    if (canvasSize.width == 0 || canvasSize.height == 0) return Rect.zero;
-    return Rect.fromLTWH(
-      canvasRect.left / canvasSize.width,
-      canvasRect.top / canvasSize.height,
-      canvasRect.width / canvasSize.width,
-      canvasRect.height / canvasSize.height,
-    );
-  }
-
   // ─── PDF → Screen (accounts for zoom + viewport offset) ─────────────────
 
   /// Convert a normalised annotation rect to absolute screen coordinates.

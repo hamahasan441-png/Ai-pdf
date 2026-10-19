@@ -22,9 +22,6 @@ class EditorCompareState {
     this.lineSegments = const [],
     this.stats = const DiffStats(added: 0, removed: 0, unchanged: 0),
   });
-
-  bool get hasDiff => lineSegments.isNotEmpty;
-
   EditorCompareState copyWith({
     bool? active,
     CompareMode? mode,
@@ -42,16 +39,6 @@ class EditorCompareState {
         stats: stats ?? this.stats,
       );
 }
-
-/// Controller for the document comparison feature (Phase 30).
-///
-/// Accepts two full texts (e.g. extracted from two PDFs or two versions of the
-/// same document), diffs them via [DocumentDiffService] (Phase 16), and exposes
-/// segmented results for the compare widget to render. Supports unified and
-/// side‑by‑side display modes.
-final editorCompareProvider =
-    StateNotifierProvider<EditorCompareController, EditorCompareState>(
-        (ref) => EditorCompareController());
 
 class EditorCompareController extends StateNotifier<EditorCompareState> {
   EditorCompareController() : super(const EditorCompareState());

@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
+import 'package:pdf/pdf.dart' show PdfColor, PdfFieldFlags, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
@@ -15,17 +15,22 @@ import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
 import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 import 'package:ai_pdf/features/editor/data/pdf_unicode_fonts.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/rtl_text_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
+import 'package:ai_pdf/core/utils/color_bits.dart';
+import 'package:ai_pdf/core/utils/error_text.dart';
 
 /// Searchable vector export is only used when it matches the preview.
 /// Rotated text and multi-style runs are painted into the page image,
@@ -45,11 +50,14 @@ bool textExportsAsSearchableVector({
 ///
 /// The export stops instead of writing a PDF with that page missing. The
 /// message names the 1-based page and never includes document text.
-class ExportPageException implements Exception {
+class ExportPageException implements Exception, KindedError {
   final int pageIndex;
   final String reason;
 
   const ExportPageException(this.pageIndex, this.reason);
+
+  @override
+  ErrorKind get errorKind => ErrorKind.badFile;
 
   @override
   String toString() => 'Page ${pageIndex + 1}: $reason';
@@ -60,11 +68,18 @@ class ExportPageException implements Exception {
 /// to an image-only export; it must not do so silently.
 enum ExportUnavailableKind { unreadableFile, encrypted, damaged, writeFailed }
 
-class PreservingExportUnavailable implements Exception {
+class PreservingExportUnavailable implements Exception, KindedError {
   final String reason;
   final ExportUnavailableKind kind;
 
   const PreservingExportUnavailable(this.reason, [this.kind = ExportUnavailableKind.damaged]);
+
+  @override
+  ErrorKind get errorKind => switch (kind) {
+        ExportUnavailableKind.unreadableFile || ExportUnavailableKind.writeFailed => ErrorKind.file,
+        ExportUnavailableKind.encrypted => ErrorKind.encrypted,
+        ExportUnavailableKind.damaged => ErrorKind.badFile,
+      };
 
   @override
   String toString() => reason;
@@ -107,6 +122,42 @@ List<List<double>> eraseRegionsOf(PageLayer? layer) => [
             math.max(s.start.dy, s.end.dy),
           ],
     ];
+
+/// The fields placed on [layer], as the PDF writer creates them.
+List<NewFormField> newFieldsOf(PageLayer? layer) => [
+      for (final f in layer?.fields ?? const <FormFieldAnnotation>[])
+        if (f.visible)
+          NewFormField(
+            name: f.label.trim().isEmpty ? f.fieldKind.name : f.label.trim(),
+            kind: switch (f.fieldKind) {
+              FormFieldKind.checkbox || FormFieldKind.radio => NewFieldKind.checkbox,
+              FormFieldKind.combobox => NewFieldKind.choice,
+              FormFieldKind.signature => NewFieldKind.signature,
+              _ => NewFieldKind.text,
+            },
+            rect: [
+              f.pos.dx.clamp(0.0, 1.0),
+              f.pos.dy.clamp(0.0, 1.0),
+              (f.pos.dx + f.width).clamp(0.0, 1.0),
+              (f.pos.dy + f.height).clamp(0.0, 1.0),
+            ],
+            value: f.value,
+            checked: f.checked,
+            options: f.options,
+            required: f.required,
+            multiline: f.multiline,
+            borderColor: f.borderColor.toARGB32() & 0xFFFFFF,
+            fillColor: f.fillColor.alpha8 == 0 ? null : _onWhite(f.fillColor),
+          ),
+    ];
+
+/// [c] painted over white, as an opaque 0xRRGGBB (PDF field colours have no
+/// alpha).
+int _onWhite(Color c) {
+  final a = c.alpha8 / 255;
+  int ch(int v) => (v * a + 255 * (1 - a)).round();
+  return (ch(c.red8) << 16) | (ch(c.green8) << 8) | ch(c.blue8);
+}
 
 /// Pages that must be saved as images because a mark hides content: a
 /// whiteout or a burned cover. Whiteouts over replaced text are not counted
@@ -160,6 +211,7 @@ class EditorExportService {
     Map<int, int> quarterTurns = const {},
     List<int>? sourcePages,
     List<int>? onlyIndices,
+    Future<Directory> Function()? outputDirectory,
   }) async {
     final pdf = pw.Document();
     final fonts = EditorPdfFonts();
@@ -168,6 +220,7 @@ class EditorExportService {
     final uni = PdfUnicodeFonts();
     await uni.load();
     var rendered = 0;
+    final fieldNames = <String>{};
 
     for (final i in exportSlots(pageCount: pageCount, only: onlyIndices)) {
       final composed = await _composePagePng(
@@ -192,13 +245,15 @@ class EditorExportService {
         layer: layers[i],
         fonts: fonts,
         uni: uni,
+        // The page is an image here; added fields stay fillable on top.
+        fieldNames: fieldNames,
       );
       rendered++;
       await Future<void>.delayed(Duration.zero);
     }
 
     if (rendered == 0) return null;
-    return _writeAtomically(await pdf.save(), getApplicationDocumentsDirectory);
+    return _writeAtomically(await pdf.save(), outputDirectory ?? getApplicationDocumentsDirectory);
   }
 
   /// Export that keeps the source PDF: text stays searchable and selectable,
@@ -306,14 +361,24 @@ class EditorExportService {
           fonts: fonts,
           uni: uni,
         );
-        specs.add(GeneratedPageSpec(generatedCount++, replacesSource: source < 0 ? null : source));
+        specs.add(GeneratedPageSpec(
+          generatedCount++,
+          replacesSource: source < 0 ? null : source,
+          newFields: newFieldsOf(layers[i]),
+        ));
         await Future<void>.delayed(Duration.zero);
         continue;
       }
 
       final layer = layers[i];
-      if (layer == null || !layer.items.any((a) => a.visible)) {
-        specs.add(SourcePageSpec(source, quarterTurns: turns, eraseRegions: eraseJobs[i]?.$2 ?? const []));
+      // Form fields become widgets, not part of the overlay.
+      if (layer == null || !layer.items.any((a) => a.visible && a is! FormFieldAnnotation)) {
+        specs.add(SourcePageSpec(
+          source,
+          quarterTurns: turns,
+          eraseRegions: eraseJobs[i]?.$2 ?? const [],
+          newFields: newFieldsOf(layer),
+        ));
         continue;
       }
       final (crop, rotate) = sourceGeometry[source];
@@ -355,6 +420,7 @@ class EditorExportService {
         quarterTurns: turns,
         overlayPage: generatedCount++,
         eraseRegions: eraseJobs[i]?.$2 ?? const [],
+        newFields: newFieldsOf(layer),
       ));
       await Future<void>.delayed(Duration.zero);
     }
@@ -428,6 +494,7 @@ class EditorExportService {
   /// Whether [_addEditedPage] draws [a] as a vector, so the marks bitmap does
   /// not need it. Mirrors what [_paintMarks] skips.
   bool _exportsAsVector(EditorAnnotation a, PdfUnicodeFonts uni) {
+    if (a is FormFieldAnnotation) return true; // a widget, not a mark
     if (a is ShapeAnnotation) {
       return !a.burnsBlackCover && (a.type == ShapeType.rect || a.type == ShapeType.whiteout);
     }
@@ -447,6 +514,7 @@ class EditorExportService {
     required EditorPdfFonts fonts,
     required PdfUnicodeFonts uni,
     bool drawEraseCovers = true,
+    Set<String>? fieldNames,
   }) {
     const rtlDetect = RtlDetectionService();
     final shapes = (layer?.shapes ?? const <ShapeAnnotation>[])
@@ -475,11 +543,56 @@ class EditorExportService {
                 ),
               for (final s in shapes) _buildPdfShape(s, pageW, pageH),
               for (final t in texts) _buildPdfText(t, pageW, pageH, fonts, uni, rtlDetect),
+              if (fieldNames != null)
+                for (final f in newFieldsOf(layer)) _buildPdfField(f, pageW, pageH, fieldNames, fonts, uni),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// A fillable field the PDF library draws, for pages that are images.
+  pw.Widget _buildPdfField(
+    NewFormField f,
+    double pageW,
+    double pageH,
+    Set<String> names,
+    EditorPdfFonts fonts,
+    PdfUnicodeFonts uni,
+  ) {
+    final name = uniqueFieldName(f.name, names);
+    names.add(name);
+    final w = (f.rect[2] - f.rect[0]) * pageW;
+    final h = (f.rect[3] - f.rect[1]) * pageH;
+    final size = f.multiline ? 10.0 : (h * 0.7).clamp(4.0, 12.0).toDouble();
+    final font = _isLatin1(f.value)
+        ? fonts.pick(null, false, false)
+        : (uni.pick(TextAnnotation(Offset.zero, f.value, Colors.black, 0.02, false)) ?? fonts.pick(null, false, false));
+    final pw.Widget field = switch (f.kind) {
+      NewFieldKind.checkbox => pw.Checkbox(name: name, value: f.checked, width: w, height: h),
+      NewFieldKind.choice => pw.ChoiceField(
+          name: name,
+          items: f.options,
+          value: f.value.isEmpty ? null : f.value,
+          width: w,
+          height: h,
+          textStyle: pw.TextStyle(font: font, fontSize: size),
+        ),
+      NewFieldKind.signature => pw.Signature(name: name, child: pw.SizedBox(width: w, height: h)),
+      NewFieldKind.text => pw.TextField(
+          name: name,
+          width: w,
+          height: h,
+          value: f.value.isEmpty ? null : f.value,
+          textStyle: pw.TextStyle(font: font, fontSize: size),
+          fieldFlags: {
+            if (f.required) PdfFieldFlags.mandatory,
+            if (f.multiline) PdfFieldFlags.multiline,
+          },
+        ),
+    };
+    return pw.Positioned(left: f.rect[0] * pageW, top: f.rect[1] * pageH, child: field);
   }
 
   /// The vector text widget [renderToPdfFile] places for [t].
@@ -556,24 +669,28 @@ class EditorExportService {
         (t.textDirection == null && rtlDetect.isRtl(t.text));
     // RTL text with no explicit alignment defaults to right-aligned.
     final align = (t.textAlign == TextAlign.left && isRtl) ? TextAlign.right : t.textAlign;
-    // Same box as RtlTextRenderer and the on-screen Text: anchored at pos,
-    // as wide as the text until it wraps at the page edge. A fixed-width box
-    // would push a one-line RTL label to the right margin.
+    // Same box as the screen (AnnotationTextLayout): anchored at pos, as
+    // wide as the text until it wraps at the page edge, or exactly the box
+    // width when the box has one.
+    final box = AnnotationTextLayout.of(t, Size(pageW, pageH));
+    final fontSize = t.size * pageH;
     return pw.Positioned(
       left: t.pos.dx * pageW,
       top: t.pos.dy * pageH,
       child: pw.ConstrainedBox(
-        constraints: pw.BoxConstraints(maxWidth: (pageW * (1 - t.pos.dx)).clamp(1.0, pageW)),
+        constraints: pw.BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
         child: pw.Text(
           t.text,
           textAlign: _pwAlign(align),
           textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
           style: pw.TextStyle(
             font: font,
-            fontSize: t.size * pageH,
-            color: PdfColor.fromInt(t.color.value),
+            fontSize: fontSize,
+            color: PdfColor.fromInt(t.color.toARGB32()),
             decoration:
                 t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
+            letterSpacing: t.charSpacing != 0 ? t.charSpacing : null,
+            lineSpacing: t.lineHeight > 1 ? (t.lineHeight - 1) * fontSize : null,
           ),
         ),
       ),
@@ -604,7 +721,7 @@ class EditorExportService {
   }
 
   PdfColor _pdfColor(Color c, [double opacity = 1.0]) {
-    final v = c.value;
+    final v = c.toARGB32();
     return PdfColor(
       ((v >> 16) & 0xFF) / 255.0,
       ((v >> 8) & 0xFF) / 255.0,
@@ -824,8 +941,8 @@ class EditorExportService {
         }
         for (final s in layer.strokes) {
           if (!s.visible) continue;
-          final ink = s.color.withOpacity((s.color.opacity * s.opacity).clamp(0.0, 1.0));
-          AnnotationDraw.stroke(canvas, size, s.points, ink, s.width);
+          final ink = s.color.withValues(alpha: (s.color.a * s.opacity).clamp(0.0, 1.0));
+          AnnotationDraw.stroke(canvas, size, s.points, ink, s.width, s.breaks);
         }
         for (final s in layer.shapes) {
           if (!s.visible) continue;

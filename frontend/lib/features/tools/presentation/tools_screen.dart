@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,7 +25,7 @@ Future<void> _pickAndPrint(BuildContext context) async {
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.printFailed('$e'))));
+        .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.printFailed(describeError(e, AppLocalizations.of(context))))));
   }
 }
 
@@ -59,8 +61,8 @@ class ToolsScreen extends ConsumerWidget {
             children: [
               _ToolCard(
                 icon: Icons.document_scanner,
-                label: 'Scan Document',
-                desc: 'Camera scan with auto edge detection & perspective fix',
+                label: l10n.aToolsScanDoc,
+                desc: l10n.aToolsScanDocDesc,
                 color: const Color(0xFF2E9E7B),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/scan'),
@@ -219,16 +221,16 @@ class ToolsScreen extends ConsumerWidget {
               ),
               _ToolCard(
                 icon: Icons.cloud_download,
-                label: 'Import File',
-                desc: 'Grab any file from a URL & save it',
+                label: l10n.aToolsImportFile,
+                desc: l10n.aToolsImportFileDesc,
                 color: const Color(0xFF4C63D2),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/import-pdf'),
               ),
               _ToolCard(
                 icon: Icons.folder_special,
-                label: 'Form Profiles',
-                desc: 'Save & reuse field sets per form type (E3.4) — export/import JSON',
+                label: l10n.aProfileTitle,
+                desc: l10n.aToolsFormProfilesDesc,
                 color: const Color(0xFF7E7BD4),
                 badge: l10n.badgeOffline,
                 onTap: () => context.push('/tools/form-profiles'),
@@ -258,7 +260,7 @@ class ToolsScreen extends ConsumerWidget {
                 label: l10n.toolUnderstand,
                 desc: l10n.toolUnderstandDesc,
                 color: const Color(0xFF6366D8),
-                badge: 'AI',
+                badge: l10n.aToolsBadgeAi,
                 badgeColor: cs.primary,
                 onTap: () => context.push('/ai'),
               ),
@@ -267,7 +269,7 @@ class ToolsScreen extends ConsumerWidget {
                 label: l10n.toolAutoFill,
                 desc: l10n.toolAutoFillDesc,
                 color: const Color(0xFF7E7BD4),
-                badge: 'AI',
+                badge: l10n.aToolsBadgeAi,
                 badgeColor: cs.primary,
                 onTap: () => context.push('/ai-form'),
               ),
@@ -282,10 +284,10 @@ class ToolsScreen extends ConsumerWidget {
               ),
               _ToolCard(
                 icon: Icons.history,
-                label: 'Chat History',
-                desc: 'Resume past document chats (E2.3) — citations & offline fallback',
+                label: l10n.aChatHistoryTitle,
+                desc: l10n.aToolsChatHistoryDesc,
                 color: const Color(0xFF6366D8),
-                badge: 'AI',
+                badge: l10n.aToolsBadgeAi,
                 badgeColor: cs.primary,
                 onTap: () => context.push('/ai/history'),
               ),
@@ -317,7 +319,7 @@ class _SectionHeader extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: color, size: 22),
@@ -380,7 +382,7 @@ class _ToolCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 24),
@@ -388,7 +390,7 @@ class _ToolCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: bColor.withOpacity(0.12),
+                    color: bColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(

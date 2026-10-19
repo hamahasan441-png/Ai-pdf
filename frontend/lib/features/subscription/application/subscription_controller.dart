@@ -12,6 +12,10 @@ import '../data/purchase_service.dart';
 import '../domain/entitlement.dart';
 
 /// Immutable UI state for everything subscription-related.
+/// Why the last store action failed; the paywall says it in the user's
+/// language.
+enum SubscriptionError { store, loadPlans, startPurchase, purchaseFailed, restoreFailed, notCompleted, notVerified }
+
 @immutable
 class SubscriptionState {
   final bool initialized;
@@ -21,7 +25,7 @@ class SubscriptionState {
   final Entitlement entitlement;
   final bool purchaseInProgress;
   final bool trialUsed;
-  final String? error;
+  final SubscriptionError? error;
 
   const SubscriptionState({
     this.initialized = false,
@@ -54,7 +58,7 @@ class SubscriptionState {
     Entitlement? entitlement,
     bool? purchaseInProgress,
     bool? trialUsed,
-    String? error,
+    SubscriptionError? error,
     bool clearError = false,
   }) {
     return SubscriptionState(
@@ -114,7 +118,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     _sub = _purchases.purchaseStream.listen(
       _onPurchaseUpdates,
       onError: (Object e) {
-        state = state.copyWith(error: 'Store connection error.', purchaseInProgress: false);
+        state = state.copyWith(error: SubscriptionError.store, purchaseInProgress: false);
       },
     );
 
@@ -136,7 +140,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     } catch (e) {
       state = state.copyWith(
         loadingProducts: false,
-        error: 'Could not load plans. Check your connection and Play account.',
+        error: SubscriptionError.loadPlans,
       );
     }
   }
@@ -161,11 +165,11 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
     try {
       final started = await _purchases.buy(product);
       if (!started) {
-        state = state.copyWith(purchaseInProgress: false, error: 'Could not start the purchase.');
+        state = state.copyWith(purchaseInProgress: false, error: SubscriptionError.startPurchase);
       }
       // Result arrives asynchronously via the purchase stream.
     } catch (e) {
-      state = state.copyWith(purchaseInProgress: false, error: 'Purchase failed. Please try again.');
+      state = state.copyWith(purchaseInProgress: false, error: SubscriptionError.purchaseFailed);
     }
   }
 
@@ -176,7 +180,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       // Restored items arrive via the purchase stream; clear the spinner shortly.
       state = state.copyWith(purchaseInProgress: false);
     } catch (e) {
-      state = state.copyWith(purchaseInProgress: false, error: 'Restore failed. Please try again.');
+      state = state.copyWith(purchaseInProgress: false, error: SubscriptionError.restoreFailed);
     }
   }
 
@@ -191,7 +195,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
               params: {'product': p.productID, 'error': p.error?.message});
           state = state.copyWith(
             purchaseInProgress: false,
-            error: p.error?.message ?? 'The purchase could not be completed.',
+            error: SubscriptionError.notCompleted,
           );
           break;
         case PurchaseStatus.canceled:
@@ -236,7 +240,7 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
       if (!server.valid) {
         state = state.copyWith(
           purchaseInProgress: false,
-          error: 'Purchase could not be verified.',
+          error: SubscriptionError.notVerified,
         );
         return;
       }

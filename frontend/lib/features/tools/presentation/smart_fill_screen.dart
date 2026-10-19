@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
@@ -142,7 +144,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
         setState(() => _status = l10n.smartFillPlaced(confirmed.length));
       }
     } catch (e) {
-      if (mounted) setState(() => _error = l10n.operationFailed(e.toString()));
+      if (mounted) setState(() => _error = l10n.operationFailed(describeError(e, l10n)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -212,7 +214,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.35),
+              color: cs.primaryContainer.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(children: [
@@ -254,7 +256,7 @@ class _SmartFillScreenState extends State<SmartFillScreen> {
               margin: const EdgeInsets.only(bottom: 14),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cs.errorContainer.withOpacity(0.5),
+                color: cs.errorContainer.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(children: [

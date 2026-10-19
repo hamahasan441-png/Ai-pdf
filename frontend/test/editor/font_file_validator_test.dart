@@ -40,7 +40,7 @@ void main() {
 
 Uint8List _fontWithBmpRange(int startCode, int endCode) {
   final cmap = _cmapFormat4(startCode, endCode);
-  final tableOffset = 12 + 16;
+  const tableOffset = 12 + 16;
   final out = Uint8List(tableOffset + cmap.length);
   final data = ByteData.sublistView(out);
   data.setUint32(0, 0x00010000);
@@ -65,19 +65,19 @@ Uint8List _cmapFormat4(int startCode, int endCode) {
   data.setUint16(4, 3);
   data.setUint16(6, 1);
   data.setUint32(8, 12);
-  final sub = 12;
+  const sub = 12;
   data.setUint16(sub, 4);
   data.setUint16(sub + 2, bytes.length - sub);
   data.setUint16(sub + 6, segCount * 2);
   data.setUint16(sub + 8, 4);
   data.setUint16(sub + 10, 1);
-  final endAt = sub + 14;
+  const endAt = sub + 14;
   data.setUint16(endAt, endCode);
   data.setUint16(endAt + 2, 0xFFFF);
-  final startAt = endAt + segCount * 2 + 2;
+  const startAt = endAt + segCount * 2 + 2;
   data.setUint16(startAt, startCode);
   data.setUint16(startAt + 2, 0xFFFF);
-  final deltaAt = startAt + segCount * 2;
+  const deltaAt = startAt + segCount * 2;
   data.setUint16(deltaAt, 1);
   data.setUint16(deltaAt + 2, 1);
   return bytes;

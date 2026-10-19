@@ -1,134 +1,70 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-/// Progressive loading overlay — E4.1 Enhancement-Based Masterplan.
-///
-/// Shows:
-/// - Page count + % progress
-/// - Current phase (rendering, OCR, indexing)
-/// - Cancel button
-/// - Low-RAM warning if applicable
+import 'package:ai_pdf/core/theme/motion.dart';
+
+/// A calm card over the page while a document opens or the page is being
+/// analysed (OCR, field detection). It fades in and out.
 class EditorLoadingOverlay extends StatelessWidget {
   final bool loading;
   final bool detecting;
   final String? detectingLabel;
-  final int? pageCount;
-  final int? currentPage; // 0-based
-  final double? progress; // 0..1
-  final VoidCallback? onCancel;
-  final bool lowRamMode;
 
   const EditorLoadingOverlay({
     super.key,
     required this.loading,
     required this.detecting,
     this.detectingLabel,
-    this.pageCount,
-    this.currentPage,
-    this.progress,
-    this.onCancel,
-    this.lowRamMode = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!loading && !detecting) return const SizedBox.shrink();
+    final active = loading || detecting;
     final cs = Theme.of(context).colorScheme;
-    final hasProgress = progress != null && pageCount != null;
-    final pct = hasProgress ? (progress! * 100).clamp(0, 100).toInt() : null;
-
+    final l10n = AppLocalizations.of(context);
+    final label = detecting
+        ? (detectingLabel ?? l10n?.analyzingDocument ?? 'Analysing the page…')
+        : (l10n?.openingDocument ?? 'Opening the document…');
     return Positioned.fill(
-      child: ColoredBox(
-        color: const Color(0x99000000),
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            margin: const EdgeInsets.symmetric(horizontal: 32),
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 12),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 64,
-                      height: 64,
-                      child: CircularProgressIndicator(
-                        value: hasProgress ? progress : null,
-                        strokeWidth: 5,
+      child: IgnorePointer(
+        ignoring: !active,
+        child: AnimatedOpacity(
+          opacity: active ? 1 : 0,
+          duration: Motion.of(context, Motion.medium),
+          curve: Motion.enter,
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: 0.35),
+            child: Center(
+              child: Semantics(
+                liveRegion: true,
+                label: label,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [BoxShadow(color: Color(0x331B2130), blurRadius: 24, offset: Offset(0, 8))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
                       ),
-                    ),
-                    if (pct != null)
-                      Text('$pct%',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, color: cs.primary)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  detecting
-                      ? (detectingLabel ?? 'Analyzing document...')
-                      : (pageCount != null
-                          ? 'Opening ${pageCount!} pages...'
-                          : 'Opening document...'),
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-                if (currentPage != null && pageCount != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Page ${currentPage! + 1} / $pageCount',
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                      const SizedBox(width: 16),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: cs.onSurface),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-                if (detecting && detectingLabel != null) ...[
-                  const SizedBox(height: 8),
-                  Text(detectingLabel!,
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                      textAlign: TextAlign.center),
-                ],
-                if (lowRamMode) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.memory, size: 14, color: cs.onErrorContainer),
-                        const SizedBox(width: 6),
-                        Text('Low-RAM mode: 900px cap',
-                            style: TextStyle(
-                                fontSize: 11, color: cs.onErrorContainer)),
-                      ],
-                    ),
-                  ),
-                ],
-                if (onCancel != null) ...[
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: onCancel,
-                    icon: const Icon(Icons.close, size: 16),
-                    label: const Text('Cancel'),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  'First page opens in <1.5s even for 1000-page PDFs. Thumbnails ±5 pre-render low-res then high-res (E4.1).',
-                  style: TextStyle(fontSize: 10, color: cs.outline),
-                  textAlign: TextAlign.center,
                 ),
-              ],
+              ),
             ),
           ),
         ),

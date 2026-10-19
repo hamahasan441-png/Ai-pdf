@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:share_plus/share_plus.dart';
 
@@ -23,6 +23,9 @@ import 'package:ai_pdf/features/editor/data/form_value_marks.dart';
 import 'package:ai_pdf/features/editor/domain/history/form_value_command.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_properties.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_banner.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/form_fill_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_view.dart';
@@ -56,6 +59,12 @@ import 'package:ai_pdf/features/editor/data/editor_file_picker_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/theme/motion.dart';
+import 'package:ai_pdf/features/editor/data/form_fill_smarts.dart';
+import 'package:ai_pdf/features/editor/data/text_block_service.dart';
+import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_rich_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_scan_service.dart';
@@ -68,6 +77,7 @@ import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/signature_repository.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
@@ -106,12 +116,10 @@ import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
-import 'package:ai_pdf/features/editor/application/editor_form_review_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_outline_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_layer_panel.dart';
-import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_review_panel.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_page_ops_dialog.dart';
 import '../../../core/services/tool_handoff.dart';
 import '../../../core/services/user_profile_service.dart';
@@ -139,7 +147,7 @@ class PickEditScreen extends StatefulWidget {
   State<PickEditScreen> createState() => _PickEditScreenState();
 }
 
-class _PickEditScreenState extends State<PickEditScreen> {
+class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStateMixin {
   static const int _renderMaxEdge = 2400;
   /// Shown immediately on a page turn. The sharp 2400px frame replaces it.
   static const int _previewEdge = 1280;
@@ -157,6 +165,27 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, int> _pageQuarterTurns = {};
   List<int> _sourcePages = const [];
   final TransformationController _viewTransform = TransformationController();
+  final GlobalKey _viewerKey = GlobalKey();
+
+  // --- Filling the PDF's form in place ---
+  /// The field (and which of its widgets) in focus while filling the form.
+  ({AcroField field, AcroWidget widget})? _fill;
+  FieldSmarts? _fillSmarts;
+  final TextEditingController _fillText = TextEditingController();
+  final FocusNode _fillFocus = FocusNode();
+  final GlobalKey _formLayerKey = GlobalKey();
+  static const _smarts = FormFillSmarts();
+
+  /// The view before filling moved it to show a field; Done puts it back.
+  Matrix4? _fillSavedView;
+  late final AnimationController _viewAnim = AnimationController(vsync: this, duration: Motion.medium)
+    ..addListener(() {
+      final t = _viewTween;
+      if (t != null) _viewTransform.value = t.value;
+    });
+  Animation<Matrix4>? _viewTween;
+  Timer? _revealTimer;
+  double _lastInset = 0;
   /// Positioned words from the PDF text layer, keyed by page. Empty for scans.
   final Map<int, List<PdfTextElement>> _textLayer = {};
   List<Rect> _markupPreview = const [];
@@ -167,26 +196,24 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
 
-  int get _pageCount => _editorController.state.pageCount;
+  int get _pageCount => _editorController.current.pageCount;
   set _pageCount(int value) => _editorController.setPageCount(value);
 
-  int get _current => _editorController.state.currentPage;
+  int get _current => _editorController.current.currentPage;
   set _current(int value) => _editorController.setCurrentPage(value);
 
-  bool get _loading => _editorController.state.loading;
-  set _loading(bool value) => _editorController.setLoading(value);
+  bool get _loading => _editorController.current.loading;
 
-  String? get _fileName => _editorController.state.fileName;
-  set _fileName(String? value) =>
-      _editorController.setFile(filePath: _editorController.state.filePath, fileName: value);
+  String? get _fileName => _editorController.current.fileName;
 
-  bool get _hasUnsavedChanges => _editorController.state.hasUnsavedChanges;
+  bool get _hasUnsavedChanges => _editorController.current.hasUnsavedChanges;
   set _hasUnsavedChanges(bool value) => _editorController.setUnsavedChanges(value);
 
   EditTool _tool = EditTool.draw;
   Color _color = Colors.red;
   double _stroke = 3;
-  double _textSize = 0.032; // normalized to page height
+  // Normalized to page height: about 12 pt on an A4 or Letter page.
+  double _textSize = 0.0145;
   bool _bold = false;
 
   List<Offset> _drawing = [];
@@ -245,6 +272,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorTextScanService _textScan = const EditorTextScanService();
   final EditorSmartFillService _smartFill = const EditorSmartFillService();
   final EditorExistingTextService _existingText = const EditorExistingTextService();
+  final TextReplaceService _textReplace = const TextReplaceService();
+  final TextBlockService _textBlocks = const TextBlockService();
   final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
   final EditorRichTextService _richText = const EditorRichTextService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
@@ -253,6 +282,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
   // --- Edit existing text (OCR line -> cover + editable box) ---
   final Map<int, List<OcrLine>> _editLines = {}; // page -> recognized lines
   bool _showEditLines = false;
+
+  /// "Edit text" on a page with its own text: the paragraphs shown as boxes,
+  /// and the words each box stands for.
+  bool _editTextMode = false;
+  final Map<OcrLine, (TextBlock, List<PdfTextElement>)> _nativeBlocks = {};
+
+  /// The whiteout added with the replacement box being edited; clearing the
+  /// box keeps it, which deletes the original text.
+  ShapeAnnotation? _inlineReplacing;
   bool _detecting = false;
   List<DetectedField> get _pageFields => _fields[_current] ?? const [];
 
@@ -262,7 +300,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorOutlineController _outlineController = EditorOutlineController();
   final EditorCompareController _compareController = EditorCompareController();
   final EditorLayerController _layerController = EditorLayerController();
-  final EditorFormReviewController _formReviewController = EditorFormReviewController();
   final EditorPageOpsController _pageOpsController = EditorPageOpsController();
 
   // --- Saved signatures (persisted across sessions) ---
@@ -297,6 +334,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   @override
   void dispose() {
+    _revealTimer?.cancel();
+    _viewAnim.dispose();
+    _fillText.dispose();
+    _fillFocus.dispose();
     _viewTransform.removeListener(_onViewTransform);
     _viewTransform.dispose();
     _doc?.close();
@@ -308,7 +349,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _outlineController.dispose();
     _compareController.dispose();
     _layerController.dispose();
-    _formReviewController.dispose();
     _pageOpsController.dispose();
     super.dispose();
   }
@@ -340,11 +380,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showFields = true;
         _tool = EditTool.pan; // so taps select/fill, not draw
       });
-      if (detected.isEmpty && !silent) {
-        _showError('No obvious fields found on this page. You can still tap Text to add anywhere.');
+      if (detected.isEmpty && !silent && mounted) {
+        _showError(AppLocalizations.of(context)!.cEditNoFieldsFound);
       }
     } catch (e) {
-      if (!silent) _showError('Field detection failed: $e');
+      if (!silent && mounted) _showError(AppLocalizations.of(context)!.errFieldDetection(describeError(e, AppLocalizations.of(context))));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -390,6 +430,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
 
     final placement = _fieldInput.buildTextPlacement(field);
+    final l10n = AppLocalizations.of(context)!;
 
     if (field.type == FieldType.date) {
       final d = await showDatePicker(
@@ -397,7 +438,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         initialDate: DateTime.now(),
         firstDate: DateTime(1900),
         lastDate: DateTime(2100),
-        helpText: placement.title.isEmpty ? 'Select date' : placement.title,
+        helpText: placement.title.isEmpty ? l10n.cEditSelectDate : placement.title,
       );
       if (d != null) {
         _placeValue(placement.pos, placement.size, _fieldInput.formatDate(d));
@@ -406,7 +447,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
 
     final val = await _promptValue(
-      placement.title.isEmpty ? 'Enter value' : placement.title,
+      placement.title.isEmpty ? l10n.cEditEnterValue : placement.title,
       _fieldInput.keyboardTypeFor(field.type),
       field.type,
     );
@@ -444,12 +485,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (similar.isEmpty) return;
 
     final label = _fieldInput.cleanLabel(source.label);
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Fill ${similar.length} more "$label" field(s) with the same value?'),
+        content: Text(l10n.cEditFillSimilar(similar.length, label)),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
-          label: 'Fill all',
+          label: l10n.cEditFillAll,
           onPressed: () {
             for (final f in similar) {
               final placement = _fieldInput.buildTextPlacement(f);
@@ -494,9 +536,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (!mounted) return;
     if (result.annotations.isNotEmpty) {
       setState(() {
-        _layer.items.addAll(result.annotations);
+        // One undo step removes everything the fill added.
+        _editorController.pushAnnotations(_layer, result.annotations);
         _hasUnsavedChanges = true;
       });
+      _schedulePersist();
     }
 
     final l10n = AppLocalizations.of(context)!;
@@ -558,12 +602,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
     await _loadFile(picked.path, picked.name);
   }
 
-  String _openError(Object error) {
+  String _openError(Object error, AppLocalizations l10n) {
     final text = error.toString().toLowerCase();
     if (text.contains('password') || text.contains('encrypt')) {
-      return 'This PDF is password-protected and cannot be edited until the password is removed.';
+      return l10n.cEditPasswordProtected;
     }
-    return 'Could not open file: $error';
+    return l10n.cEditCouldNotOpen(describeError(error, l10n));
   }
 
   /// Reads the PDF's bookmarks for the Outline panel, off the UI thread.
@@ -741,6 +785,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
     final gen = ++_openGen;
     bool superseded() => !mounted || gen != _openGen;
+    final l10n = AppLocalizations.of(context)!;
     _editorController.beginOpenFile(fileName: name, filePath: path);
     setState(() {
       _pageCache.clear();
@@ -817,7 +862,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final saved = await _persistence.loadChecked(path);
       if (superseded()) return;
       if (saved.corrupt) {
-        _showError('Saved marks could not be read. A backup was kept.');
+        _showError(l10n.cEditSavedMarksUnreadable);
       }
       _formValues
         ..clear()
@@ -832,7 +877,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         await _persistence.quarantine(path);
         if (superseded()) return;
         savedLayers = const {};
-        _showError('Saved marks do not match this file. A backup was kept.');
+        _showError(l10n.cEditSavedMarksMismatch);
       } else if (!savedStructure.isIdentity) {
         _applySavedStructure(savedStructure);
       }
@@ -870,8 +915,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (mounted) setState(() {});
     } catch (e) {
       if (superseded()) return;
-      _editorController.failOpenFile(_openError(e));
-      _showError(_openError(e));
+      _editorController.failOpenFile(_openError(e, l10n));
+      _showError(_openError(e, l10n));
       if (mounted) setState(() {});
     }
   }
@@ -904,7 +949,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         changed = true;
       }
     }
-    if (changed) _searchController.setPages(_textLayer);
+    if (changed) _syncSearchPages();
   }
 
   void _commitRedaction() {
@@ -1089,7 +1134,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final bySource = await compute(extractPdfTextLayerFromPath, path);
       if (mounted && gen == _textGen) {
         _setTextLayerFromSource(bySource);
-        _searchController.setPages(_textLayer);
+        _syncSearchPages();
       }
     } catch (_) {
       // The pages still show; Find just has no words for them.
@@ -1146,9 +1191,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final map = await compute(extractPdfTextLayerFromPath, path);
       if (!mounted || gen != _textGen) return;
       setState(() => _setTextLayerFromSource(map));
-      _searchController.setPages(_textLayer);
+      _syncSearchPages();
       _maskRedactedText();
-      if (_searchController.state.active && _searchController.state.hasMatches) {
+      if (_searchController.current.active && _searchController.current.hasMatches) {
         _jumpToSearch();
       }
     } catch (_) {
@@ -1156,12 +1201,38 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
+  /// Search the text the page still shows: words a text edit already
+  /// replaces are left out, and come back if that edit is undone.
   void _syncSearchPages() {
-    _searchController.setPages(_textLayer);
+    _searchController.setPages(_textReplace.unreplaced(_textLayer, _layers));
+  }
+
+  /// Replace the current match, or every match, with [replacement].
+  void _replaceMatches(String replacement, {required bool all}) {
+    final matches = _searchController.matchesToReplace(all: all);
+    if (matches.isEmpty) return;
+    final plan = _textReplace.plan(
+      _searchController.pages,
+      matches,
+      replacement,
+      pageHeightPt: _pageHeightPt,
+    );
+    setState(() {
+      for (final entry in plan.items.entries) {
+        final layer = _layers.putIfAbsent(entry.key, () => PageLayer());
+        _editorController.pushAnnotations(layer, entry.value, page: entry.key);
+      }
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    _jumpToSearch();
+    final l10n = AppLocalizations.of(context);
+    if (all) _showError(l10n?.replacedCount(plan.replaced) ?? 'Replaced ${plan.replaced}');
   }
 
   void _jumpToSearch() {
-    final page = _searchController.state.currentPage;
+    final page = _searchController.current.currentPage;
     if (page >= 0 && page != _current) _goToPage(page);
   }
 
@@ -1176,12 +1247,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   List<Rect> _findRects() {
-    if (!_searchController.state.active) return const [];
-    return _searchController.state.rectsForPage(_current);
+    if (!_searchController.current.active) return const [];
+    return _searchController.current.rectsForPage(_current);
   }
 
   int _activeFindIndex() {
-    final state = _searchController.state;
+    final state = _searchController.current;
     final match = state.currentMatch;
     if (match == null || match.pageIndex != _current) return -1;
     var i = 0;
@@ -1206,18 +1277,23 @@ class _PickEditScreenState extends State<PickEditScreen> {
       picked,
       pageHeightPt: _pageHeightPt[_current] ?? 0,
     );
+    _openReplacement(draft);
+  }
+
+  /// Put [draft] on the page as one undo step and open its text for typing.
+  /// Clearing the text deletes the original (the whiteout stays).
+  void _openReplacement(ExistingLineEditDraft draft) {
     setState(() {
       _wordSelection = null;
-      _pushItem(draft.whiteout);
+      _showEditLines = false;
+      _editorController.pushAnnotations(_layer, [draft.whiteout, draft.textBox]);
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
     });
-    final before = _layer.items.length;
-    await _editTextBox(draft.textBox, isNew: true);
-    if (_layer.items.length == before &&
-        _layer.items.isNotEmpty &&
-        _layer.items.last is ShapeAnnotation &&
-        (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
-      setState(() => _layer.items.removeLast());
-    }
+    _schedulePersist();
+    _inlineReplacing = draft.whiteout;
+    // Already in the layer, so this only opens the inline editor.
+    _editTextBox(draft.textBox, isNew: true);
   }
 
   void _copyWords() {
@@ -1296,6 +1372,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   Future<void> _goToPage(int index) async {
     if (index < 0 || index >= _pageCount) return;
+    _leaveFill();
     final ticket = ++_navTicket;
     _editorController.beginPageChange();
     final hadPreview = _pageCache.containsKey(index);
@@ -1308,7 +1385,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showEditLines = false;
         _wordSelection = null;
         _markupPreview = const [];
+        _fill = null;
       });
+      if (_editTextMode) _showNativeBlocks();
     } else {
       setState(() {});
     }
@@ -1324,7 +1403,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _showEditLines = false;
         _wordSelection = null;
         _markupPreview = const [];
+        _fill = null;
       });
+      if (_editTextMode) _showNativeBlocks();
     }
     await _renderPage(index, maxEdge: _renderMaxEdge);
     if (!mounted || ticket != _navTicket) return;
@@ -1361,7 +1442,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _toggleSearch() {
     setState(() {
-      if (_searchController.state.active) {
+      if (_searchController.current.active) {
         _searchController.close();
       } else {
         _searchController.open();
@@ -1371,7 +1452,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _toggleRedaction() {
     setState(() {
-      if (_redactionController.state.active) {
+      if (_redactionController.current.active) {
         _redactionController.deactivate();
       } else {
         _redactionController.activate();
@@ -1426,7 +1507,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   Future<void> _confirmPageOps() async {
-    final op = _pageOpsController.state;
+    final op = _pageOpsController.current;
     final indices = List<int>.of(op.parsedIndices ?? const []);
     if (indices.isEmpty) return;
     _pageOpsController.hide();
@@ -1664,7 +1745,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
-    if (_redactionController.state.active) {
+    if (_redactionController.current.active) {
       _shapeStart = n;
       _shapeEnd = n;
       setState(() {});
@@ -1742,7 +1823,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
-    if (_redactionController.state.active && _shapeStart != null) {
+    if (_redactionController.current.active && _shapeStart != null) {
       _shapeEnd = n;
       setState(() {});
       return;
@@ -1805,7 +1886,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
 
   void _onPanEnd() {
     if (_tool == EditTool.eraser) return;
-    if (_redactionController.state.active) {
+    if (_redactionController.current.active) {
       _commitRedaction();
       return;
     }
@@ -2105,7 +2186,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _clipboard = _editorController.copySelected(sel, _selection);
     setState(() {}); // refresh so the Paste action becomes enabled
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied'), duration: Duration(milliseconds: 900)),
+      SnackBar(content: Text(AppLocalizations.of(context)!.copied), duration: const Duration(milliseconds: 900)),
     );
   }
 
@@ -2210,7 +2291,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
     _editorController.pushAnnotation(layer, a, page: page);
     _schedulePersist();
     // Log to revision history for cross-session undo / version tracking.
-    final path = _editorController.state.filePath;
+    final path = _editorController.current.filePath;
     if (path != null) {
       _revisionHistory.appendEntry(
         filePath: path,
@@ -2291,26 +2372,28 @@ class _PickEditScreenState extends State<PickEditScreen> {
       if (confirmed == null || confirmed.isEmpty || !mounted) return;
 
       setState(() {
-        _annotationApply.applyFilledFieldsToLayer(_layer, confirmed);
+        _editorController.pushAnnotations(_layer, _annotationApply.annotationsForFilledFields(confirmed));
+        _hasUnsavedChanges = true;
         _tool = EditTool.pan;
       });
+      _schedulePersist();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context)!.smartFillPlaced(confirmed.length))),
       );
       // Save filled values as a form profile for next time.
-      if (_editorController.state.fileName != null) {
+      if (_editorController.current.fileName != null) {
         final values = <String, String>{};
         for (final f in confirmed) {
           values[f.label] = f.value;
         }
         _formProfiles.saveProfile(
-          formType: _editorController.state.fileName!,
+          formType: _editorController.current.fileName!,
           fieldValues: values,
         );
       }
     } catch (e) {
-      _showError('Smart Fill failed: $e');
+      if (mounted) _showError(AppLocalizations.of(context)!.errSmartFill(describeError(e, AppLocalizations.of(context))));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
@@ -2321,8 +2404,16 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// editable text box on top — a practical, on-device "edit text" for both
   /// scanned and flat PDFs. (Overlay-based, not glyph-level reflow.)
   Future<void> _scanForEdit() async {
-    if (_showEditLines) {
-      setState(() => _showEditLines = false);
+    if (_showEditLines || _editTextMode) {
+      setState(() {
+        _showEditLines = false;
+        _editTextMode = false;
+      });
+      return;
+    }
+    if (_showNativeBlocks()) {
+      // The mode bar over the page says what to do and how to finish.
+      setState(() => _editTextMode = true);
       return;
     }
     final bytes = _pageCache[_current];
@@ -2344,27 +2435,85 @@ class _PickEditScreenState extends State<PickEditScreen> {
             .showSnackBar(SnackBar(content: Text(l10n.overlayEditNotice)));
       }
     } catch (e) {
-      _showError(l10n.operationFailed(e.toString()));
+      _showError(l10n.operationFailed(describeError(e, l10n)));
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
   }
 
-  /// Cover an existing OCR line with white and open a pre-filled editable box.
-  Future<void> _editExistingLine(OcrLine line) async {
-    final draft = _existingText.draftForLine(line);
-    setState(() {
-      _showEditLines = false;
-      _pushItem(draft.whiteout);
-    });
-    final before = _layer.items.length;
-    await _editTextBox(draft.textBox, isNew: true);
-    if (_layer.items.length == before &&
-        _layer.items.isNotEmpty &&
-        _layer.items.last is ShapeAnnotation &&
-        (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
-      setState(() => _layer.items.removeLast());
+  /// Add a fillable form field in the middle of the page, selected so it can
+  /// be moved and resized, and open its properties.
+  Future<void> _addFormField() async {
+    final kind = await showAddFormFieldSheet(context);
+    if (kind == null || !mounted) return;
+    final l10n = AppLocalizations.of(context);
+    var n = 1;
+    for (final layer in _layers.values) {
+      n += layer.fields.length;
     }
+    final field = newFormField(kind, label: '${fieldKindLabel(l10n, kind)} $n', aspect: _aspectFor(_current));
+    setState(() {
+      _pushItem(field);
+      _selected = field;
+      _tool = EditTool.pan;
+      _hasUnsavedChanges = true;
+    });
+    await _editField(field);
+  }
+
+  /// A field's properties, as one undo step.
+  Future<void> _editField(FormFieldAnnotation field) async {
+    _editorController.beginEdit([field], label: 'Field');
+    final saved = await showFormFieldPropertiesDialog(context, field);
+    if (!mounted) return;
+    setState(() {
+      if (saved) {
+        _editorController.commitEdit(_layer, force: true);
+        _hasUnsavedChanges = true;
+      } else {
+        _editorController.revertOpenEdit();
+      }
+    });
+    _schedulePersist();
+  }
+
+  /// Show the paragraphs of the page's own text as tappable boxes. False
+  /// when the page has no text of its own (a scan): then OCR is the way.
+  bool _showNativeBlocks() {
+    final words = _textReplace.unreplaced({_current: _textLayer[_current] ?? const []}, _layers)[_current]!;
+    if (words.isEmpty) return false;
+    final blocks = _textBlocks.blocks(words, aspect: _aspectFor(_current));
+    _nativeBlocks.clear();
+    final lines = <OcrLine>[
+      for (final b in blocks)
+        OcrLine(b.words.map((i) => words[i].text).join(' '), b.rect.left, b.rect.top, b.rect.width, b.rect.height),
+    ];
+    for (var i = 0; i < blocks.length; i++) {
+      _nativeBlocks[lines[i]] = (blocks[i], words);
+    }
+    setState(() {
+      _editLines[_current] = lines;
+      _showEditLines = lines.isNotEmpty;
+      _tool = EditTool.pan;
+    });
+    return true;
+  }
+
+  /// Edit a tapped box: a paragraph of the page's own text is replaced in
+  /// place (its glyphs are removed on export); an OCR line is covered.
+  Future<void> _editExistingLine(OcrLine line) async {
+    final native = _nativeBlocks[line];
+    if (native != null) {
+      final (block, words) = native;
+      _openReplacement(_existingText.draftForWords(
+        [for (final i in block.words) words[i]],
+        pageHeightPt: _pageHeightPt[_current] ?? 0,
+        reflow: true,
+        linePitch: block.linePitch,
+      ));
+      return;
+    }
+    _openReplacement(_existingText.draftForLine(line));
   }
 
 
@@ -2442,7 +2591,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _tool = EditTool.pan;
       });
     } catch (e) {
-      _showError('Could not add image: $e');
+      if (mounted) _showError(AppLocalizations.of(context)!.errAddImage(describeError(e, AppLocalizations.of(context))));
     }
   }
 
@@ -2478,48 +2627,97 @@ class _PickEditScreenState extends State<PickEditScreen> {
   /// Apply bold toggle to the currently selected range in the inline editor.
   void _toggleSelectionBold() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleBold(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleBold(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleBold(editing, 0, editing.text.length);
+      } else {
+        editing.bold = !editing.bold;
+      }
       _hasUnsavedChanges = true;
     });
   }
+
 
   void _toggleSelectionItalic() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleItalic(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleItalic(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleItalic(editing, 0, editing.text.length);
+      } else {
+        editing.italic = !editing.italic;
+      }
       _hasUnsavedChanges = true;
     });
   }
+
 
   void _toggleSelectionUnderline() {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
     setState(() {
-      editing.runs = _richText.toggleUnderline(
-          editing, _inlineSelection.start, _inlineSelection.end);
+      if (!_inlineSelection.isCollapsed) {
+        editing.runs = _richText.toggleUnderline(editing, _inlineSelection.start, _inlineSelection.end);
+      } else if (editing.runs != null && editing.runs!.isNotEmpty) {
+        // No selection: the whole box, including its styled runs.
+        editing.runs = _richText.toggleUnderline(editing, 0, editing.text.length);
+      } else {
+        editing.underline = !editing.underline;
+      }
       _hasUnsavedChanges = true;
     });
   }
 
+
   Future<void> _pickSelectionColor() async {
     final editing = _inlineEditing;
-    if (editing == null || _inlineSelection.isCollapsed) return;
+    if (editing == null) return;
+    final range = _inlineSelection;
     final picked = await showEditorTextColorPickerSheet(context, selectedColor: editing.color, title: AppLocalizations.of(context)!.colorText);
     if (picked == null || !mounted) return;
     setState(() {
-      editing.runs = _richText.applyStyle(
-        editing,
-        start: _inlineSelection.start,
-        end: _inlineSelection.end,
-        color: picked,
-      );
+      if (!range.isCollapsed) {
+        editing.runs = _richText.applyStyle(editing, start: range.start, end: range.end, color: picked);
+      } else {
+        // No selection: the whole box. Runs drop their own colour.
+        editing.color = picked;
+        final runs = editing.runs;
+        if (runs != null) {
+          editing.runs = [
+            for (final r in runs)
+              TextRun(r.text,
+                  bold: r.bold, italic: r.italic, underline: r.underline, fontFamily: r.fontFamily, sizeScale: r.sizeScale),
+          ];
+        }
+      }
       _hasUnsavedChanges = true;
     });
+  }
+
+  /// Whole-box changes from the formatting bar while typing.
+  void _styleInlineBox(void Function(TextAnnotation box) change) {
+    final editing = _inlineEditing;
+    if (editing == null) return;
+    setState(() {
+      change(editing);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _toggleInlineWrap(TextAnnotation box) {
+    if (box.width != null) {
+      box.width = null;
+    } else {
+      // Wrap at the box's current width (at least a fifth of the page).
+      box.width = box.bounds.width.clamp(0.2, 1 - box.pos.dx);
+    }
   }
 
   Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
@@ -2549,7 +2747,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
     if (editing == null) return;
     setState(() {
       _inlineEditing = null;
-      if (editing.text.isEmpty) {
+      final replacing = _inlineReplacing;
+      _inlineReplacing = null;
+      if (editing.text.trim().isEmpty && !_inlineEditTxnOpen && replacing != null && _layer.items.contains(editing)) {
+        // An emptied replacement deletes the original text: keep only the
+        // whiteout, as its own undo step.
+        _editorController.undo(_layer);
+        _pushItem(replacing);
+      } else if (editing.text.isEmpty) {
         if (_inlineEditTxnOpen) {
           // Put the original text back, then delete that object so one undo
           // restores the box the user had before this edit.
@@ -2566,7 +2771,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _inlineEditTxnOpen = false;
       _hasUnsavedChanges = true;
       _schedulePersist();
+      _syncSearchPages();
     });
+    // "Edit text" stays on: show the page's paragraphs again.
+    if (_editTextMode) _showNativeBlocks();
   }
 
   void _onInlineTextChanged(String newText) {
@@ -2602,19 +2810,26 @@ class _PickEditScreenState extends State<PickEditScreen> {
   }
 
   void _undo() {
+    // Typing in a form field is a step of its own: undo takes it back first.
+    _commitFillText();
     setState(() {
       _editorController.undo(_layer);
+      _syncFillText();
       _selected = null;
       _multi.clear();
+      _syncSearchPages();
     });
     _schedulePersist();
   }
 
   void _redoAction() {
+    _commitFillText();
     setState(() {
       _editorController.redo(_layer);
+      _syncFillText();
       _selected = null;
       _multi.clear();
+      _syncSearchPages();
     });
     _schedulePersist();
   }
@@ -2651,9 +2866,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Signature added — drag to move, use the corner handles to resize.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.signatureAdded),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -2664,8 +2879,15 @@ class _PickEditScreenState extends State<PickEditScreen> {
     final points = await Navigator.of(context).push<List<Offset>>(
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => const SignaturePadSheet()),
     );
+    // Closed or left empty: nothing to place, nothing to offer to save.
+    if (!mounted || points == null || points.length <= 1) return null;
     final save = await showEditorSaveSignatureDialog(context);
-    await _signatureFlow.persistDrawnSignatureIfRequested(_savedSignatures, points, save);
+    try {
+      await _signatureFlow.persistDrawnSignatureIfRequested(_savedSignatures, points, save);
+    } catch (e) {
+      // It is still placed; only keeping it for next time failed.
+      if (mounted) _showError(describeError(e, AppLocalizations.of(context)));
+    }
     return points;
   }
 
@@ -2689,8 +2911,10 @@ class _PickEditScreenState extends State<PickEditScreen> {
         _schedulePersist();
       }
     } catch (e) {
-      _editorController.setError('Rotate failed: $e');
-      _showError('Rotate failed: $e');
+      if (!mounted) return;
+      final message = AppLocalizations.of(context)!.errRotate(describeError(e, AppLocalizations.of(context)));
+      _editorController.setError(message);
+      _showError(message);
     } finally {
       _editorController.finishPageChange(_current);
       if (mounted) setState(() {});
@@ -2710,9 +2934,13 @@ class _PickEditScreenState extends State<PickEditScreen> {
     List<int>? onlyIndices,
     bool clearRecovery = true,
   }) async {
+    // What is being typed in a form field belongs in the file.
+    _commitFillText();
+    final l10n = AppLocalizations.of(context)!;
     final sourcePath = _editorController.filePath;
     final keepsSource = _doc != null && sourcePath != null && sourcePath.toLowerCase().endsWith('.pdf');
     var hides = const <int>[];
+    if (!await _confirmRequiredFields(onlyIndices) || !mounted) return null;
     if (keepsSource) {
       hides = pagesThatHideContent(
         _layers,
@@ -2764,22 +2992,24 @@ class _PickEditScreenState extends State<PickEditScreen> {
         outPath = await _imageOnlyExport(onlyIndices);
       }
       if (outPath == null) {
-        _editorController.finishExport(error: 'Nothing to export');
-        _showError('Nothing to export');
+        _editorController.finishExport(error: l10n.cEditNothingToExport);
+        _showError(l10n.cEditNothingToExport);
       } else if (!File(outPath).existsSync() || File(outPath).lengthSync() < 32) {
-        _editorController.finishExport(error: 'Export file was not written');
-        _showError('Export file was not written');
+        _editorController.finishExport(error: l10n.cEditExportNotWritten);
+        _showError(l10n.cEditExportNotWritten);
         return null;
       } else {
         _editorController.finishExport();
         // Recovery data stays until the new file is actually on disk.
-        final srcPath = _editorController.state.filePath;
+        final srcPath = _editorController.current.filePath;
         if (clearRecovery && srcPath != null) _persistence.delete(srcPath);
       }
       return outPath;
     } catch (e) {
-      _editorController.finishExport(error: 'Export failed: $e');
-      _showError('Export failed: $e');
+      if (!mounted) return null;
+      final message = AppLocalizations.of(context)!.errExport(describeError(e, AppLocalizations.of(context)));
+      _editorController.finishExport(error: message);
+      _showError(message);
       return null;
     } finally {
       if (mounted) setState(() {});
@@ -2823,7 +3053,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       try {
         await const PdfPrintService().printFile(outPath, jobName: _fileName);
       } catch (e) {
-        if (mounted) _showError(AppLocalizations.of(context)!.printFailed('$e'));
+        if (mounted) _showError(AppLocalizations.of(context)!.printFailed(describeError(e, AppLocalizations.of(context))));
       }
       return;
     }
@@ -2856,43 +3086,302 @@ class _PickEditScreenState extends State<PickEditScreen> {
             if (w.pageIndex == source) (field: f, widget: w, rect: _form.rectOf(w, quarterTurns: turns)),
     ];
     if (placed.isEmpty) return null;
+    final fill = interactive ? _fill : null;
+    final typing = fill != null && fill.field.kind == AcroFieldKind.text;
     return AcroFormLayer(
+      key: interactive ? _formLayerKey : null,
       widgets: placed,
       edits: _formValues,
       // Drawing tools keep drawing over fields; Move and Select fill them.
       interactive: interactive && (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
       onTap: _fillFormField,
+      focusName: fill?.field.name,
+      focusObjNum: fill?.widget.objNum,
+      editing: typing
+          ? AcroInlineEditing(
+              fieldName: fill.field.name,
+              widgetObjNum: fill.widget.objNum,
+              controller: _fillText,
+              focusNode: _fillFocus,
+              keyboard: _fillSmarts?.keyboard ?? TextInputType.text,
+              formatters: [
+                if (_fillSmarts?.input == FieldInput.date && _fillSmarts?.datePattern != null)
+                  DateMaskFormatter(_fillSmarts!.datePattern!),
+              ],
+              onSubmitted: (_) => _moveFill(1),
+            )
+          : null,
     );
   }
 
+  /// The slot (shown page) of source page [source], or -1.
+  int _slotOfSource(int source) => _sourcePages.indexOf(source);
+
+  /// Before saving: required fields of the PDF's form that are still empty.
+  /// Returns false when the user chose to fill them in first (the first one
+  /// is then opened).
+  Future<bool> _confirmRequiredFields(List<int>? onlyIndices) async {
+    final kept = [
+      for (final slot in exportSlots(pageCount: _pageCount, only: onlyIndices))
+        if (slot < _sourcePages.length && _sourcePages[slot] >= 0) _sourcePages[slot],
+    ];
+    final missing = emptyRequiredFields(_form, _formValues, kept);
+    if (missing.isEmpty) return true;
+    final l10n = AppLocalizations.of(context)!;
+    final names = missing.map((f) => f.name).toList();
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.requiredFieldsTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.requiredFieldsBody(names.length)),
+            const SizedBox(height: 8),
+            for (final n in names.take(8)) Text('• $n'),
+            if (names.length > 8) const Text('…'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.exportAnyway)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.fillInFields)),
+        ],
+      ),
+    );
+    if (choice != false || !mounted) return choice == true;
+    // Open the first empty required field.
+    final first = missing.first;
+    final widget = first.widgets.firstWhere((w) => _slotOfSource(w.pageIndex) >= 0, orElse: () => first.widgets.first);
+    final slot = _slotOfSource(widget.pageIndex);
+    if (slot >= 0 && slot != _current) await _goToPage(slot);
+    if (mounted) await _fillFormField(first, widget);
+    return false;
+  }
+
+  /// Tap on a form field: text fields take the keyboard right in the
+  /// field, check boxes and radio buttons switch, a list opens its choices.
   Future<void> _fillFormField(AcroField field, AcroWidget widget) async {
-    final current = fieldValue(field, _formValues);
-    final Object? next;
+    final same = _fill?.field.name == field.name && _fill?.widget.objNum == widget.objNum;
     switch (field.kind) {
       case AcroFieldKind.checkbox:
-        next = current != 'Off' ? 'Off' : field.checkedState;
+        _focusField(field, widget);
+        final current = fieldValue(field, _formValues);
+        _setFieldValue(field, current != 'Off' ? 'Off' : field.checkedState);
       case AcroFieldKind.radio:
-        next = widget.onState ?? current;
+        _focusField(field, widget);
+        if (widget.onState != null) _setFieldValue(field, widget.onState!);
       case AcroFieldKind.text:
-        next = await showFormTextDialog(context, field: field, initial: '$current');
+        if (!same) _focusField(field, widget);
       case AcroFieldKind.choice:
-        next = await showFormChoiceSheet(context, field: field, current: current);
+        _focusField(field, widget);
+        final next = await showFormChoiceSheet(context, field: field, current: fieldValue(field, _formValues));
+        if (next != null && mounted) _setFieldValue(field, next);
       default:
         return;
     }
-    if (next == null || !mounted) return;
-    bool same(Object a, Object b) =>
-        a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
-    if (same(next, current)) return;
+  }
+
+  /// Puts [field] in focus: a text field opens for typing in place and the
+  /// page moves so it shows above the keyboard.
+  void _focusField(AcroField field, AcroWidget widget) {
+    _commitFillText();
+    final turns = _pageQuarterTurns[_current] ?? 0;
+    final rect = _form.rectOf(widget, quarterTurns: turns);
+    final smarts = _smarts.of(field, rect: rect, words: _textLayer[_current] ?? const []);
+    setState(() {
+      _fill = (field: field, widget: widget);
+      _fillSmarts = smarts;
+      _selected = null;
+      if (field.kind == AcroFieldKind.text) {
+        final value = '${fieldValue(field, _formValues)}';
+        _fillText.value = TextEditingValue(text: value, selection: TextSelection.collapsed(offset: value.length));
+      }
+    });
+    if (field.kind == AcroFieldKind.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _fill?.field.name == field.name) _fillFocus.requestFocus();
+      });
+    } else {
+      _fillFocus.unfocus();
+    }
+    _scheduleRevealFill(const Duration(milliseconds: 60));
+  }
+
+  /// Stores [value] for [field] as one undo step (no step when unchanged).
+  void _setFieldValue(AcroField field, Object value) {
+    final current = fieldValue(field, _formValues);
+    bool same(Object a, Object b) => a is List && b is List ? a.length == b.length && a.every(b.contains) : a == b;
+    if (same(value, current)) return;
     // Back to the file's value: drop the edit instead of storing a copy.
-    final after = same(next, field.value) ? null : next;
+    final after = same(value, field.value) ? null : value;
     setState(() {
       _editorController.record(
         FormValueCommand(_formValues, field.name, before: _formValues[field.name], after: after),
         _layer,
       );
+      _hasUnsavedChanges = true;
     });
     _schedulePersist();
+  }
+
+  /// The focused text field shows its stored value again (after undo).
+  void _syncFillText() {
+    final fill = _fill;
+    if (fill == null || fill.field.kind != AcroFieldKind.text) return;
+    final value = '${fieldValue(fill.field, _formValues)}';
+    if (value != _fillText.text) {
+      _fillText.value = TextEditingValue(text: value, selection: TextSelection.collapsed(offset: value.length));
+    }
+  }
+
+  /// Leaving the page: keep what was typed and close the field, without
+  /// moving the view back (the new page has its own).
+  void _leaveFill() {
+    if (_fill == null) return;
+    _commitFillText();
+    _fillFocus.unfocus();
+    _revealTimer?.cancel();
+    _fillSavedView = null;
+    _fillSmarts = null;
+  }
+
+  /// What was typed in the focused text field becomes its value.
+  void _commitFillText() {
+    final fill = _fill;
+    if (fill == null || fill.field.kind != AcroFieldKind.text) return;
+    _setFieldValue(fill.field, _fillText.text);
+  }
+
+  /// Previous (-1) or next (1) field, in reading order across pages.
+  Future<void> _moveFill(int step) async {
+    final fill = _fill;
+    if (fill == null) return;
+    final order = fillOrder(_form, _slotOfSource,
+        quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0, includeButtons: true);
+    final at = order.indexWhere((e) => e.$1.name == fill.field.name && e.$2.objNum == fill.widget.objNum);
+    final target = at + step;
+    if (at < 0 || target < 0 || target >= order.length) return;
+    _commitFillText();
+    final (field, widget, slot) = order[target];
+    if (slot != _current) {
+      setState(() => _fill = null);
+      await _goToPage(slot);
+      if (!mounted) return;
+    }
+    _focusField(field, widget);
+  }
+
+  bool _canMoveFill(int step) {
+    final fill = _fill;
+    if (fill == null) return false;
+    final order = fillOrder(_form, _slotOfSource,
+        quarterTurnsOf: (slot) => _pageQuarterTurns[slot] ?? 0, includeButtons: true);
+    final at = order.indexWhere((e) => e.$1.name == fill.field.name && e.$2.objNum == fill.widget.objNum);
+    return at >= 0 && at + step >= 0 && at + step < order.length;
+  }
+
+  /// Clears the focused field.
+  void _resetFill() {
+    final fill = _fill;
+    if (fill == null) return;
+    switch (fill.field.kind) {
+      case AcroFieldKind.text:
+        _fillText.clear();
+      case AcroFieldKind.checkbox || AcroFieldKind.radio:
+        _setFieldValue(fill.field, 'Off');
+      case AcroFieldKind.choice:
+        _setFieldValue(fill.field, fill.field.multiSelect ? <String>[] : '');
+      default:
+    }
+  }
+
+  /// Done: keeps what was typed, hides the keyboard and puts the view back.
+  void _endFill() {
+    _commitFillText();
+    _fillFocus.unfocus();
+    _revealTimer?.cancel();
+    setState(() {
+      _fill = null;
+      _fillSmarts = null;
+    });
+    final saved = _fillSavedView;
+    _fillSavedView = null;
+    if (saved != null) _animateView(saved);
+  }
+
+  Future<void> _pickFillDate() async {
+    final pattern = _fillSmarts?.datePattern ?? 'dd.MM.yyyy';
+    final format = DateFormat(pattern);
+    DateTime? initial;
+    try {
+      initial = _fillText.text.isEmpty ? null : format.parseStrict(_fillText.text);
+    } on FormatException {
+      initial = null;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    final text = format.format(picked);
+    _fillText.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    _commitFillText();
+  }
+
+  void _animateView(Matrix4 target) {
+    _viewTween = Matrix4Tween(begin: _viewTransform.value.clone(), end: target)
+        .animate(CurvedAnimation(parent: _viewAnim, curve: Motion.enter));
+    _viewAnim.duration = Motion.of(context, Motion.medium);
+    _viewAnim.forward(from: 0);
+  }
+
+  void _scheduleRevealFill(Duration delay) {
+    _revealTimer?.cancel();
+    _revealTimer = Timer(delay, () {
+      if (mounted) _revealFill();
+    });
+  }
+
+  /// Moves (and if it is small, zooms) the page so the focused field sits
+  /// in the part of the screen the keyboard and the bar leave free.
+  void _revealFill() {
+    final fill = _fill;
+    final layerBox = _formLayerKey.currentContext?.findRenderObject();
+    final viewerBox = _viewerKey.currentContext?.findRenderObject();
+    if (fill == null || layerBox is! RenderBox || viewerBox is! RenderBox || !layerBox.hasSize) return;
+    final norm = _form.rectOf(fill.widget, quarterTurns: _pageQuarterTurns[_current] ?? 0);
+    final size = layerBox.size;
+    Offset toViewer(Offset local) => viewerBox.globalToLocal(layerBox.localToGlobal(local));
+    final field = Rect.fromPoints(
+      toViewer(Offset(norm.left * size.width, norm.top * size.height)),
+      toViewer(Offset(norm.right * size.width, norm.bottom * size.height)),
+    );
+    final screen = MediaQuery.sizeOf(context);
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    const barHeight = 64.0;
+    const top = 8.0;
+    final bottom = viewerBox.globalToLocal(Offset(0, screen.height - inset - barHeight)).dy - 8;
+    if (bottom - top < 40) return;
+    final scale = _viewTransform.value.getMaxScaleOnAxis();
+    // A field shown smaller than a finger-friendly height is zoomed to it.
+    final grow = field.height < 30 ? (34 / field.height).clamp(1.0, 3.0 / scale) : 1.0;
+    final fits = field.top >= top && field.bottom <= bottom && field.left >= 0 && field.right <= viewerBox.size.width;
+    if (grow <= 1.01 && fits) return;
+    _fillSavedView ??= _viewTransform.value.clone();
+    final c = field.center;
+    final grownWidth = field.width * grow;
+    final width = viewerBox.size.width;
+    // Keep the field's left edge in view when it is wider than the screen.
+    final targetX = grownWidth > width - 16 ? 8 + grownWidth / 2 : (grow > 1.01 ? width / 2 : c.dx.clamp(grownWidth / 2 + 8, width - grownWidth / 2 - 8));
+    final targetY = top + (bottom - top) * 0.4;
+    final move = Matrix4.identity()
+      ..translate(targetX.toDouble(), targetY)
+      ..scale(grow, grow)
+      ..translate(-c.dx, -c.dy);
+    _animateView(move.multiplied(_viewTransform.value));
   }
 
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
@@ -2901,6 +3390,12 @@ class _PickEditScreenState extends State<PickEditScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final bytes = _pageCache[_current];
+    // The keyboard opening or closing changes where a focused field must be.
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    if (inset != _lastInset) {
+      _lastInset = inset;
+      if (_fill != null) _scheduleRevealFill(const Duration(milliseconds: 90));
+    }
 
     return PopScope(
       canPop: !_hasUnsavedChanges && !_readingView,
@@ -2912,14 +3407,14 @@ class _PickEditScreenState extends State<PickEditScreen> {
           return;
         }
         final action = await showEditorUnsavedChangesDialog(context);
-        if (action == 'discard' && mounted) {
+        if (action == 'discard' && context.mounted) {
           setState(() {
             _editorController.clearDirty();
           });
           Navigator.of(context).pop();
-        } else if (action == 'save' && mounted) {
+        } else if (action == 'save' && context.mounted) {
           await _export();
-          if (mounted) Navigator.of(context).pop();
+          if (context.mounted) Navigator.of(context).pop();
         }
       },
       // Hardware keyboard shortcuts. Keys go to a focused text field first.
@@ -2952,15 +3447,42 @@ class _PickEditScreenState extends State<PickEditScreen> {
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
-        searchBar: _searchController.state.active
+        formFillBar: _fill == null
+            ? null
+            : FormFillBar(
+                label: _fillSmarts?.label ?? _fill!.field.name,
+                required: _fill!.field.required,
+                onPrevious: _canMoveFill(-1) ? () => _moveFill(-1) : null,
+                onNext: _canMoveFill(1) ? () => _moveFill(1) : null,
+                onPickDate: _fillSmarts?.input == FieldInput.date && _fill!.field.kind == AcroFieldKind.text
+                    ? _pickFillDate
+                    : null,
+                onReset: _resetFill,
+                onDone: _endFill,
+              ),
+        modeBanner: _editTextMode && _inlineEditing == null
+            ? EditorModeBanner(
+                icon: Icons.edit_note,
+                title: l10n.editText,
+                hint: l10n.editTextModeHint,
+                doneLabel: l10n.done,
+                onDone: () => setState(() {
+                  _editTextMode = false;
+                  _showEditLines = false;
+                }),
+              )
+            : null,
+        searchBar: _searchController.current.active
             ? EditorSearchBar(
-                searchState: _searchController.state,
+                searchState: _searchController.current,
                 onQueryChanged: _onSearchQuery,
                 onNext: () => _onSearchStep(_searchController.next),
                 onPrevious: () => _onSearchStep(_searchController.previous),
                 onClose: () => setState(() => _searchController.close()),
                 onCaseSensitiveChanged: (v) => setState(() => _searchController.setCaseSensitive(v)),
                 onWholeWordChanged: (v) => setState(() => _searchController.setWholeWord(v)),
+                onReplace: (text) => _replaceMatches(text, all: false),
+                onReplaceAll: (text) => _replaceMatches(text, all: true),
               )
             : null,
         textSelectionBar: _wordSelection != null && _wordSelection!.isNotEmpty
@@ -2971,9 +3493,9 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onClose: () => setState(() => _wordSelection = null),
               )
             : null,
-        outlinePanel: _outlineController.state.visible
+        outlinePanel: _outlineController.current.visible
             ? EditorOutlinePanel(
-                outlineState: _outlineController.state,
+                outlineState: _outlineController.current,
                 onJumpToPage: _goToPage,
                 onToggleNode: (n) => setState(() => _outlineController.toggleNode(n)),
                 onExpandAll: () => setState(() => _outlineController.expandAll()),
@@ -2981,7 +3503,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onClose: () => setState(() => _outlineController.hide()),
               )
             : null,
-        layerPanel: _layerController.state.visible
+        layerPanel: _layerController.current.visible
             ? EditorLayerPanel(
                 // Read from the marks on every build, so the rows always
                 // match the page, its undo state and page changes.
@@ -2995,20 +3517,6 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onShowAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, true)),
                 onHideAll: () => _changeLayers((p) => EditorLayerController.setAllVisible(p, false)),
                 onClose: () => setState(() => _layerController.hide()),
-              )
-            : null,
-        formReviewPanel: _formReviewController.state.visible
-            ? EditorFormReviewPanel(
-                reviewState: _formReviewController.state,
-                onAccept: (id) => setState(() => _formReviewController.acceptField(id)),
-                onReject: (id) => setState(() => _formReviewController.rejectField(id)),
-                onAcceptAllValid: () => setState(() => _formReviewController.acceptAllValid()),
-                onRejectAllPending: () => setState(() => _formReviewController.rejectAllPending()),
-                onApply: () {
-                  _formReviewController.beginApply();
-                  setState(() => _formReviewController.finishApply());
-                },
-                onClose: () => setState(() => _formReviewController.hide()),
               )
             : null,
         inlineOverlay: _inlineEditing != null
@@ -3044,7 +3552,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
                         Positioned(
                           left: origin.dx,
                           top: origin.dy,
-                          width: (pageW * (1 - editing.pos.dx)).clamp(50.0, pageW),
+                          width: AnnotationTextLayout.of(editing, Size(pageW, pageH)).maxWidth.clamp(50.0, pageW),
                           child: InlineTextEditor(
                             annotation: editing,
                             canvasSize: Size(pageW, pageH),
@@ -3076,10 +3584,11 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onOpenPage: (i) => _closeReadingView(page: i),
               )
             : EditorDocumentViewport(
-          panEnabled: _tool == EditTool.pan && !_redactionController.state.active,
-          scaleEnabled: !_redactionController.state.active,
+          panEnabled: _tool == EditTool.pan && !_redactionController.current.active,
+          scaleEnabled: !_redactionController.current.active,
           pageAspect: _aspectFor(_current),
           transformationController: _viewTransform,
+          viewerKey: _viewerKey,
           viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
@@ -3092,7 +3601,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             color: _color,
             stroke: _stroke,
             highlightPreview: false,
-            securePreview: _redactionController.state.active,
+            securePreview: _redactionController.current.active,
             markupPreview: _markupPreview,
             markupKind: _markupFactory.kindFor(_tool),
             findRects: _findRects(),
@@ -3158,6 +3667,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
             onDeselectSelected: () => setState(() => _selected = null),
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
+            onEditField: _editField,
             onAlignMulti: _alignMulti,
             onDistributeMulti: _distributeMulti,
             onDuplicateMulti: _duplicateMulti,
@@ -3173,10 +3683,18 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onItalic: _toggleSelectionItalic,
           onUnderline: _toggleSelectionUnderline,
           onColor: _pickSelectionColor,
+          box: _inlineEditing,
+          onFont: (f) => _styleInlineBox((b) => b.fontFamily = f),
+          onSizeStep: (d) => _styleInlineBox((b) => b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2)),
+          onAlign: (a) => _styleInlineBox((b) => b.textAlign = a),
+          onToggleRtl: () => _styleInlineBox((b) => b.textDirection =
+              b.textDirection == TextDirection.rtl ? TextDirection.ltr : TextDirection.rtl),
+          onLineHeight: (v) => _styleInlineBox((b) => b.lineHeight = v),
+          onToggleWrap: () => _styleInlineBox(_toggleInlineWrap),
         ),
-        pageOpsDialog: _pageOpsController.state.visible
+        pageOpsDialog: _pageOpsController.current.visible
             ? EditorPageOpsDialog(
-                pageOpsState: _pageOpsController.state,
+                pageOpsState: _pageOpsController.current,
                 onRangeChanged: (value) => setState(() => _pageOpsController.setRangeSpec(value)),
                 onOperationChanged: (op) => setState(() => _pageOpsController.setOperation(op)),
                 onSelectAll: () => setState(() => _pageOpsController.selectAll()),
@@ -3219,6 +3737,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
           onAutoFill: _autoFill,
           onAiFill: _smartFillPage,
           onEditTextTool: _scanForEdit,
+          onAddFormField: _addFormField,
           onToggleFields: () => setState(() => _showFields = !_showFields),
           onAddSignature: _addSignature,
           onPlaceSignatureDate: _placeSignatureDate,

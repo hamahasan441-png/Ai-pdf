@@ -45,18 +45,11 @@ class EditorPageOpsState {
       );
 }
 
-/// Controller for the page operations dialog (Phase 34).
-///
-/// Parses a human-typed page range (via [PageRangeService], Phase 18) and
-/// drives extract / split / delete / rotate / insert-blank operations on the
-/// selection. The actual mutation is performed by the screen (using
-/// [PageReorderService] for structural ops); this controller owns the UI state
-/// and validation.
-final editorPageOpsProvider =
-    StateNotifierProvider<EditorPageOpsController, EditorPageOpsState>(
-        (ref) => EditorPageOpsController());
-
 class EditorPageOpsController extends StateNotifier<EditorPageOpsState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorPageOpsState get current => state;
+
   EditorPageOpsController() : super(const EditorPageOpsState());
 
   static const _svc = PageRangeService();
@@ -94,19 +87,6 @@ class EditorPageOpsController extends StateNotifier<EditorPageOpsState> {
     final spec = '${currentPage + 1}';
     state = state.copyWith(rangeSpec: spec, clearError: true);
     _reparse();
-  }
-
-  /// The inverted (complement) selection — pages NOT in the current range.
-  /// Useful for "keep only these pages" = delete the complement.
-  List<int> invertedSelection() {
-    if (state.parsedIndices == null) return [];
-    return _svc.invert(state.parsedIndices!, state.pageCount);
-  }
-
-  /// Format the current parsed selection back to a compact spec.
-  String formattedSelection() {
-    if (state.parsedIndices == null) return '';
-    return _svc.format(state.parsedIndices!);
   }
 
   void _reparse() {

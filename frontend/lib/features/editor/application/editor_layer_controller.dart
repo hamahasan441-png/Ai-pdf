@@ -39,14 +39,15 @@ class EditorLayerState {
   bool get hasLayers => layers.isNotEmpty;
 }
 
-final editorLayerProvider =
-    StateNotifierProvider<EditorLayerController, EditorLayerState>((ref) => EditorLayerController());
-
 /// Shows or hides the Layers panel and applies its toggles to the marks.
 ///
 /// Redaction covers never belong to a layer: hiding one would leave the text
 /// it covers in the exported file.
 class EditorLayerController extends StateNotifier<EditorLayerState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorLayerState get current => state;
+
   EditorLayerController() : super(const EditorLayerState());
 
   static const order = ['text', 'shape', 'stroke', 'markup', 'image', 'stamp', 'note', 'form'];

@@ -122,7 +122,7 @@ class _RecentTile extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: (file.isPdf ? cs.error : cs.primary).withOpacity(0.1),
+            color: (file.isPdf ? cs.error : cs.primary).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(file.isPdf ? Icons.picture_as_pdf : Icons.image,

@@ -18,15 +18,14 @@ enum FormFieldKind {
   combobox,
 }
 
-/// An interactive form-field overlay annotation.
+/// A form field the user adds to the page.
 ///
-/// Unlike the OCR-detected [DetectedField] (which is ephemeral and display-only),
-/// this is a persistent, editable annotation that:
-/// - Can be placed by the user or by AI field detection
-/// - Stores the filled value
-/// - Renders with a professional field chrome (border, label, fill color)
-/// - Exports as a real form-field visual in the PDF
-/// - Can be validated via [FieldValidator]
+/// It is saved with the page's other marks, drawn with a field frame, and
+/// exported as a real fillable PDF field (an AcroForm widget) that other
+/// readers can fill: text, number, date, e-mail, phone and name become text
+/// fields, checkbox and radio become check boxes, combobox a drop-down list
+/// with [options], signature an empty signature field. [label] is the
+/// field's name in the PDF.
 ///
 /// ### Coordinate system
 /// [pos] is the top-left in normalised 0..1 page coordinates.
@@ -40,6 +39,12 @@ class FormFieldAnnotation extends EditorAnnotation {
   String value;
   bool required;
   bool checked; // for checkbox / radio
+
+  /// Choices of a combobox.
+  List<String> options;
+
+  /// A text field that takes several lines.
+  bool multiline;
   Color borderColor;
   Color fillColor;
   double fontSize; // normalised to page height (like TextAnnotation.size)
@@ -53,6 +58,8 @@ class FormFieldAnnotation extends EditorAnnotation {
     this.value = '',
     this.required = false,
     this.checked = false,
+    this.options = const [],
+    this.multiline = false,
     this.borderColor = const Color(0xFF2563EB),
     this.fillColor = const Color(0x1A2563EB),
     this.fontSize = 0.018,
@@ -105,6 +112,8 @@ class FormFieldAnnotation extends EditorAnnotation {
       value: value,
       required: required,
       checked: checked,
+      options: List.of(options),
+      multiline: multiline,
       borderColor: borderColor,
       fillColor: fillColor,
       fontSize: fontSize,
@@ -124,6 +133,8 @@ class FormFieldAnnotation extends EditorAnnotation {
     value = o.value;
     required = o.required;
     checked = o.checked;
+    options = List.of(o.options);
+    multiline = o.multiline;
     borderColor = o.borderColor;
     fillColor = o.fillColor;
     fontSize = o.fontSize;

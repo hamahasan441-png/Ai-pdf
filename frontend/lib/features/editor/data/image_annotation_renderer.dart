@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -73,8 +72,4 @@ class ImageAnnotationRenderer {
     _cache.clear();
   }
 
-  /// Remove a specific annotation's cached image.
-  void evict(String annotationId) {
-    _cache.remove(annotationId)?.dispose();
-  }
 }

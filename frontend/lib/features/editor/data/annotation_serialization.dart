@@ -4,6 +4,7 @@ import 'dart:ui' show Offset, Rect, TextAlign, TextDirection;
 import 'package:flutter/material.dart' show Color, Colors;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
@@ -54,8 +55,46 @@ Map<String, dynamic> annotationToJson(EditorAnnotation a) {
   if (a is StampAnnotation) return _stampToJson(a);
   if (a is TextMarkupAnnotation) return _markupToJson(a);
   if (a is StickyNoteAnnotation) return _noteToJson(a);
+  if (a is FormFieldAnnotation) return _fieldToJson(a);
   return {'type': 'unknown', 'id': a.id};
 }
+
+Map<String, dynamic> _fieldToJson(FormFieldAnnotation f) => {
+      'type': 'field',
+      'id': f.id,
+      'posX': f.pos.dx,
+      'posY': f.pos.dy,
+      'width': f.width,
+      'height': f.height,
+      'kind': f.fieldKind.name,
+      'label': f.label,
+      'value': f.value,
+      'required': f.required,
+      'checked': f.checked,
+      'options': f.options,
+      'multiline': f.multiline,
+      'borderColor': f.borderColor.toARGB32(),
+      'fillColor': f.fillColor.toARGB32(),
+      'fontSize': f.fontSize,
+      ..._baseToJson(f),
+    };
+
+FormFieldAnnotation _fieldFromJson(Map<String, dynamic> j) => FormFieldAnnotation(
+      pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+      width: (j['width'] as num).toDouble(),
+      height: (j['height'] as num).toDouble(),
+      fieldKind: FormFieldKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => FormFieldKind.text),
+      label: j['label'] as String? ?? '',
+      value: j['value'] as String? ?? '',
+      required: j['required'] as bool? ?? false,
+      checked: j['checked'] as bool? ?? false,
+      options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
+      multiline: j['multiline'] as bool? ?? false,
+      borderColor: Color(j['borderColor'] as int? ?? 0xFF2563EB),
+      fillColor: Color(j['fillColor'] as int? ?? 0x1A2563EB),
+      fontSize: (j['fontSize'] as num?)?.toDouble() ?? 0.018,
+      id: j['id'] as String?,
+    );
 
 Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       'type': 'image',
@@ -74,7 +113,7 @@ Map<String, dynamic> _markupToJson(TextMarkupAnnotation m) => {
       'type': 'markup',
       'id': m.id,
       'kind': m.kind.name,
-      'color': m.color.value,
+      'color': m.color.toARGB32(),
       'text': m.text,
       'rects': [
         for (final r in m.rects) [r.left, r.top, r.right, r.bottom],
@@ -103,7 +142,7 @@ Map<String, dynamic> _stampToJson(StampAnnotation st) => {
       'height': st.height,
       'kind': st.kind.name,
       'customText': st.customText,
-      'color': st.color.value,
+      'color': st.color.toARGB32(),
       'rotation': st.rotation,
       ..._baseToJson(st),
     };
@@ -112,7 +151,8 @@ Map<String, dynamic> _strokeToJson(StrokeAnnotation s) => {
       'type': 'stroke',
       'id': s.id,
       'points': s.points.map((p) => [p.dx, p.dy]).toList(),
-      'color': s.color.value,
+      if (s.breaks.isNotEmpty) 'breaks': s.breaks,
+      'color': s.color.toARGB32(),
       'width': s.width,
       'highlight': s.highlight,
       ..._baseToJson(s),
@@ -126,7 +166,7 @@ Map<String, dynamic> _shapeToJson(ShapeAnnotation s) => {
       'startY': s.start.dy,
       'endX': s.end.dx,
       'endY': s.end.dy,
-      'color': s.color.value,
+      'color': s.color.toARGB32(),
       'width': s.width,
       'filled': s.filled,
       ..._baseToJson(s),
@@ -138,7 +178,7 @@ Map<String, dynamic> _textToJson(TextAnnotation t) => {
       'posX': t.pos.dx,
       'posY': t.pos.dy,
       'text': t.text,
-      'color': t.color.value,
+      'color': t.color.toARGB32(),
       'size': t.size,
       'bold': t.bold,
       'italic': t.italic,
@@ -160,7 +200,7 @@ Map<String, dynamic> _runToJson(TextRun r) => {
       if (r.bold != null) 'bold': r.bold,
       if (r.italic != null) 'italic': r.italic,
       if (r.underline != null) 'underline': r.underline,
-      if (r.color != null) 'color': r.color!.value,
+      if (r.color != null) 'color': r.color!.toARGB32(),
       if (r.fontFamily != null) 'fontFamily': r.fontFamily,
       if (r.sizeScale != null) 'sizeScale': r.sizeScale,
     };
@@ -215,6 +255,9 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
         break;
       case 'note':
         a = _noteFromJson(j);
+        break;
+      case 'field':
+        a = _fieldFromJson(j);
         break;
       default:
         return null;
@@ -281,6 +324,10 @@ StrokeAnnotation _strokeFromJson(Map<String, dynamic> j) {
     (j['width'] as num).toDouble(),
     j['highlight'] as bool? ?? false,
     id: j['id'] as String?,
+    breaks: [
+      for (final b in (j['breaks'] as List?) ?? const [])
+        if (b is int && b > 0 && b < points.length) b,
+    ],
   );
 }
 
@@ -304,7 +351,7 @@ TextAnnotation _textFromJson(Map<String, dynamic> j) {
   return TextAnnotation(
     Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
     j['text'] as String? ?? '',
-    Color(j['color'] as int? ?? Colors.black.value),
+    Color(j['color'] as int? ?? Colors.black.toARGB32()),
     (j['size'] as num).toDouble(),
     j['bold'] as bool? ?? false,
     italic: j['italic'] as bool? ?? false,

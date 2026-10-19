@@ -130,7 +130,9 @@ void main() {
     expect(a, contains(r'(a \(b\)) Tj'));
     expect(textAppearance('سڵاو', 100, 20, 0), isNull);
     final multi = latin1.decode(textAppearance('one\ntwo', 100, 60, 10, multiline: true)!);
-    expect(multi, allOf(contains('(one) Tj'), contains('T* (two) Tj')));
+    // Each line is placed on its own (so it can be aligned), one line
+    // height (1.15 × 10 pt) below the last.
+    expect(multi, allOf(contains('2 48 Td (one) Tj'), contains('0 -11.5 Td (two) Tj')));
     expect(Uint8List(0), isEmpty);
   });
 }

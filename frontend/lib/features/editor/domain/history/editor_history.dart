@@ -21,9 +21,6 @@ class EditorHistory {
 
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
-  int get undoCount => _undoStack.length;
-  int get redoCount => _redoStack.length;
-
   /// The label of the next command to undo (for tooltips / history panel).
   String? get nextUndoLabel => _undoStack.isNotEmpty ? _undoStack.last.label : null;
   String? get nextRedoLabel => _redoStack.isNotEmpty ? _redoStack.last.label : null;

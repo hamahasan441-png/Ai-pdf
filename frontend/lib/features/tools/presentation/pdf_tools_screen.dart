@@ -1,5 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -63,7 +66,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.operationFailed(describeError(e, l10n)))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -88,7 +91,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
         title: Text(title),
         actions: [
           if (_outputs.isNotEmpty)
-            IconButton(icon: const Icon(Icons.share), onPressed: _shareAll),
+            IconButton(icon: const Icon(Icons.share), tooltip: AppLocalizations.of(context)!.a11yShareAll, onPressed: _shareAll),
         ],
       ),
       body: Padding(
@@ -114,6 +117,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                                 leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
                                 title: Text(e.value.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 trailing: IconButton(
+                                  tooltip: AppLocalizations.of(context)!.a11yRemoveFile,
                                   icon: const Icon(Icons.close),
                                   onPressed: () => setState(() => _files.removeAt(e.key)),
                                 ),
@@ -123,7 +127,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                           const Divider(height: 32),
                           Text(l10n.resultsCount(_outputs.length), style: const TextStyle(fontWeight: FontWeight.w700)),
                           ..._outputs.map((o) => Card(
-                                color: cs.primaryContainer.withOpacity(0.3),
+                                color: cs.primaryContainer.withValues(alpha: 0.3),
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle, color: Color(0xFF10B981)),
                                   title: Text(o.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -146,7 +150,7 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
                 child: FilledButton.icon(
                   onPressed: (_files.isEmpty || _busy) ? null : _run,
                   icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const ButtonSpinner()
                       : const Icon(Icons.play_arrow),
                   label: Text(_busy ? l10n.working : l10n.run),
                 ),

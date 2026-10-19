@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/ads/ads_service.dart';
 import 'core/config/router.dart';
 import 'core/config/app_settings.dart';
+import 'core/config/kurdish_localizations.dart';
 import 'core/config/locale_controller.dart';
 import 'core/observability/crash_reporter.dart';
 import 'core/theme/app_theme.dart';
@@ -70,8 +71,12 @@ class AiPdfApp extends ConsumerWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: themeMode,
           locale: locale,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          localizationsDelegates: const [
+            ...AppLocalizations.localizationsDelegates,
+            ...kurdishFallbackDelegates,
+          ],
           supportedLocales: AppLocalizations.supportedLocales,
+          localeListResolutionCallback: resolveAppLocale,
           routerConfig: router,
         ),
       ),
@@ -85,20 +90,23 @@ class _FriendlyErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Material(
-      color: Color(0xFFF8FAFC),
+    // The failing widget may sit above the localizations, so fall back to English.
+    final message = AppLocalizations.of(context)?.bAppErrorFallback ??
+        'Something went wrong here.\nPlease go back and try again.';
+    return Material(
+      color: const Color(0xFFF8FAFC),
       child: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.refresh, size: 48, color: Color(0xFF64748B)),
-              SizedBox(height: 12),
+              const Icon(Icons.refresh, size: 48, color: Color(0xFF64748B)),
+              const SizedBox(height: 12),
               Text(
-                'Something went wrong here.\nPlease go back and try again.',
+                message,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFF475569), fontSize: 14),
+                style: const TextStyle(color: Color(0xFF475569), fontSize: 14),
               ),
             ],
           ),

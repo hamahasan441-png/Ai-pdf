@@ -72,7 +72,7 @@ void main() {
       expect(restored.runs, isNotNull);
       expect(restored.runs, hasLength(2));
       expect(restored.runs![0].bold, isTrue);
-      expect(restored.runs![0].color!.value, Colors.red.value);
+      expect(restored.runs![0].color!.toARGB32(), Colors.red.toARGB32());
       expect(restored.runs![1].italic, isTrue);
       expect(restored.runs![1].underline, isTrue);
       expect(restored.runs![1].sizeScale, 1.5);

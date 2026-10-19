@@ -57,7 +57,7 @@ void main() {
       expect(dup.filled, isTrue);
       expect(dup.opacity, 0.4);
       expect(dup.locked, isTrue);
-      expect((dup as ShapeAnnotation).start.dx, closeTo(0.15, 1e-9));
+      expect(dup.start.dx, closeTo(0.15, 1e-9));
 
       final memento = s.clone(id: s.id);
       expect(memento.id, s.id);
@@ -239,7 +239,7 @@ void main() {
         'posX': 0.2,
         'posY': 0.3,
         'text': 'old',
-        'color': Colors.black.value,
+        'color': Colors.black.toARGB32(),
         'size': 0.04,
         'bold': false,
       };

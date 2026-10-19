@@ -56,7 +56,7 @@ class PaywallScreen extends ConsumerWidget {
                       Text(l10n.proUnlockTitle,
                           style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
-                      Text(l10n.proTagline, style: TextStyle(color: Colors.white.withOpacity(0.9))),
+                      Text(l10n.proTagline, style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
                     ],
                   ),
                 ),
@@ -64,7 +64,7 @@ class PaywallScreen extends ConsumerWidget {
                 ...benefits.map((b) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(children: [
-                        Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                        const Icon(Icons.check_circle, color: AppColors.success, size: 20),
                         const SizedBox(width: 10),
                         Expanded(child: Text(b, style: const TextStyle(fontSize: 14))),
                       ]),
@@ -128,7 +128,15 @@ class PaywallScreen extends ConsumerWidget {
 
                 if (state.error != null) ...[
                   const SizedBox(height: 12),
-                  _InfoBanner(icon: Icons.error_outline, color: cs.error, text: state.error!),
+                  _InfoBanner(icon: Icons.error_outline, color: cs.error, text: switch (state.error!) {
+                      SubscriptionError.store => l10n.subErrStore,
+                      SubscriptionError.loadPlans => l10n.subErrLoadPlans,
+                      SubscriptionError.startPurchase => l10n.subErrStartPurchase,
+                      SubscriptionError.purchaseFailed => l10n.subErrPurchaseFailed,
+                      SubscriptionError.restoreFailed => l10n.subErrRestoreFailed,
+                      SubscriptionError.notCompleted => l10n.subErrNotCompleted,
+                      SubscriptionError.notVerified => l10n.subErrNotVerified,
+                    }),
                 ],
 
                 const SizedBox(height: 8),
@@ -176,7 +184,7 @@ class _PlanCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: highlighted ? AppColors.primary.withOpacity(0.06) : cs.surface,
+        color: highlighted ? AppColors.primary.withValues(alpha: 0.06) : cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: highlighted ? AppColors.primary : cs.outlineVariant,
@@ -229,7 +237,7 @@ class _ProActive extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified, size: 72, color: AppColors.success),
+            const Icon(Icons.verified, size: 72, color: AppColors.success),
             const SizedBox(height: 16),
             Text(l10n.proActiveTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
@@ -256,9 +264,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(children: [
         Icon(icon, color: color, size: 20),

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/material.dart';
 
@@ -24,9 +22,8 @@ class TextMarkupAnnotation extends EditorAnnotation {
     required List<Rect> rects,
     required this.color,
     this.text = '',
-    String? id,
-  })  : rects = List<Rect>.of(rects),
-        super(id: id);
+    super.id,
+  })  : rects = List<Rect>.of(rects);
 
   @override
   Rect get bounds {
@@ -95,15 +92,4 @@ class TextMarkupAnnotation extends EditorAnnotation {
       ..addAll(o.rects);
     copyBaseFrom(o);
   }
-}
-
-/// Union helper kept local so the annotation file does not grow a geometry
-/// dependency beyond [Rect].
-extension on Rect {
-  Rect expandToInclude(Rect other) => Rect.fromLTRB(
-        math.min(left, other.left),
-        math.min(top, other.top),
-        math.max(right, other.right),
-        math.max(bottom, other.bottom),
-      );
 }

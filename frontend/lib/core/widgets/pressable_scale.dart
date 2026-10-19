@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/core/theme/motion.dart';
+
 /// A subtle, premium press micro-interaction.
 ///
 /// Wraps any tappable content and gently scales it down while pressed, then
@@ -41,30 +43,45 @@ class _PressableScaleState extends State<PressableScale> {
     if (_pressed != value) setState(() => _pressed = value);
   }
 
+  void _tap() {
+    if (widget.haptic) {
+      // Soft, low-intensity feedback; safe no-op if unsupported.
+      Feedback.forTap(context);
+    }
+    widget.onTap!.call();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _setPressed(true),
-      onTapUp: (_) => _setPressed(false),
-      onTapCancel: () => _setPressed(false),
-      onTap: widget.onTap == null
-          ? null
-          : () {
-              if (widget.haptic) {
-                // Soft, low-intensity feedback; safe no-op if unsupported.
-                Feedback.forTap(context);
-              }
-              widget.onTap!.call();
-            },
-      child: AnimatedScale(
-        scale: _pressed ? widget.pressedScale : 1.0,
-        duration: widget.duration,
-        curve: Curves.easeOut,
-        child: widget.borderRadius != null
-            ? ClipRRect(borderRadius: widget.borderRadius!, child: widget.child)
-            : widget.child,
+    final enabled = widget.onTap != null;
+    // A button for screen readers and the keyboard too, not only for touch.
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: FocusableActionDetector(
+        enabled: enabled,
+        mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+        actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) => _tap())},
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => _setPressed(true) : null,
+          onTapUp: enabled ? (_) => _setPressed(false) : null,
+          onTapCancel: () => _setPressed(false),
+          onTap: enabled ? _tap : null,
+          child: _scaled(context),
+        ),
       ),
+    );
+  }
+
+  Widget _scaled(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? widget.pressedScale : 1.0,
+      duration: Motion.of(context, widget.duration),
+      curve: Curves.easeOut,
+      child: widget.borderRadius != null
+          ? ClipRRect(borderRadius: widget.borderRadius!, child: widget.child)
+          : widget.child,
     );
   }
 }

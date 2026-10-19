@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
@@ -60,5 +61,38 @@ void main() {
     );
     // x = 20 + (2 * 10 + 5) = 45
     expect(leftPt(pdf), closeTo(45, 0.2));
+  });
+
+  group('fill colour of text', () {
+    Map<String, Color?> colours(Uint8List pdf) => {
+          for (final w in const PdfContentTextExtractor().extract(pdf)[0] ?? const []) w.text: w.color,
+        };
+
+    test('reads gray, RGB and CMYK and restores it with Q', () {
+      final c = colours(onePage('BT /F5 12 Tf 10 300 Td (DEFAULT) Tj ET '
+          'q 1 0 0 rg BT /F5 12 Tf 10 280 Td (RED) Tj ET Q '
+          'BT /F5 12 Tf 10 260 Td (AFTERQ) Tj ET '
+          '0.5 g BT /F5 12 Tf 10 240 Td (GRAY) Tj ET '
+          '0 1 1 0 k BT /F5 12 Tf 10 220 Td (CMYKRED) Tj ET'));
+      expect(c['DEFAULT'], const Color(0xFF000000));
+      expect(c['RED'], const Color(0xFFFF0000));
+      expect(c['AFTERQ'], const Color(0xFF000000));
+      expect(c['GRAY'], const Color(0xFF808080));
+      expect(c['CMYKRED'], const Color(0xFFFF0000));
+    });
+
+    test('sc in a device space is read; an unknown space stays null', () {
+      final c = colours(onePage('/DeviceRGB cs 0 0 1 sc BT /F5 12 Tf 10 300 Td (BLUE) Tj ET '
+          '/CS9 cs 0.7 scn BT /F5 12 Tf 10 280 Td (SPOT) Tj ET '
+          '/Pattern cs /P1 scn BT /F5 12 Tf 10 260 Td (PATTERN) Tj ET'));
+      expect(c['BLUE'], const Color(0xFF0000FF));
+      expect(c['SPOT'], isNull);
+      expect(c['PATTERN'], isNull);
+    });
+
+    test('a Form XObject starts with the fill of the page that draws it', () {
+      final c = colours(onePage('0 0.5 0 rg /Fm1 Do', form: 'BT /F5 12 Tf 10 300 Td (INFORM) Tj ET'));
+      expect(c['INFORM'], const Color(0xFF008000));
+    });
   });
 }

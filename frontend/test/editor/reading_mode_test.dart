@@ -43,8 +43,8 @@ void main() {
         ));
     await pump(null);
     expect(find.byType(ColorFiltered), findsNothing);
-    await pump(ReadingModeState(mode: ReadingMode.dark).colorFilter);
+    await pump(const ReadingModeState(mode: ReadingMode.dark).colorFilter);
     expect(find.byType(ColorFiltered), findsOneWidget);
-    expect(ReadingModeState(mode: ReadingMode.normal).colorFilter, isNull);
+    expect(const ReadingModeState(mode: ReadingMode.normal).colorFilter, isNull);
   });
 }

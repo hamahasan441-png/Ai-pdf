@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,26 +25,21 @@ class PermissionService {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_askedKey) == true) return;
     if (!context.mounted) return;
+    final l = AppLocalizations.of(context)!;
 
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Allow access'),
-        content: const Text(
-          'Pdoczy needs a few permissions to work smoothly:\n\n'
-          '•  Photos / Gallery — to open and save images\n'
-          '•  Storage — to save your PDFs to your device\n'
-          '•  Camera — to scan documents (optional)\n\n'
-          'Your files stay on your device. Nothing is uploaded for offline tools.',
-        ),
+        title: Text(l.bPermTitle),
+        content: Text(l.bPermBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not now'),
+            child: Text(l.bPermNotNow),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Continue'),
+            child: Text(l.bPermContinue),
           ),
         ],
       ),

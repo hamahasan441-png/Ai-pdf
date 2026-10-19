@@ -70,7 +70,7 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
           ),
           IconButton(
             icon: const Icon(Icons.content_paste),
-            tooltip: 'Paste',
+            tooltip: l10n.shortcutPaste,
             onPressed: canPaste ? onPaste : null,
           ),
           IconButton(

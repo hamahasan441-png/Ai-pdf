@@ -167,7 +167,7 @@ void main() {
 
   test('everything else is copied byte for byte, inline images too', () {
     const img = 'BI /W 2 /H 1 /CS /G /BPC 8 ID \x00\xff EI';
-    final content = 'q 1 0 0 rg 10 10 50 50 re f Q $img BT /F1 10 Tf 20 100 Td (Keep) Tj ET';
+    const content = 'q 1 0 0 rg 10 10 50 50 re f Q $img BT /F1 10 Tf 20 100 Td (Keep) Tj ET';
     final pdf = page(content);
     final (r, _) = eraseIn(pdf, [[300, 0, 400, 50]]);
     expect(r.removed, 0);

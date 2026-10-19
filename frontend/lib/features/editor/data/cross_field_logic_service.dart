@@ -27,15 +27,6 @@ class CrossFieldLogicService {
     return computed;
   }
 
-  /// Check if a field is computable from other fields.
-  bool isComputable(String fieldLabel, Map<String, String> availableFields) {
-    final lower = fieldLabel.toLowerCase();
-    if (_isFullNameField(lower) && _hasNameParts(availableFields)) return true;
-    if (_isAgeField(lower) && _hasDob(availableFields)) return true;
-    if (_isNetField(lower) && _hasGrossAndTax(availableFields)) return true;
-    return false;
-  }
-
   void _computeFullName(Map<String, String> fields, Map<String, String> computed) {
     final first = _findValue(fields, ['first_name', 'vorname', 'prénom', 'nombre']);
     final last = _findValue(fields, ['last_name', 'nachname', 'nom', 'apellido']);
@@ -112,11 +103,4 @@ class CrossFieldLogicService {
     }
     return null;
   }
-
-  bool _isFullNameField(String l) => l.contains('full') && l.contains('name') || l == 'name' || l == 'vollständiger name';
-  bool _hasNameParts(Map<String, String> f) => _findValue(f, ['first_name', 'vorname']) != null && _findValue(f, ['last_name', 'nachname']) != null;
-  bool _isAgeField(String l) => l == 'age' || l == 'alter' || l.contains('lebensalter');
-  bool _hasDob(Map<String, String> f) => _findValue(f, ['date_of_birth', 'geburtsdatum']) != null;
-  bool _isNetField(String l) => l.contains('net') || l.contains('netto');
-  bool _hasGrossAndTax(Map<String, String> f) => _findNumeric(f, ['gross', 'brutto', 'total']) != null;
 }

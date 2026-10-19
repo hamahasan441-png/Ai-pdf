@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 
@@ -29,6 +30,7 @@ class EditorPageOpsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -39,15 +41,15 @@ class EditorPageOpsDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _title(cs),
+              _title(cs, l10n),
               const SizedBox(height: 16),
-              _rangeInput(cs),
+              _rangeInput(cs, l10n),
               const SizedBox(height: 12),
-              _operationChips(cs),
+              _operationChips(cs, l10n),
               const SizedBox(height: 16),
-              _summary(cs),
+              _summary(cs, l10n),
               const SizedBox(height: 16),
-              _actions(cs),
+              _actions(cs, l10n),
             ],
           ),
         ),
@@ -55,13 +57,13 @@ class EditorPageOpsDialog extends StatelessWidget {
     );
   }
 
-  Widget _title(ColorScheme cs) {
+  Widget _title(ColorScheme cs, AppLocalizations l10n) {
     return Row(
       children: [
         Icon(Icons.pages, color: cs.primary, size: 22),
         const SizedBox(width: 8),
         Text(
-          'Page Operations',
+          l10n.cPageOpsTitle,
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -72,13 +74,14 @@ class EditorPageOpsDialog extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.close, size: 18),
           onPressed: onClose,
-          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          tooltip: l10n.cEditorClose,
+          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
         ),
       ],
     );
   }
 
-  Widget _rangeInput(ColorScheme cs) {
+  Widget _rangeInput(ColorScheme cs, AppLocalizations l10n) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -87,14 +90,14 @@ class EditorPageOpsDialog extends StatelessWidget {
             Expanded(
               child: TextField(
                 decoration: InputDecoration(
-                  labelText: 'Pages (e.g. 1-3, 5, 8-10)',
+                  labelText: l10n.cPageOpsRangeLabel,
                   border: const OutlineInputBorder(),
                   isDense: true,
-                  errorText: pageOpsState.parseError,
+                  errorText: pageOpsState.parseError == null ? null : l10n.invalidPageRange,
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.select_all, size: 18),
                     onPressed: onSelectAll,
-                    tooltip: 'Select all',
+                    tooltip: l10n.cEditorSelectAll,
                   ),
                 ),
                 onChanged: onRangeChanged,
@@ -107,24 +110,24 @@ class EditorPageOpsDialog extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Document has ${pageOpsState.pageCount} pages',
+          l10n.cPageOpsDocPages(pageOpsState.pageCount),
           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
         ),
       ],
     );
   }
 
-  Widget _operationChips(ColorScheme cs) {
+  Widget _operationChips(ColorScheme cs, AppLocalizations l10n) {
     return Wrap(
       spacing: 6,
       runSpacing: 6,
       children: [
-        _chip('Extract', PageOperation.extract, Icons.file_download_outlined, cs),
-        _chip('Split', PageOperation.split, Icons.call_split, cs),
-        _chip('Delete', PageOperation.delete, Icons.delete_outline, cs),
-        _chip('Rotate \u21B6', PageOperation.rotateLeft, Icons.rotate_left, cs),
-        _chip('Rotate \u21B7', PageOperation.rotateRight, Icons.rotate_right, cs),
-        _chip('Insert Blank', PageOperation.insertBlank, Icons.note_add_outlined, cs),
+        _chip(l10n.cPageOpsExtract, PageOperation.extract, Icons.file_download_outlined, cs),
+        _chip(l10n.cPageOpsSplit, PageOperation.split, Icons.call_split, cs),
+        _chip(l10n.delete, PageOperation.delete, Icons.delete_outline, cs),
+        _chip('${l10n.rotate} \u21B6', PageOperation.rotateLeft, Icons.rotate_left, cs),
+        _chip('${l10n.rotate} \u21B7', PageOperation.rotateRight, Icons.rotate_right, cs),
+        _chip(l10n.cPageOpsInsertBlank, PageOperation.insertBlank, Icons.note_add_outlined, cs),
       ],
     );
   }
@@ -142,9 +145,9 @@ class EditorPageOpsDialog extends StatelessWidget {
     );
   }
 
-  Widget _summary(ColorScheme cs) {
+  Widget _summary(ColorScheme cs, AppLocalizations l10n) {
     final count = pageOpsState.selectedCount;
-    final opLabel = _opLabel(pageOpsState.operation);
+    final opLabel = _opLabel(pageOpsState.operation, l10n);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -162,8 +165,8 @@ class EditorPageOpsDialog extends StatelessWidget {
           Expanded(
             child: Text(
               pageOpsState.isValid
-                  ? '$opLabel $count page${count == 1 ? '' : 's'}'
-                  : 'Enter a valid page range',
+                  ? l10n.cPageOpsSummary(opLabel, count)
+                  : l10n.cPageOpsEnterValidRange,
               style: TextStyle(fontSize: 12, color: cs.onSurface),
             ),
           ),
@@ -172,34 +175,34 @@ class EditorPageOpsDialog extends StatelessWidget {
     );
   }
 
-  Widget _actions(ColorScheme cs) {
+  Widget _actions(ColorScheme cs, AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        TextButton(onPressed: onClose, child: const Text('Cancel')),
+        TextButton(onPressed: onClose, child: Text(l10n.cancel)),
         const SizedBox(width: 8),
         FilledButton(
           onPressed: pageOpsState.isValid ? onConfirm : null,
-          child: Text(_opLabel(pageOpsState.operation)),
+          child: Text(_opLabel(pageOpsState.operation, l10n)),
         ),
       ],
     );
   }
 
-  String _opLabel(PageOperation op) {
+  String _opLabel(PageOperation op, AppLocalizations l10n) {
     switch (op) {
       case PageOperation.extract:
-        return 'Extract';
+        return l10n.cPageOpsExtract;
       case PageOperation.split:
-        return 'Split';
+        return l10n.cPageOpsSplit;
       case PageOperation.delete:
-        return 'Delete';
+        return l10n.delete;
       case PageOperation.rotateLeft:
-        return 'Rotate Left';
+        return l10n.cPageOpsRotateLeft;
       case PageOperation.rotateRight:
-        return 'Rotate Right';
+        return l10n.cPageOpsRotateRight;
       case PageOperation.insertBlank:
-        return 'Insert Blank';
+        return l10n.cPageOpsInsertBlank;
     }
   }
 }

@@ -6,7 +6,6 @@ import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
-import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Shared, resolution-independent drawing used by BOTH the on-screen painter
 /// and the off-screen export compositor, so the exported PDF looks exactly
@@ -15,10 +14,6 @@ import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dar
 /// thickness whether drawn on a phone screen or a 1800px export page.
 class AnnotationDraw {
   static const double _refHeight = 1000.0;
-
-  /// Detects base text direction from content for text annotations that have
-  /// no explicit [TextAnnotation.textDirection] override.
-  static const RtlDetectionService _rtlDetect = RtlDetectionService();
 
   /// Paint a PDF text mark (highlight / underline / strikeout / squiggly).
   /// Highlight uses multiply so the glyphs stay dark, the same way Acrobat
@@ -94,7 +89,9 @@ class AnnotationDraw {
     }
   }
 
-  static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width) {
+  /// A polyline; each index in [breaks] starts a new stroke.
+  static void stroke(Canvas canvas, Size size, List<Offset> pts, Color color, double width,
+      [List<int> breaks = const []]) {
     if (pts.length < 2) return;
     final k = size.height / _refHeight;
     final paint = Paint()
@@ -105,7 +102,11 @@ class AnnotationDraw {
       ..style = PaintingStyle.stroke;
     final path = Path()..moveTo(pts[0].dx * size.width, pts[0].dy * size.height);
     for (var i = 1; i < pts.length; i++) {
-      path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      if (breaks.contains(i)) {
+        path.moveTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      } else {
+        path.lineTo(pts[i].dx * size.width, pts[i].dy * size.height);
+      }
     }
     canvas.drawPath(path, paint);
   }
@@ -124,7 +125,7 @@ class AnnotationDraw {
     final k = size.height / _refHeight;
     final p1 = Offset(a.dx * size.width, a.dy * size.height);
     final p2 = Offset(b.dx * size.width, b.dy * size.height);
-    final effColor = color.withOpacity((color.opacity * opacity).clamp(0.0, 1.0));
+    final effColor = color.withValues(alpha: (color.a * opacity).clamp(0.0, 1.0));
     final paint = Paint()
       ..color = effColor
       ..strokeWidth = width * k
@@ -132,7 +133,7 @@ class AnnotationDraw {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     final fillPaint = Paint()
-      ..color = effColor.withOpacity((effColor.opacity * 0.25).clamp(0.0, 1.0))
+      ..color = effColor.withValues(alpha: (effColor.a * 0.25).clamp(0.0, 1.0))
       ..style = PaintingStyle.fill;
 
     switch (type) {
@@ -197,25 +198,7 @@ class AnnotationDraw {
 
   static void text(Canvas canvas, Size size, TextAnnotation t) {
     if (t.text.isEmpty) return;
-    final base = TextStyle(
-      color: t.color,
-      fontSize: t.size * size.height,
-      fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-      fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-      decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: t.color,
-      fontFamily: t.fontFamily,
-    );
-    final tp = TextPainter(
-      text: buildAnnotationTextSpan(t, base),
-      // When the annotation has no explicit direction (the common case), infer
-      // the base direction from the text itself (first-strong rule) so that
-      // Arabic/Kurdish/Persian/Hebrew lines lay out and align right-to-left
-      // instead of being forced LTR. Mirrors the vector-export path
-      // (editor_export_service / rtl_text_renderer), which already does this.
-      textDirection: t.textDirection ??
-          (_rtlDetect.isRtl(t.text) ? TextDirection.rtl : TextDirection.ltr),
-    )..layout(maxWidth: size.width * (1 - t.pos.dx));
+    final tp = AnnotationTextLayout.of(t, size).painter(t);
 
     final px = t.pos.dx * size.width;
     final py = t.pos.dy * size.height;
@@ -239,7 +222,7 @@ class AnnotationDraw {
       markup(canvas, size, m);
     }
     for (final s in layer.strokes) {
-      stroke(canvas, size, s.points, s.color, s.width);
+      stroke(canvas, size, s.points, s.color, s.width, s.breaks);
     }
     for (final s in layer.shapes) {
       shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);

@@ -7,6 +7,7 @@ import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
@@ -15,6 +16,8 @@ import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/edit_text_target.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/form_field_box.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
 
@@ -93,6 +96,9 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDeselectMulti;
   final void Function(StickyNoteAnnotation note)? onNoteTap;
   final void Function(StickyNoteAnnotation note)? onNoteDelete;
+
+  /// Opens the properties of a selected form field the user added.
+  final void Function(FormFieldAnnotation field)? onEditField;
   final IconData Function(FieldType type) resolveTypeIcon;
 
   const EditorCanvas({
@@ -163,10 +169,26 @@ class EditorCanvas extends StatelessWidget {
     required this.onDeselectMulti,
     this.onNoteTap,
     this.onNoteDelete,
+    this.onEditField,
     required this.resolveTypeIcon,
   });
 
   bool get _canDragText => tool == EditTool.pan || tool == EditTool.text;
+
+  /// A text box laid out like the export lays it out (AnnotationTextLayout).
+  static Widget _boxText(TextAnnotation t, Size size) {
+    final box = AnnotationTextLayout.of(t, size);
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
+      child: Text.rich(
+        buildAnnotationTextSpan(t, box.style),
+        textAlign: box.align,
+        textDirection: box.direction,
+        // Page text is sized to the page, not to the system font scale.
+        textScaler: TextScaler.noScaling,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -229,6 +251,12 @@ class EditorCanvas extends StatelessWidget {
                   ),
                 ),
               ),
+              for (final f in layer.fields.where((f) => f.visible))
+                Positioned(
+                  left: f.pos.dx * size.width,
+                  top: f.pos.dy * size.height,
+                  child: FormFieldBox(field: f, page: size),
+                ),
               ...layer.notes.where((n) => n.visible).map(
                     (note) {
                       final maxX = size.width > 28 ? size.width - 28 : 0.0;
@@ -265,7 +293,7 @@ class EditorCanvas extends StatelessWidget {
                       height: (f.rect.height * size.height).clamp(18.0, 60.0),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
-                        color: base.withOpacity(0.18),
+                        color: base.withValues(alpha: 0.18),
                         border: Border.all(color: base.shade700, width: 1.5),
                         borderRadius: isRadio ? BorderRadius.circular(100) : BorderRadius.circular(4),
                       ),
@@ -275,21 +303,13 @@ class EditorCanvas extends StatelessWidget {
                 );
               }),
               if (showEditLines)
+                // A little room around the text, so the box does not touch it.
                 ...editLines.map((line) => Positioned(
-                      left: line.x * size.width,
-                      top: line.y * size.height,
-                      width: (line.w * size.width).clamp(10.0, size.width),
-                      height: (line.h * size.height).clamp(12.0, 80.0),
-                      child: GestureDetector(
-                        onTap: () => onEditLineTap(line),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.14),
-                            border: Border.all(color: Colors.blueAccent, width: 1),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      ),
+                      left: line.x * size.width - 3,
+                      top: line.y * size.height - 2,
+                      width: (line.w * size.width + 6).clamp(12.0, size.width),
+                      height: (line.h * size.height + 4).clamp(14.0, size.height),
+                      child: EditTextTarget(label: line.text, onTap: () => onEditLineTap(line)),
                     )),
               if (guideX != null)
                 Positioned(
@@ -316,7 +336,7 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blue, width: 1.5),
-                        color: Colors.blue.withOpacity(0.08),
+                        color: Colors.blue.withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -332,7 +352,7 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blueAccent),
-                        color: Colors.blue.withOpacity(0.12),
+                        color: Colors.blue.withValues(alpha: 0.12),
                       ),
                     ),
                   ),
@@ -340,8 +360,10 @@ class EditorCanvas extends StatelessWidget {
               // Hidden text is not drawn (export leaves it out too); locked
               // text stays visible but cannot be selected, edited or dragged.
               ...layer.texts.where((t) => t.visible).map((t) => Positioned(
-                    left: t.pos.dx * size.width,
-                    top: t.pos.dy * size.height,
+                    // The 3 px padding below is the tap and selection margin;
+                    // the text itself sits exactly at pos, as in the export.
+                    left: t.pos.dx * size.width - 3,
+                    top: t.pos.dy * size.height - 3,
                     child: GestureDetector(
                       onTap: () {
                         if (t.locked) return;
@@ -363,21 +385,7 @@ class EditorCanvas extends StatelessWidget {
                         ),
                         child: Transform.rotate(
                           angle: -t.rotation,
-                          child: Text.rich(
-                            buildAnnotationTextSpan(
-                              t,
-                              TextStyle(
-                                color: t.color,
-                                fontSize: t.size * size.height,
-                                fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                                fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                                decoration:
-                                    t.underline ? TextDecoration.underline : TextDecoration.none,
-                                decorationColor: t.color,
-                                fontFamily: t.fontFamily,
-                              ),
-                            ),
-                          ),
+                          child: _boxText(t, size),
                         ),
                       ),
                     ),
@@ -421,6 +429,9 @@ class EditorCanvas extends StatelessWidget {
                   onTextIncrease: selected is TextAnnotation ? onTextIncrease : null,
                   onPickTextColor: selected is TextAnnotation ? onPickTextColor : null,
                   onEditShapeStyle: selected is ShapeAnnotation ? onEditShapeStyle : null,
+                  onEditField: selected is FormFieldAnnotation && onEditField != null
+                      ? () => onEditField!(selected! as FormFieldAnnotation)
+                      : null,
                   onCopy: onCopySelected,
                   onDuplicate: onDuplicateSelected,
                   onBringToFront: onBringToFront,

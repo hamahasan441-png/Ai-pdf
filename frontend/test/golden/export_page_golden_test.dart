@@ -1,8 +1,9 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FontLoader, rootBundle;
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
@@ -52,7 +53,8 @@ Future<void> _loadFonts() async {
   Future<void> family(String name, List<String> files) async {
     final loader = FontLoader(name);
     for (final f in files) {
-      loader.addFont(rootBundle.load('assets/fonts/$f'));
+      // From disk: NotoSans-Bold is a test font, not bundled with the app.
+      loader.addFont(Future.value(ByteData.sublistView(File('assets/fonts/$f').readAsBytesSync())));
     }
     await loader.load();
   }

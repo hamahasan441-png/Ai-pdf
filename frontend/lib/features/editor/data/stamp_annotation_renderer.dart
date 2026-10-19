@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -14,7 +13,7 @@ class StampAnnotationRenderer {
   /// Paint a stamp onto [canvas] at the annotation's normalised position.
   void paint(Canvas canvas, Size size, StampAnnotation stamp) {
     if (!stamp.visible) return;
-    final color = stamp.color.withOpacity((stamp.color.opacity * stamp.opacity).clamp(0.0, 1.0));
+    final color = stamp.color.withValues(alpha: (stamp.color.a * stamp.opacity).clamp(0.0, 1.0));
     final left = stamp.pos.dx * size.width;
     final top = stamp.pos.dy * size.height;
     final w = stamp.width * size.width;

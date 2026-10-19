@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
-import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dart';
 
 /// Enhanced text renderer with automatic RTL detection.
 ///
@@ -17,39 +16,13 @@ import 'package:ai_pdf/features/editor/domain/services/rtl_detection_service.dar
 ///
 /// This does NOT modify the annotation itself (detection is runtime-only).
 class RtlTextRenderer {
-  static const RtlDetectionService _rtlService = RtlDetectionService();
-
   const RtlTextRenderer();
 
   /// Paint a text annotation with auto-RTL detection.
   void paint(Canvas canvas, Size size, TextAnnotation t) {
     if (t.text.isEmpty) return;
 
-    // Resolve text direction.
-    final direction = t.textDirection ?? _detectDirection(t.text);
-
-    // Resolve text alignment for RTL (if not explicitly set by user).
-    final align = t.textAlign == TextAlign.left && direction == TextDirection.rtl
-        ? TextAlign.right
-        : t.textAlign;
-
-    final base = TextStyle(
-      color: t.color,
-      fontSize: t.size * size.height,
-      fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-      fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-      decoration: t.underline ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: t.color,
-      fontFamily: t.fontFamily,
-      height: t.lineHeight,
-      letterSpacing: t.charSpacing,
-    );
-
-    final tp = TextPainter(
-      text: buildAnnotationTextSpan(t, base),
-      textDirection: direction,
-      textAlign: align,
-    )..layout(maxWidth: size.width * (1 - t.pos.dx));
+    final tp = AnnotationTextLayout.of(t, size).painter(t);
 
     final px = t.pos.dx * size.width;
     final py = t.pos.dy * size.height;
@@ -64,10 +37,5 @@ class RtlTextRenderer {
     } else {
       tp.paint(canvas, Offset(px, py));
     }
-  }
-
-  /// Detect text direction from content.
-  TextDirection _detectDirection(String text) {
-    return _rtlService.isRtl(text) ? TextDirection.rtl : TextDirection.ltr;
   }
 }

@@ -59,7 +59,7 @@ void main() {
       expect(runs, isNotNull);
       // "AB" (no override) | "CD" (red) | "EF" (no override) = 3 runs.
       expect(runs!.length, 3);
-      expect(runs[1].color!.value, Colors.red.value);
+      expect(runs[1].color!.toARGB32(), Colors.red.toARGB32());
       expect(runs[1].text, 'CD');
     });
 

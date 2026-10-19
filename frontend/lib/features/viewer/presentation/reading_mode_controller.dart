@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Reading modes for comfortable document viewing.
 enum ReadingMode {
@@ -75,19 +74,3 @@ class ReadingModeState {
     }
   }
 }
-
-/// Controller for reading experience settings.
-class ReadingModeController extends StateNotifier<ReadingModeState> {
-  ReadingModeController() : super(const ReadingModeState());
-
-  void setMode(ReadingMode mode) => state = state.copyWith(mode: mode);
-  void setBrightness(double v) => state = state.copyWith(brightness: v.clamp(0.1, 1.0));
-  void toggleContinuousScroll() => state = state.copyWith(continuousScroll: !state.continuousScroll);
-  void toggleThumbnails() => state = state.copyWith(showThumbnails: !state.showThumbnails);
-  void toggleAutoScroll() => state = state.copyWith(autoScroll: !state.autoScroll);
-  void setAutoScrollSpeed(double s) => state = state.copyWith(autoScrollSpeed: s.clamp(10.0, 200.0));
-}
-
-final readingModeProvider = StateNotifierProvider<ReadingModeController, ReadingModeState>(
-  (ref) => ReadingModeController(),
-);

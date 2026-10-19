@@ -1,5 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -57,7 +60,7 @@ class _StampImageScreenState extends State<StampImageScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(describeError(e, l10n)))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -108,10 +111,7 @@ class _StampImageScreenState extends State<StampImageScreen> {
           FilledButton.icon(
             onPressed: (_pdfPath == null || _imgPath == null || _busy) ? null : _apply,
             icon: _busy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const ButtonSpinner()
                 : const Icon(Icons.approval),
             label: Text(_busy ? l10n.stamping : l10n.stampOntoPdf),
           ),

@@ -1,7 +1,7 @@
 import 'dart:io' show File, ZLibDecoder;
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Color, Offset, Rect;
 
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
@@ -501,6 +501,7 @@ class _PdfDoc {
     List<PdfTextElement> out, {
     Map<String, _V>? resources,
     _M? initialCtm,
+    _Fill initialFill = const _Fill.black(),
     int depth = 0,
     Set<int>? formsInUse,
   }) {
@@ -509,6 +510,9 @@ class _PdfDoc {
     final stack = <_Tok>[];
     final ctmStack = <_M>[];
     var ctm = initialCtm?.copy() ?? _M.identity();
+    // Fill colour (what text is painted with), saved and restored with q/Q.
+    var fill = initialFill;
+    final fillStack = <_Fill>[];
     final activeForms = formsInUse ?? <int>{};
 
     // Text inside a Form XObject (`/Name Do`), such as the overlay a
@@ -535,6 +539,7 @@ class _PdfDoc {
           out,
           resources: formResources,
           initialCtm: formCtm,
+          initialFill: fill,
           depth: depth + 1,
           formsInUse: activeForms,
         );
@@ -643,10 +648,10 @@ class _PdfDoc {
               i++;
             }
             final box = boxOf(glyphs[first].$2, glyphs[i - 1].$3);
-            if (box.width > 0.0005) out.add(_styled(word.toString(), box, fontSize, font));
+            if (box.width > 0.0005) out.add(_styled(word.toString(), box, fontSize, font, fill));
           }
         } else {
-          out.add(_styled(shown.trim(), rect, fontSize, font));
+          out.add(_styled(shown.trim(), rect, fontSize, font, fill));
         }
       }
       _advanceTm(tm, advance);
@@ -663,9 +668,32 @@ class _PdfDoc {
       switch (op) {
         case 'q':
           ctmStack.add(ctm.copy());
+          fillStack.add(fill);
           break;
         case 'Q':
           if (ctmStack.isNotEmpty) ctm = ctmStack.removeLast();
+          if (fillStack.isNotEmpty) fill = fillStack.removeLast();
+          break;
+        case 'g':
+        case 'rg':
+        case 'k':
+          fill = _Fill.device(_trailingNumbers(stack, op == 'g' ? 1 : (op == 'rg' ? 3 : 4)));
+          stack.clear();
+          break;
+        case 'cs':
+          final space = stack.isEmpty ? null : stack.last.name;
+          fill = _Fill.space(space == null ? null : _componentsOf(space, resources));
+          stack.clear();
+          break;
+        case 'sc':
+        case 'scn':
+          // Only spaces whose numbers mean gray/RGB/CMYK; a pattern name,
+          // a spot colour or an indexed colour stays unknown.
+          final n = fill.components;
+          fill = n == null || stack.any((t) => t.number == null)
+              ? const _Fill.unknown()
+              : _Fill.device(_trailingNumbers(stack, n), components: n);
+          stack.clear();
           break;
         case 'cm':
           if (stack.length >= 6) {
@@ -815,17 +843,63 @@ class _PdfDoc {
     return [for (final n in a) n.number ?? 0];
   }
 
+  /// The last [n] operands as numbers, or null if there are not [n].
+  List<double>? _trailingNumbers(List<_Tok> stack, int n) {
+    if (stack.length < n) return null;
+    final out = <double>[];
+    for (final t in stack.sublist(stack.length - n)) {
+      final v = t.number;
+      if (v == null) return null;
+      out.add(v);
+    }
+    return out;
+  }
+
+  /// How many numbers a fill in colour space [name] takes, if they mean
+  /// gray (1), RGB (3) or CMYK (4). Null for spaces whose numbers mean
+  /// something else (Separation, Indexed, Pattern, Lab, DeviceN).
+  int? _componentsOf(String name, Map<String, _V>? resources) {
+    switch (name) {
+      case '/DeviceGray':
+      case '/G':
+      case '/CalGray':
+        return 1;
+      case '/DeviceRGB':
+      case '/RGB':
+        return 3;
+      case '/DeviceCMYK':
+      case '/CMYK':
+        return 4;
+    }
+    var v = _asDict(resources?['/ColorSpace'])?[name];
+    if (v?.ref != null) v = _load(v!.ref!).value;
+    final a = v?.array;
+    if (a == null || a.isEmpty) return v?.name == null ? null : _componentsOf(v!.name!, null);
+    switch (a.first.name) {
+      case '/CalRGB':
+        return 3;
+      case '/CalGray':
+        return 1;
+      case '/ICCBased':
+        if (a.length < 2 || a[1].ref == null) return null;
+        final n = _load(a[1].ref!).dict['/N']?.number?.toInt();
+        return n == 1 || n == 3 || n == 4 ? n : null;
+    }
+    return null;
+  }
+
   void _advanceTm(_M tm, double tx) {
     tm.e = tm.e + tx * tm.a;
     tm.f = tm.f + tx * tm.b;
   }
 
-  PdfTextElement _styled(String text, Rect rect, double fontSize, _Font font) {
+  PdfTextElement _styled(String text, Rect rect, double fontSize, _Font font, _Fill fill) {
     final name = font.baseName.toLowerCase();
     return PdfTextElement(
       text: text,
       rect: rect,
       fontSize: fontSize,
+      color: fill.color,
       fontName: font.baseName.isEmpty ? null : font.baseName,
       isBold: name.contains('bold') || name.contains('black'),
       isItalic: name.contains('italic') || name.contains('oblique'),
@@ -968,6 +1042,49 @@ class _PageInfo {
   final List<double> box;
   final int rotate;
   _PageInfo(this.dict, this.resources, this.box, this.rotate);
+}
+
+/// The current fill colour and how many numbers `sc`/`scn` take in its
+/// colour space. [color] is null when it cannot be read.
+class _Fill {
+  final Color? color;
+  final int? components;
+
+  const _Fill.black()
+      : color = const Color(0xFF000000),
+        components = 1;
+  const _Fill.unknown()
+      : color = null,
+        components = null;
+
+  /// The initial colour of a space ([components] numbers): black, as the
+  /// PDF spec sets it for gray, RGB and CMYK.
+  const _Fill.space(this.components) : color = components == null ? null : const Color(0xFF000000);
+
+  factory _Fill.device(List<double>? n, {int? components}) {
+    if (n == null) return const _Fill.unknown();
+    int c(double v) => (v.clamp(0.0, 1.0) * 255).round();
+    final Color color;
+    switch (n.length) {
+      case 1:
+        color = Color.fromARGB(255, c(n[0]), c(n[0]), c(n[0]));
+      case 3:
+        color = Color.fromARGB(255, c(n[0]), c(n[1]), c(n[2]));
+      case 4:
+        final k = 1 - n[3].clamp(0.0, 1.0);
+        color = Color.fromARGB(
+          255,
+          c((1 - n[0].clamp(0.0, 1.0)) * k),
+          c((1 - n[1].clamp(0.0, 1.0)) * k),
+          c((1 - n[2].clamp(0.0, 1.0)) * k),
+        );
+      default:
+        return const _Fill.unknown();
+    }
+    return _Fill._(color, components ?? n.length);
+  }
+
+  const _Fill._(this.color, this.components);
 }
 
 class _Tok {

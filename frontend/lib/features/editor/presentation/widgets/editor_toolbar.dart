@@ -35,6 +35,9 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAutoFill;
   final VoidCallback onAiFill;
   final VoidCallback onEditTextTool;
+
+  /// Adds a fillable form field; hidden when null.
+  final VoidCallback? onAddFormField;
   final VoidCallback onToggleFields;
   final VoidCallback onAddSignature;
   final VoidCallback onPlaceSignatureDate;
@@ -78,6 +81,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onAutoFill,
     required this.onAiFill,
     required this.onEditTextTool,
+    this.onAddFormField,
     required this.onToggleFields,
     required this.onAddSignature,
     required this.onPlaceSignatureDate,
@@ -116,7 +120,7 @@ class EditorToolbar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: const Offset(0, -2))],
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -2))],
       ),
       child: SafeArea(
         top: false,
@@ -151,7 +155,7 @@ class EditorToolbar extends StatelessWidget {
                       (c) => Semantics(
                         button: true,
                         selected: _same(color, c),
-                        label: 'Colour',
+                        label: l10n.colorTitle,
                         child: GestureDetector(
                           onTap: () => onColorChanged(c),
                           child: Container(
@@ -190,7 +194,7 @@ class EditorToolbar extends StatelessWidget {
                       Expanded(
                         child: Slider(
                           value: textSize,
-                          min: 0.015,
+                          min: 0.008,
                           max: 0.08,
                           onChanged: onTextSizeChanged,
                         ),
@@ -301,6 +305,8 @@ class EditorToolbar extends StatelessWidget {
                   _actionBtn(Icons.image_outlined, l10n.toolImage, () => act(onAddImage), cs),
                   _actionBtn(Icons.event_available, l10n.signatureDate, () => act(onPlaceSignatureDate), cs),
                   _actionBtn(Icons.badge_outlined, l10n.myProfile, () => act(onInsertProfileField), cs),
+                  if (onAddFormField != null)
+                    _actionBtn(Icons.dynamic_form_outlined, l10n.addFormField, () => act(onAddFormField!), cs),
                 ],
               ),
               _moreLabel(l10n.moreDocument, cs),

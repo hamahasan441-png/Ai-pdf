@@ -1,5 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/core/services/tool_handoff.dart';
@@ -74,7 +76,7 @@ class _PdfProtectScreenState extends State<PdfProtectScreen> {
     } on PdfSourceException catch (e) {
       setState(() => _error = e.encrypted ? l10n.protectAlreadyEncrypted : l10n.operationFailed(e.message));
     } catch (e) {
-      setState(() => _error = l10n.operationFailed('$e'));
+      setState(() => _error = l10n.operationFailed(describeError(e, l10n)));
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -111,6 +113,7 @@ class _PdfProtectScreenState extends State<PdfProtectScreen> {
               labelText: l10n.protectPassword,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
+                tooltip: _obscure ? l10n.a11yShowPassword : l10n.a11yHidePassword,
                 icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),

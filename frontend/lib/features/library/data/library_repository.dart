@@ -17,7 +17,10 @@ import 'package:ai_pdf/features/library/domain/entities/library_item.dart';
 /// For v2, if catalog size becomes a concern, we migrate to drift/sqflite with
 /// a trivial schema (the toJson/fromJson is already defined).
 class LibraryRepository {
-  const LibraryRepository();
+  /// Where the library folder lives; the app documents folder by default.
+  final Future<Directory> Function()? documentsDir;
+
+  const LibraryRepository({this.documentsDir});
 
   static const _itemsKey = 'library_items_v1';
   static const _foldersKey = 'library_folders_v1';
@@ -71,7 +74,7 @@ class LibraryRepository {
 
   /// Get the library storage directory (documents/library/).
   Future<Directory> get libraryDir async {
-    final docs = await getApplicationDocumentsDirectory();
+    final docs = await (documentsDir ?? getApplicationDocumentsDirectory)();
     final dir = Directory('${docs.path}/library');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;

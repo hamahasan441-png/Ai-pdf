@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
@@ -29,6 +30,7 @@ class EditorOutlinePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final rows = outlineState.rows;
     final activeNode = outlineState.activeSection;
 
@@ -43,13 +45,13 @@ class EditorOutlinePanel extends StatelessWidget {
         width: 260,
         child: Column(
           children: [
-            _header(cs),
+            _header(cs, l10n),
             const Divider(height: 1),
             Expanded(
               child: rows.isEmpty
                   ? Center(
                       child: Text(
-                        'No outline available',
+                        l10n.cOutlineEmpty,
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                     )
@@ -65,34 +67,34 @@ class EditorOutlinePanel extends StatelessWidget {
     );
   }
 
-  Widget _header(ColorScheme cs) {
+  Widget _header(ColorScheme cs, AppLocalizations l10n) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
           Icon(Icons.menu_book, size: 20, color: cs.primary),
           const SizedBox(width: 8),
-          Text('Outline',
+          Text(l10n.toolOutline,
               style: TextStyle(
                   fontWeight: FontWeight.w600, color: cs.onSurface)),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.unfold_more, size: 18),
             onPressed: onExpandAll,
-            tooltip: 'Expand all',
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: l10n.cOutlineExpandAll,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
           IconButton(
             icon: const Icon(Icons.unfold_less, size: 18),
             onPressed: onCollapseAll,
-            tooltip: 'Collapse all',
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: l10n.cOutlineCollapseAll,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
             onPressed: onClose,
-            tooltip: 'Close',
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            tooltip: l10n.cEditorClose,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
         ],
       ),
@@ -104,7 +106,7 @@ class EditorOutlinePanel extends StatelessWidget {
     return InkWell(
       onTap: () => onJumpToPage(row.node.page),
       child: Container(
-        color: isActive ? cs.primaryContainer.withOpacity(0.3) : null,
+        color: isActive ? cs.primaryContainer.withValues(alpha: 0.3) : null,
         padding: EdgeInsets.only(
           left: 12.0 + row.depth * 16.0,
           right: 8,
