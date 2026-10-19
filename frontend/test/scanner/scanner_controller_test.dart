@@ -306,9 +306,9 @@ void main() {
   group('ScannerController - setPageOcrResult', () {
     test('stores text and lines from OcrResult', () {
       final page = ctrl.addCapture(dummyBytes, corners);
-      final result = OcrResult('Hello World', [
-        const OcrLine('Hello', 0.1, 0.2, 0.3, 0.04),
-        const OcrLine('World', 0.1, 0.3, 0.3, 0.04),
+      const result = OcrResult('Hello World', [
+        OcrLine('Hello', 0.1, 0.2, 0.3, 0.04),
+        OcrLine('World', 0.1, 0.3, 0.3, 0.04),
       ]);
 
       ctrl.setPageOcrResult(page.id, result);
@@ -323,7 +323,7 @@ void main() {
 
     test('rebuilds recognizedText after storing result', () {
       final page = ctrl.addCapture(dummyBytes, corners);
-      final result = OcrResult('Test text', []);
+      const result = OcrResult('Test text', []);
 
       ctrl.setPageOcrResult(page.id, result);
 

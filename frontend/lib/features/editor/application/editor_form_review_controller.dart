@@ -91,6 +91,10 @@ final editorFormReviewProvider =
 
 class EditorFormReviewController
     extends StateNotifier<EditorFormReviewState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorFormReviewState get current => state;
+
   EditorFormReviewController() : super(const EditorFormReviewState());
 
   void show() => state = state.copyWith(visible: true);

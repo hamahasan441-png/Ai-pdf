@@ -118,11 +118,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _welcomePage(ColorScheme cs) {
-    return _OnboardingPage(
+    return const _OnboardingPage(
       icon: Icons.privacy_tip_outlined,
       title: 'Private, Offline, AI-Powered',
       subtitle: 'Edit, sign, and understand PDFs — with on-device AI that never uploads your files. Your data stays on your phone.',
-      bullets: const [
+      bullets: [
         'Offline tools: compress, merge, split, OCR, watermark — no internet needed',
         'On-device AI: BM25 RAG + ML Kit OCR — page-cited answers, no cloud',
         'Profile auto-fill: 100+ field types, 12+ languages, encrypted on device',
@@ -236,7 +236,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, color: AppColors.success, size: 18),
+                  const Icon(Icons.check_circle, color: AppColors.success, size: 18),
                   const SizedBox(width: 8),
                   Expanded(child: Text(b, style: const TextStyle(fontSize: 13))),
                 ],

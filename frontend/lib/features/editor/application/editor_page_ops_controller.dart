@@ -57,6 +57,10 @@ final editorPageOpsProvider =
         (ref) => EditorPageOpsController());
 
 class EditorPageOpsController extends StateNotifier<EditorPageOpsState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorPageOpsState get current => state;
+
   EditorPageOpsController() : super(const EditorPageOpsState());
 
   static const _svc = PageRangeService();

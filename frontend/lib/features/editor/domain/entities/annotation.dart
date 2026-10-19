@@ -397,7 +397,9 @@ class TextAnnotation extends EditorAnnotation {
       if ((cp >= 0x0600 && cp <= 0x06FF) || // Arabic
           (cp >= 0x0590 && cp <= 0x05FF) || // Hebrew
           (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK
-          (cp >= 0xFB50 && cp <= 0xFDFF)) return true;
+          (cp >= 0xFB50 && cp <= 0xFDFF)) {
+        return true;
+      }
     }
     return false;
   }

@@ -45,6 +45,10 @@ final editorOutlineProvider =
         (ref) => EditorOutlineController());
 
 class EditorOutlineController extends StateNotifier<EditorOutlineState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorOutlineState get current => state;
+
   EditorOutlineController() : super(const EditorOutlineState());
 
   static const _svc = DocumentOutlineService();

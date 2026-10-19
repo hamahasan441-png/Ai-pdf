@@ -1,6 +1,7 @@
 /// Domain model for the app's Pro entitlement and the Play Billing products
 /// that grant it. Pure Dart — no Flutter or plugin imports — so it stays easy
 /// to unit-test.
+library;
 
 /// The Play Console product IDs. These must match exactly the products you
 /// create in the Play Console (Monetize > Products).

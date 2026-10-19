@@ -69,6 +69,10 @@ final editorSearchProvider =
 });
 
 class EditorSearchController extends StateNotifier<EditorSearchState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorSearchState get current => state;
+
   EditorSearchController() : super(const EditorSearchState());
 
   static const _svc = DocumentSearchService();

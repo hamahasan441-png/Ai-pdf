@@ -218,7 +218,7 @@ class _EditorFormReviewPanelState extends State<EditorFormReviewPanel> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(color: cs.primary.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
-                              child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.lightbulb, size: 12, color: cs.primary), const SizedBox(width: 4), Text('Use \"${field.validationSuggestion}\"', style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600))]),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.lightbulb, size: 12, color: cs.primary), const SizedBox(width: 4), Text('Use "${field.validationSuggestion}"', style: TextStyle(fontSize: 11, color: cs.primary, fontWeight: FontWeight.w600))]),
                             ),
                           ),
                         ],

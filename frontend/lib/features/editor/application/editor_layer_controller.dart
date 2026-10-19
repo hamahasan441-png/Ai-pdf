@@ -47,6 +47,10 @@ final editorLayerProvider =
 /// Redaction covers never belong to a layer: hiding one would leave the text
 /// it covers in the exported file.
 class EditorLayerController extends StateNotifier<EditorLayerState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorLayerState get current => state;
+
   EditorLayerController() : super(const EditorLayerState());
 
   static const order = ['text', 'shape', 'stroke', 'markup', 'image', 'stamp', 'note', 'form'];

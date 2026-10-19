@@ -26,6 +26,10 @@ final editorControllerProvider =
 /// The public API is unchanged from the previous flat implementation so
 /// pick_edit_screen.dart requires zero modifications.
 class EditorController extends StateNotifier<EditorState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorState get current => state;
+
   EditorController() : super(const EditorState());
 
   /// Per-page history stacks. Keyed by page index.

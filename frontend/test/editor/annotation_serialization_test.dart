@@ -187,8 +187,8 @@ void main() {
         0.05,
         false,
         runs: [
-          TextRun('Bold ', bold: true, color: const Color(0xFFFF0000), sizeScale: 1.2),
-          TextRun('Normal', italic: true, fontFamily: 'Courier'),
+          const TextRun('Bold ', bold: true, color: Color(0xFFFF0000), sizeScale: 1.2),
+          const TextRun('Normal', italic: true, fontFamily: 'Courier'),
         ],
         id: 'text-runs',
       );

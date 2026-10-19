@@ -104,7 +104,7 @@ void main() {
 
     test('resizing changes the width and keeps the font size', () {
       final b = box.clone(id: box.id);
-      b.scaleTo(Rect.fromLTWH(0.1, 0.1, 0.5, 0.2));
+      b.scaleTo(const Rect.fromLTWH(0.1, 0.1, 0.5, 0.2));
       expect(b.width, closeTo(0.5, 1e-9));
       expect(b.size, 0.02);
       expect(b.bounds.width, closeTo(0.5, 1e-9));

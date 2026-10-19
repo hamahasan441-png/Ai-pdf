@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 
 import 'package:ai_pdf/core/network/api_client.dart';
-import 'package:ai_pdf/core/services/auto_backup_service.dart';
 
 /// Chat History Screen — E2.3 Enhancement-Based Masterplan.
 ///
@@ -23,7 +22,6 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
   String? _error;
   List<_Session> _sessions = [];
 
-  final _backup = const AutoBackupService();
 
   @override
   void initState() {
@@ -48,24 +46,14 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
         _loading = false;
       });
     } on DioException catch (e) {
-      // Offline fallback — try local backup
-      try {
-        final local = await _backup.listBackups();
-        // Map local backups to session-like items? For now show empty + error with offline note
-        // In future, map auto_backup JSON to _Session
-        setState(() {
-          _loading = false;
-          _error = e.response?.statusCode == 401
-              ? 'Login required to see chat history'
-              : 'Backend unreachable — showing offline mode (on-device answers only). ${e.message}';
-          _sessions = [];
-        });
-      } catch (_) {
-        setState(() {
-          _loading = false;
-          _error = 'Failed to load chat history: ${e.message}';
-        });
-      }
+      // Offline: no server history to show.
+      setState(() {
+        _loading = false;
+        _error = e.response?.statusCode == 401
+            ? 'Login required to see chat history'
+            : 'Backend unreachable — showing offline mode (on-device answers only). ${e.message}';
+        _sessions = [];
+      });
     } catch (e) {
       setState(() {
         _loading = false;

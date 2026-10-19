@@ -78,6 +78,10 @@ final editorRedactionProvider =
         (ref) => EditorRedactionController());
 
 class EditorRedactionController extends StateNotifier<EditorRedactionState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorRedactionState get current => state;
+
   EditorRedactionController() : super(const EditorRedactionState());
 
   /// Whether redaction mode is on (readable from widgets without [state]).

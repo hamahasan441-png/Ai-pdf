@@ -129,9 +129,9 @@ void main() {
 
     test('an OCR word lowers the selection confidence', () {
       final mixed = [
-        PdfTextElement(
+        const PdfTextElement(
           text: 'scan',
-          rect: const Rect.fromLTWH(0.1, 0.1, 0.2, 0.03),
+          rect: Rect.fromLTWH(0.1, 0.1, 0.2, 0.03),
           fontSize: 12,
           source: TextGeometrySource.ocr,
           confidence: 0.4,

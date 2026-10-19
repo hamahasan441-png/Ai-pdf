@@ -16,7 +16,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_pr
 /// A one-page 600 × 800 PDF whose form has the given field dictionaries
 /// (each also its widget). [formQ] sets the form-wide /Q.
 Uint8List formPdf(List<String> fields, {String formQ = ''}) {
-  final first = 4; // fields start at object 4
+  const first = 4; // fields start at object 4
   final refs = [for (var i = 0; i < fields.length; i++) '${first + i} 0 R'].join(' ');
   final objs = [
     '<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [$refs] $formQ >> >>',

@@ -16,7 +16,7 @@ import '../widgets/result_sheet.dart';
 class _OrgPage {
   final Uint8List bytes;
   int rot; // quarter turns clockwise, 0..3
-  _OrgPage(this.bytes, [this.rot = 0]);
+  _OrgPage(this.bytes) : rot = 0;
 }
 
 /// Pro "Organize Pages" tool: reorder (drag), delete, rotate, and add pages

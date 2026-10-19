@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -198,20 +197,17 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   final Map<int, PageLayer> _layers = {};
   final EditorController _editorController = EditorController();
 
-  int get _pageCount => _editorController.state.pageCount;
+  int get _pageCount => _editorController.current.pageCount;
   set _pageCount(int value) => _editorController.setPageCount(value);
 
-  int get _current => _editorController.state.currentPage;
+  int get _current => _editorController.current.currentPage;
   set _current(int value) => _editorController.setCurrentPage(value);
 
-  bool get _loading => _editorController.state.loading;
-  set _loading(bool value) => _editorController.setLoading(value);
+  bool get _loading => _editorController.current.loading;
 
-  String? get _fileName => _editorController.state.fileName;
-  set _fileName(String? value) =>
-      _editorController.setFile(filePath: _editorController.state.filePath, fileName: value);
+  String? get _fileName => _editorController.current.fileName;
 
-  bool get _hasUnsavedChanges => _editorController.state.hasUnsavedChanges;
+  bool get _hasUnsavedChanges => _editorController.current.hasUnsavedChanges;
   set _hasUnsavedChanges(bool value) => _editorController.setUnsavedChanges(value);
 
   EditTool _tool = EditTool.draw;
@@ -1197,7 +1193,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       setState(() => _setTextLayerFromSource(map));
       _syncSearchPages();
       _maskRedactedText();
-      if (_searchController.state.active && _searchController.state.hasMatches) {
+      if (_searchController.current.active && _searchController.current.hasMatches) {
         _jumpToSearch();
       }
     } catch (_) {
@@ -1236,7 +1232,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _jumpToSearch() {
-    final page = _searchController.state.currentPage;
+    final page = _searchController.current.currentPage;
     if (page >= 0 && page != _current) _goToPage(page);
   }
 
@@ -1251,12 +1247,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   List<Rect> _findRects() {
-    if (!_searchController.state.active) return const [];
-    return _searchController.state.rectsForPage(_current);
+    if (!_searchController.current.active) return const [];
+    return _searchController.current.rectsForPage(_current);
   }
 
   int _activeFindIndex() {
-    final state = _searchController.state;
+    final state = _searchController.current;
     final match = state.currentMatch;
     if (match == null || match.pageIndex != _current) return -1;
     var i = 0;
@@ -1445,7 +1441,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   void _toggleSearch() {
     setState(() {
-      if (_searchController.state.active) {
+      if (_searchController.current.active) {
         _searchController.close();
       } else {
         _searchController.open();
@@ -1455,7 +1451,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   void _toggleRedaction() {
     setState(() {
-      if (_redactionController.state.active) {
+      if (_redactionController.current.active) {
         _redactionController.deactivate();
       } else {
         _redactionController.activate();
@@ -1510,7 +1506,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   Future<void> _confirmPageOps() async {
-    final op = _pageOpsController.state;
+    final op = _pageOpsController.current;
     final indices = List<int>.of(op.parsedIndices ?? const []);
     if (indices.isEmpty) return;
     _pageOpsController.hide();
@@ -1748,7 +1744,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
-    if (_redactionController.state.active) {
+    if (_redactionController.current.active) {
       _shapeStart = n;
       _shapeEnd = n;
       setState(() {});
@@ -1826,7 +1822,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   void _onPanUpdate(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
-    if (_redactionController.state.active && _shapeStart != null) {
+    if (_redactionController.current.active && _shapeStart != null) {
       _shapeEnd = n;
       setState(() {});
       return;
@@ -1889,7 +1885,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   void _onPanEnd() {
     if (_tool == EditTool.eraser) return;
-    if (_redactionController.state.active) {
+    if (_redactionController.current.active) {
       _commitRedaction();
       return;
     }
@@ -2294,7 +2290,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _editorController.pushAnnotation(layer, a, page: page);
     _schedulePersist();
     // Log to revision history for cross-session undo / version tracking.
-    final path = _editorController.state.filePath;
+    final path = _editorController.current.filePath;
     if (path != null) {
       _revisionHistory.appendEntry(
         filePath: path,
@@ -2385,13 +2381,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         SnackBar(content: Text(AppLocalizations.of(context)!.smartFillPlaced(confirmed.length))),
       );
       // Save filled values as a form profile for next time.
-      if (_editorController.state.fileName != null) {
+      if (_editorController.current.fileName != null) {
         final values = <String, String>{};
         for (final f in confirmed) {
           values[f.label] = f.value;
         }
         _formProfiles.saveProfile(
-          formType: _editorController.state.fileName!,
+          formType: _editorController.current.fileName!,
           fieldValues: values,
         );
       }
@@ -2987,7 +2983,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       } else {
         _editorController.finishExport();
         // Recovery data stays until the new file is actually on disk.
-        final srcPath = _editorController.state.filePath;
+        final srcPath = _editorController.current.filePath;
         if (clearRecovery && srcPath != null) _persistence.delete(srcPath);
       }
       return outPath;
@@ -3325,7 +3321,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final screen = MediaQuery.sizeOf(context);
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     const barHeight = 64.0;
-    final top = 8.0;
+    const top = 8.0;
     final bottom = viewerBox.globalToLocal(Offset(0, screen.height - inset - barHeight)).dy - 8;
     if (bottom - top < 40) return;
     final scale = _viewTransform.value.getMaxScaleOnAxis();
@@ -3435,9 +3431,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 }),
               )
             : null,
-        searchBar: _searchController.state.active
+        searchBar: _searchController.current.active
             ? EditorSearchBar(
-                searchState: _searchController.state,
+                searchState: _searchController.current,
                 onQueryChanged: _onSearchQuery,
                 onNext: () => _onSearchStep(_searchController.next),
                 onPrevious: () => _onSearchStep(_searchController.previous),
@@ -3456,9 +3452,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onClose: () => setState(() => _wordSelection = null),
               )
             : null,
-        outlinePanel: _outlineController.state.visible
+        outlinePanel: _outlineController.current.visible
             ? EditorOutlinePanel(
-                outlineState: _outlineController.state,
+                outlineState: _outlineController.current,
                 onJumpToPage: _goToPage,
                 onToggleNode: (n) => setState(() => _outlineController.toggleNode(n)),
                 onExpandAll: () => setState(() => _outlineController.expandAll()),
@@ -3466,7 +3462,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onClose: () => setState(() => _outlineController.hide()),
               )
             : null,
-        layerPanel: _layerController.state.visible
+        layerPanel: _layerController.current.visible
             ? EditorLayerPanel(
                 // Read from the marks on every build, so the rows always
                 // match the page, its undo state and page changes.
@@ -3482,9 +3478,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onClose: () => setState(() => _layerController.hide()),
               )
             : null,
-        formReviewPanel: _formReviewController.state.visible
+        formReviewPanel: _formReviewController.current.visible
             ? EditorFormReviewPanel(
-                reviewState: _formReviewController.state,
+                reviewState: _formReviewController.current,
                 onAccept: (id) => setState(() => _formReviewController.acceptField(id)),
                 onReject: (id) => setState(() => _formReviewController.rejectField(id)),
                 onAcceptAllValid: () => setState(() => _formReviewController.acceptAllValid()),
@@ -3561,8 +3557,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onOpenPage: (i) => _closeReadingView(page: i),
               )
             : EditorDocumentViewport(
-          panEnabled: _tool == EditTool.pan && !_redactionController.state.active,
-          scaleEnabled: !_redactionController.state.active,
+          panEnabled: _tool == EditTool.pan && !_redactionController.current.active,
+          scaleEnabled: !_redactionController.current.active,
           pageAspect: _aspectFor(_current),
           transformationController: _viewTransform,
           viewerKey: _viewerKey,
@@ -3578,7 +3574,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             color: _color,
             stroke: _stroke,
             highlightPreview: false,
-            securePreview: _redactionController.state.active,
+            securePreview: _redactionController.current.active,
             markupPreview: _markupPreview,
             markupKind: _markupFactory.kindFor(_tool),
             findRects: _findRects(),
@@ -3669,9 +3665,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onLineHeight: (v) => _styleInlineBox((b) => b.lineHeight = v),
           onToggleWrap: () => _styleInlineBox(_toggleInlineWrap),
         ),
-        pageOpsDialog: _pageOpsController.state.visible
+        pageOpsDialog: _pageOpsController.current.visible
             ? EditorPageOpsDialog(
-                pageOpsState: _pageOpsController.state,
+                pageOpsState: _pageOpsController.current,
                 onRangeChanged: (value) => setState(() => _pageOpsController.setRangeSpec(value)),
                 onOperationChanged: (op) => setState(() => _pageOpsController.setOperation(op)),
                 onSelectAll: () => setState(() => _pageOpsController.selectAll()),

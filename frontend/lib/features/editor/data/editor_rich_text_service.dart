@@ -222,7 +222,7 @@ class EditorRichTextService {
   List<_CharStyle> _expand(TextAnnotation a) {
     final runs = a.runs;
     if (runs == null || runs.isEmpty) {
-      return List.generate(a.text.length, (_) => _CharStyle());
+      return List.generate(a.text.length, (_) => const _CharStyle());
     }
     final result = <_CharStyle>[];
     for (final r in runs) {
@@ -239,7 +239,7 @@ class EditorRichTextService {
     }
     // Pad or trim if runs text doesn't match annotation text exactly.
     while (result.length < a.text.length) {
-      result.add(_CharStyle());
+      result.add(const _CharStyle());
     }
     return result.sublist(0, a.text.length);
   }
@@ -287,14 +287,6 @@ class _CharStyle {
     this.fontFamily,
     this.sizeScale,
   });
-
-  bool get _isDefault =>
-      bold == null &&
-      italic == null &&
-      underline == null &&
-      color == null &&
-      fontFamily == null &&
-      sizeScale == null;
 
   @override
   bool operator ==(Object other) =>

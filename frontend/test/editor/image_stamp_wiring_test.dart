@@ -61,7 +61,7 @@ void main() {
       expect(im.height, closeTo(0.4, 1e-9));
 
       // scaleTo moved pos to (0,0); clone shifts it by +0.03.
-      final dup = im.clone(shift: 0.03) as ImageAnnotation;
+      final dup = im.clone(shift: 0.03);
       expect(dup.id, isNot(im.id));
       expect(dup.label, 'Logo');
       expect(dup.pos.dx, closeTo(0.03, 1e-9));

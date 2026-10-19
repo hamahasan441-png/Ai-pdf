@@ -120,7 +120,7 @@ class EditorToolbar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: const Offset(0, -2))],
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -2))],
       ),
       child: SafeArea(
         top: false,

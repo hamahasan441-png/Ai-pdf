@@ -46,9 +46,8 @@ class StickyNoteAnnotation extends EditorAnnotation {
     this.author = '',
     String? createdAt,
     this.expanded = false,
-    String? id,
-  })  : createdAt = createdAt ?? DateTime.now().toIso8601String(),
-        super(id: id);
+    super.id,
+  })  : createdAt = createdAt ?? DateTime.now().toIso8601String();
 
   static const double iconSize = 0.05;
 
@@ -57,7 +56,7 @@ class StickyNoteAnnotation extends EditorAnnotation {
 
   @override
   void translate(Offset delta) {
-    final max = 1 - iconSize;
+    const max = 1 - iconSize;
     pos = clampOffset01(pos + delta, max < 0 ? 1 : max);
   }
 

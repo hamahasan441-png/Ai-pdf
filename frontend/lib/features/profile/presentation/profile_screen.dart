@@ -45,7 +45,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   void dispose() {
-    for (final c in _c.values) c.dispose();
+    for (final c in _c.values) {
+      c.dispose();
+    }
     _serverCtrl.dispose();
     super.dispose();
   }

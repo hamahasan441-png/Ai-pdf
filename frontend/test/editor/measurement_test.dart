@@ -1,4 +1,3 @@
-import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,7 +58,7 @@ void main() {
 
     test('real area scales by the calibration factor squared', () {
       final cal = svc.calibrate(5, 10, 'cm'); // factor 2
-      final square = const [
+      const square = [
         Offset(0, 0),
         Offset(0, 4),
         Offset(3, 4),

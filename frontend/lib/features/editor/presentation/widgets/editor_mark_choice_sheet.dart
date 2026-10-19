@@ -4,12 +4,12 @@ Future<String?> showEditorMarkChoiceSheet(BuildContext context) {
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
-    builder: (ctx) => SafeArea(
+    builder: (ctx) => const SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: const [
+          children: [
             _MarkChoice(mark: '✓', label: 'Correct', color: Color(0xFF16A34A)),
             _MarkChoice(mark: '✗', label: 'Wrong', color: Color(0xFFD9636B)),
           ],

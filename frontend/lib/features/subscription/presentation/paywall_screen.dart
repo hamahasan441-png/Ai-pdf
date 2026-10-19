@@ -64,7 +64,7 @@ class PaywallScreen extends ConsumerWidget {
                 ...benefits.map((b) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(children: [
-                        Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                        const Icon(Icons.check_circle, color: AppColors.success, size: 20),
                         const SizedBox(width: 10),
                         Expanded(child: Text(b, style: const TextStyle(fontSize: 14))),
                       ]),
@@ -229,7 +229,7 @@ class _ProActive extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified, size: 72, color: AppColors.success),
+            const Icon(Icons.verified, size: 72, color: AppColors.success),
             const SizedBox(height: 16),
             Text(l10n.proActiveTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),

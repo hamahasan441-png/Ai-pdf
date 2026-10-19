@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -510,10 +509,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
         });
       }
     } finally {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
             _busy = false;
             _streaming = false;
           });
+      }
       _scrollToBottom();
     }
   }
@@ -983,7 +984,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         decoration: BoxDecoration(
           color: cs.surface,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, -1))],
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -1))],
         ),
         child: Row(children: [
           Expanded(
@@ -1123,10 +1124,10 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                         isDense: true,
                         border: const OutlineInputBorder(),
                         suffixIcon: f.uncertain
-                            ? Tooltip(
+                            ? const Tooltip(
                                 message: 'AI was unsure — please double-check',
                                 child: Icon(Icons.warning_amber_rounded,
-                                    size: 20, color: const Color(0xFFCF9A4E)),
+                                    size: 20, color: Color(0xFFCF9A4E)),
                               )
                             : null,
                       ),

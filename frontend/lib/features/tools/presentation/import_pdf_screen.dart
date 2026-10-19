@@ -276,10 +276,10 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
+          const Row(children: [
             Icon(Icons.check_circle, color: AppColors.success, size: 22),
-            const SizedBox(width: 8),
-            const Expanded(
+            SizedBox(width: 8),
+            Expanded(
               child: Text('Downloaded',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
