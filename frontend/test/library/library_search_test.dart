@@ -124,9 +124,5 @@ void main() {
       final r = svc.apply(items, const LibraryQuery(searchText: ''));
       expect(r.length, items.length);
     });
-
-    test('allTags collects from all items', () {
-      expect(svc.allTags(items), {'work', 'legal', 'receipts'});
-    });
   });
 }

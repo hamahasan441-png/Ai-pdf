@@ -58,7 +58,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
       GoRoute(path: '/tools/scan', builder: (_, __) => const ScannerScreen()),
       GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
-      GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
+      // `extra` may name a file to open straight away (from the library).
+      GoRoute(
+        path: '/tools/pick-edit',
+        builder: (_, state) => PickEditScreen(initialPath: state.extra is String ? state.extra as String : null),
+      ),
       GoRoute(path: '/tools/smart-fill', builder: (_, __) => const SmartFillScreen()),
       GoRoute(path: '/tools/organize', builder: (_, __) => const OrganizePagesScreen()),
       GoRoute(path: '/tools/protect', builder: (_, __) => const PdfProtectScreen()),
