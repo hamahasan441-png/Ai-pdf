@@ -142,7 +142,7 @@ class _ColorPickerState extends State<_ColorPicker> {
     return Semantics(
       button: true,
       selected: selected,
-      label: 'Colour ${toHex(c)}',
+      label: AppLocalizations.of(context)!.cColorSwatchLabel(toHex(c)),
       child: InkResponse(
         onTap: () => Navigator.pop(context, c),
         radius: 22,

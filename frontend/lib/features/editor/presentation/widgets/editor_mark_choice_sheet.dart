@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 Future<String?> showEditorMarkChoiceSheet(BuildContext context) {
+  final l10n = AppLocalizations.of(context)!;
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
-    builder: (ctx) => const SafeArea(
+    builder: (ctx) => SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _MarkChoice(mark: '✓', label: 'Correct', color: Color(0xFF16A34A)),
-            _MarkChoice(mark: '✗', label: 'Wrong', color: Color(0xFFD9636B)),
+            _MarkChoice(mark: '✓', label: l10n.cMarkCorrect, color: const Color(0xFF16A34A)),
+            _MarkChoice(mark: '✗', label: l10n.cMarkWrong, color: const Color(0xFFD9636B)),
           ],
         ),
       ),

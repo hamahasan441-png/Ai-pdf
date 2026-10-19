@@ -89,7 +89,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     if (mounted) {
       setState(() => _keySet = set);
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('AI settings saved on this device')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.aSettingsSaved)));
     }
   }
 
@@ -98,12 +98,14 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     if (mounted) {
       setState(() => _keySet = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('API key removed')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.aSettingsKeyRemoved)));
     }
   }
 
   Future<void> _test() async {
+    final l10n = AppLocalizations.of(context)!;
     await _save();
+    if (!mounted) return;
     setState(() {
       _testing = true;
       _testResult = null;
@@ -112,20 +114,23 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
       final svc = OpenRouterService();
       final reply = await svc.ask(prompt: 'Reply with the single word: OK');
       final via = svc.lastModelUsed;
+      if (!mounted) return;
       setState(() {
         _testOk = true;
-        _testResult = 'Success! AI replied: "${reply.trim()}"'
-            '${via != null ? '\nModel used: $via' : ''}';
+        _testResult = l10n.aSettingsTestSuccess(reply.trim()) +
+            (via != null ? '\n${l10n.aSettingsModelUsed(via)}' : '');
       });
     } on OpenRouterException catch (e) {
+      if (!mounted) return;
       setState(() {
         _testOk = false;
         _testResult = e.message;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _testOk = false;
-        _testResult = AppLocalizations.of(context)!.operationFailed(describeError(e, AppLocalizations.of(context)));
+        _testResult = l10n.operationFailed(describeError(e, l10n));
       });
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -141,7 +146,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final needsKey = _def.needsKey;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Settings')),
+      appBar: AppBar(title: Text(l10n.aiSettings)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -154,11 +159,10 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             child: Row(children: [
               Icon(Icons.info_outline, size: 20, color: cs.onSurface),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'File tools work offline. AI features use the provider you pick '
-                  'below with your own key. OpenRouter is easiest — one key, every model.',
-                  style: TextStyle(fontSize: 12.5),
+                  l10n.aSettingsIntro,
+                  style: const TextStyle(fontSize: 12.5),
                 ),
               ),
             ]),
@@ -172,13 +176,13 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             valueListenable: ThemeController.instance.mode,
             builder: (context, mode, _) => SegmentedButton<ThemeMode>(
               showSelectedIcon: false,
-              segments: const [
+              segments: [
                 ButtonSegment(
-                    value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('System')),
+                    value: ThemeMode.system, icon: const Icon(Icons.brightness_auto), label: Text(l10n.aSettingsThemeSystem)),
                 ButtonSegment(
-                    value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined), label: Text('Light')),
+                    value: ThemeMode.light, icon: const Icon(Icons.light_mode_outlined), label: Text(l10n.aSettingsThemeLight)),
                 ButtonSegment(
-                    value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined), label: Text('Dark')),
+                    value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_outlined), label: Text(l10n.aSettingsThemeDark)),
               ],
               selected: {mode},
               onSelectionChanged: (s) => ThemeController.instance.set(s.first),
@@ -211,7 +215,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
           const SizedBox(height: 20),
 
           // Provider
-          _sectionTitle('Provider', Icons.hub_outlined),
+          _sectionTitle(l10n.aSettingsProvider, Icons.hub_outlined),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: _provider,
@@ -231,14 +235,14 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
           // API key (only if provider needs one)
           if (needsKey) ...[
-            _sectionTitle('API Key', Icons.key,
-                trailing: _keySet ? _badge('Set', const Color(0xFF2E9E7B)) : null),
+            _sectionTitle(l10n.aSettingsApiKey, Icons.key,
+                trailing: _keySet ? _badge(l10n.aSettingsKeySet, const Color(0xFF2E9E7B)) : null),
             const SizedBox(height: 8),
             TextField(
               controller: _keyCtrl,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: _keySet ? 'Replace key (leave blank to keep)' : 'Paste your ${_def.label.split(' ').first} key',
+                labelText: _keySet ? l10n.aSettingsReplaceKey : l10n.aSettingsPasteKey(_def.label.split(' ').first),
                 prefixIcon: const Icon(Icons.vpn_key, size: 20),
                 border: const OutlineInputBorder(),
                 isDense: true,
@@ -247,7 +251,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             if (_def.keysUrl.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('Get a key at ${_def.keysUrl}',
+                child: Text(l10n.aSettingsGetKeyAt(_def.keysUrl),
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
             if (_keySet)
@@ -256,7 +260,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                 child: TextButton.icon(
                   onPressed: _removeKey,
                   icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Remove key'),
+                  label: Text(l10n.aSettingsRemoveKey),
                 ),
               ),
             const SizedBox(height: 16),
@@ -264,20 +268,20 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
           // Custom endpoint (only for custom provider)
           if (isCustom) ...[
-            _sectionTitle('Server URL', Icons.dns_outlined),
+            _sectionTitle(l10n.aSettingsServerUrl, Icons.dns_outlined),
             const SizedBox(height: 8),
             TextField(
               controller: _endpointCtrl,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'OpenAI-compatible endpoint',
+              decoration: InputDecoration(
+                labelText: l10n.aSettingsEndpoint,
                 hintText: 'http://192.168.1.10:1234/v1/chat/completions',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
             const SizedBox(height: 4),
-            Text('Point to a local server (Ollama, LM Studio) on your Wi-Fi for offline AI.',
+            Text(l10n.aSettingsLocalServerHint,
                 style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
             const SizedBox(height: 16),
           ],
@@ -303,7 +307,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
 
           // Model (the managed provider chooses the model server-side)
           if (!isManaged) ...[
-          _sectionTitle('Model', Icons.smart_toy_outlined),
+          _sectionTitle(l10n.aSettingsModel, Icons.smart_toy_outlined),
           const SizedBox(height: 8),
           if (_def.models.isNotEmpty)
             DropdownButtonFormField<String>(
@@ -315,7 +319,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                       value: m.$1,
                       child: Text(m.$2, overflow: TextOverflow.ellipsis, maxLines: 1),
                     )),
-                const DropdownMenuItem(value: '__custom__', child: Text('Custom model…')),
+                DropdownMenuItem(value: '__custom__', child: Text(l10n.aSettingsCustomModel)),
               ],
               onChanged: (v) => setState(() => _modelChoice = v ?? _modelChoice),
             ),
@@ -323,18 +327,17 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
             if (_def.models.isNotEmpty) const SizedBox(height: 8),
             TextField(
               controller: _modelCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Model name',
-                hintText: 'e.g. llama3, gpt-4o, claude-3-5-haiku-latest',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.aSettingsModelName,
+                hintText: l10n.aSettingsModelHint,
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
           ],
           const SizedBox(height: 6),
           Text(
-            'Tip: pick a vision model to read images/PDFs. If one is busy or gone, '
-            'switch model or provider.',
+            l10n.aSettingsModelTip,
             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 24),
@@ -347,7 +350,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                 icon: _testing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.wifi_tethering),
-                label: Text(_testing ? 'Testing…' : 'Test'),
+                label: Text(_testing ? l10n.aSettingsTesting : l10n.aSettingsTest),
               ),
             ),
             const SizedBox(width: 12),
@@ -355,7 +358,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               child: FilledButton.icon(
                 onPressed: _save,
                 icon: const Icon(Icons.save),
-                label: const Text('Save'),
+                label: Text(l10n.save),
               ),
             ),
           ]),

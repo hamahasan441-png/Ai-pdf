@@ -42,16 +42,16 @@ Future<EditorExportActionResult?> showEditorExportActionsSheet(
               child: Row(children: [
                 Icon(Icons.check_circle, color: cs.secondary, size: 22),
                 const SizedBox(width: 8),
-                Text('Saved', style: Theme.of(ctx).textTheme.titleMedium),
+                Text(l10n.cExportSaved, style: Theme.of(ctx).textTheme.titleMedium),
               ]),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('Do more with your file', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              child: Text(l10n.cExportDoMore, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
             ),
             ListTile(
               leading: Icon(Icons.ios_share, color: cs.primary),
-              title: const Text('Share'),
+              title: Text(l10n.share),
               onTap: () => Navigator.pop(ctx, const EditorExportActionResult.share()),
             ),
             ListTile(

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../core/ads/ads_service.dart';
@@ -15,18 +16,19 @@ import '../services/output_actions.dart';
 Future<void> showResultSheet(
   BuildContext context, {
   required List<String> paths,
-  String title = 'Done!',
+  String? title,
   String? subtitle,
 }) {
+  final resolvedTitle = title ?? AppLocalizations.of(context)!.aResultDone;
   // Track + persist every produced file (fire-and-forget, non-blocking).
   for (final p in paths) {
-    RecentFilesService.instance.add(p, action: title);
+    RecentFilesService.instance.add(p, action: resolvedTitle);
     OutputActions.mirrorToPublicFolder(p);
   }
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) => _ResultSheet(paths: paths, title: title, subtitle: subtitle),
+    builder: (ctx) => _ResultSheet(paths: paths, title: resolvedTitle, subtitle: subtitle),
   ).whenComplete(() {
     // Finishing a tool is a natural break — maybe show a (capped) interstitial
     // to free users. No-op for Pro.
@@ -45,6 +47,7 @@ class _ResultSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -72,7 +75,7 @@ class _ResultSheet extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Text(
-              paths.length == 1 ? paths.first.split('/').last : '${paths.length} files',
+              paths.length == 1 ? paths.first.split('/').last : l10n.aResultFiles(paths.length),
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -84,7 +87,7 @@ class _ResultSheet extends StatelessWidget {
                   Expanded(
                     child: _ActionButton(
                       icon: Icons.visibility_outlined,
-                      label: 'Preview',
+                      label: l10n.preview,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.of(context).push(MaterialPageRoute(
@@ -97,7 +100,7 @@ class _ResultSheet extends StatelessWidget {
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.download_outlined,
-                    label: 'Save',
+                    label: l10n.save,
                     onTap: () async {
                       if (paths.length == 1) {
                         await OutputActions.save(context, paths.first);
@@ -114,7 +117,7 @@ class _ResultSheet extends StatelessWidget {
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.share_outlined,
-                    label: 'Share',
+                    label: l10n.share,
                     primary: true,
                     onTap: () => OutputActions.shareMany(context, paths),
                   ),
@@ -206,10 +209,12 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.download_outlined),
+            tooltip: AppLocalizations.of(context)!.save,
             onPressed: () => OutputActions.save(context, widget.path),
           ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
+            tooltip: AppLocalizations.of(context)!.share,
             onPressed: () => OutputActions.share(context, widget.path),
           ),
         ],

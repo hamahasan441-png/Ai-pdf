@@ -258,7 +258,7 @@ class EditorSelectionActionBar extends StatelessWidget {
                 EditorMiniButton(icon: Icons.text_decrease, tooltip: 'A−', onTap: onTextDecrease!),
                 EditorMiniButton(icon: Icons.text_increase, tooltip: 'A+', onTap: onTextIncrease!),
                 EditorMiniButton(
-                    icon: Icons.palette_outlined, tooltip: 'Colour', onTap: onPickTextColor!),
+                    icon: Icons.palette_outlined, tooltip: l10n.colorTitle, onTap: onPickTextColor!),
                 const SizedBox(width: 4),
                 const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
                 const SizedBox(width: 4),
@@ -275,7 +275,7 @@ class EditorSelectionActionBar extends StatelessWidget {
                 const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
                 const SizedBox(width: 4),
               ],
-              EditorMiniButton(icon: Icons.content_copy, tooltip: 'Copy', onTap: onCopy),
+              EditorMiniButton(icon: Icons.content_copy, tooltip: l10n.copy, onTap: onCopy),
               EditorMiniButton(icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
               const SizedBox(width: 4),
               const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),

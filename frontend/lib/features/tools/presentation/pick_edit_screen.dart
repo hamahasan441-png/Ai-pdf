@@ -380,8 +380,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _showFields = true;
         _tool = EditTool.pan; // so taps select/fill, not draw
       });
-      if (detected.isEmpty && !silent) {
-        _showError('No obvious fields found on this page. You can still tap Text to add anywhere.');
+      if (detected.isEmpty && !silent && mounted) {
+        _showError(AppLocalizations.of(context)!.cEditNoFieldsFound);
       }
     } catch (e) {
       if (!silent && mounted) _showError(AppLocalizations.of(context)!.errFieldDetection(describeError(e, AppLocalizations.of(context))));
@@ -430,6 +430,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
 
     final placement = _fieldInput.buildTextPlacement(field);
+    final l10n = AppLocalizations.of(context)!;
 
     if (field.type == FieldType.date) {
       final d = await showDatePicker(
@@ -437,7 +438,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         initialDate: DateTime.now(),
         firstDate: DateTime(1900),
         lastDate: DateTime(2100),
-        helpText: placement.title.isEmpty ? 'Select date' : placement.title,
+        helpText: placement.title.isEmpty ? l10n.cEditSelectDate : placement.title,
       );
       if (d != null) {
         _placeValue(placement.pos, placement.size, _fieldInput.formatDate(d));
@@ -446,7 +447,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
 
     final val = await _promptValue(
-      placement.title.isEmpty ? 'Enter value' : placement.title,
+      placement.title.isEmpty ? l10n.cEditEnterValue : placement.title,
       _fieldInput.keyboardTypeFor(field.type),
       field.type,
     );
@@ -484,12 +485,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (similar.isEmpty) return;
 
     final label = _fieldInput.cleanLabel(source.label);
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Fill ${similar.length} more "$label" field(s) with the same value?'),
+        content: Text(l10n.cEditFillSimilar(similar.length, label)),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
-          label: 'Fill all',
+          label: l10n.cEditFillAll,
           onPressed: () {
             for (final f in similar) {
               final placement = _fieldInput.buildTextPlacement(f);
@@ -600,12 +602,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     await _loadFile(picked.path, picked.name);
   }
 
-  String _openError(Object error) {
+  String _openError(Object error, AppLocalizations l10n) {
     final text = error.toString().toLowerCase();
     if (text.contains('password') || text.contains('encrypt')) {
-      return 'This PDF is password-protected and cannot be edited until the password is removed.';
+      return l10n.cEditPasswordProtected;
     }
-    return 'Could not open file: $error';
+    return l10n.cEditCouldNotOpen(describeError(error, l10n));
   }
 
   /// Reads the PDF's bookmarks for the Outline panel, off the UI thread.
@@ -783,6 +785,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   Future<void> _loadFile(String path, String name, {List<FilledField>? fields}) async {
     final gen = ++_openGen;
     bool superseded() => !mounted || gen != _openGen;
+    final l10n = AppLocalizations.of(context)!;
     _editorController.beginOpenFile(fileName: name, filePath: path);
     setState(() {
       _pageCache.clear();
@@ -859,7 +862,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       final saved = await _persistence.loadChecked(path);
       if (superseded()) return;
       if (saved.corrupt) {
-        _showError('Saved marks could not be read. A backup was kept.');
+        _showError(l10n.cEditSavedMarksUnreadable);
       }
       _formValues
         ..clear()
@@ -874,7 +877,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         await _persistence.quarantine(path);
         if (superseded()) return;
         savedLayers = const {};
-        _showError('Saved marks do not match this file. A backup was kept.');
+        _showError(l10n.cEditSavedMarksMismatch);
       } else if (!savedStructure.isIdentity) {
         _applySavedStructure(savedStructure);
       }
@@ -912,8 +915,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (mounted) setState(() {});
     } catch (e) {
       if (superseded()) return;
-      _editorController.failOpenFile(_openError(e));
-      _showError(_openError(e));
+      _editorController.failOpenFile(_openError(e, l10n));
+      _showError(_openError(e, l10n));
       if (mounted) setState(() {});
     }
   }
@@ -1369,6 +1372,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   Future<void> _goToPage(int index) async {
     if (index < 0 || index >= _pageCount) return;
+    _leaveFill();
     final ticket = ++_navTicket;
     _editorController.beginPageChange();
     final hadPreview = _pageCache.containsKey(index);
@@ -2182,7 +2186,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _clipboard = _editorController.copySelected(sel, _selection);
     setState(() {}); // refresh so the Paste action becomes enabled
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied'), duration: Duration(milliseconds: 900)),
+      SnackBar(content: Text(AppLocalizations.of(context)!.copied), duration: const Duration(milliseconds: 900)),
     );
   }
 
@@ -2806,8 +2810,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _undo() {
+    // Typing in a form field is a step of its own: undo takes it back first.
+    _commitFillText();
     setState(() {
       _editorController.undo(_layer);
+      _syncFillText();
       _selected = null;
       _multi.clear();
       _syncSearchPages();
@@ -2816,8 +2823,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _redoAction() {
+    _commitFillText();
     setState(() {
       _editorController.redo(_layer);
+      _syncFillText();
       _selected = null;
       _multi.clear();
       _syncSearchPages();
@@ -2925,6 +2934,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     List<int>? onlyIndices,
     bool clearRecovery = true,
   }) async {
+    // What is being typed in a form field belongs in the file.
+    _commitFillText();
+    final l10n = AppLocalizations.of(context)!;
     final sourcePath = _editorController.filePath;
     final keepsSource = _doc != null && sourcePath != null && sourcePath.toLowerCase().endsWith('.pdf');
     var hides = const <int>[];
@@ -2980,11 +2992,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         outPath = await _imageOnlyExport(onlyIndices);
       }
       if (outPath == null) {
-        _editorController.finishExport(error: 'Nothing to export');
-        _showError('Nothing to export');
+        _editorController.finishExport(error: l10n.cEditNothingToExport);
+        _showError(l10n.cEditNothingToExport);
       } else if (!File(outPath).existsSync() || File(outPath).lengthSync() < 32) {
-        _editorController.finishExport(error: 'Export file was not written');
-        _showError('Export file was not written');
+        _editorController.finishExport(error: l10n.cEditExportNotWritten);
+        _showError(l10n.cEditExportNotWritten);
         return null;
       } else {
         _editorController.finishExport();
@@ -3211,6 +3223,27 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _hasUnsavedChanges = true;
     });
     _schedulePersist();
+  }
+
+  /// The focused text field shows its stored value again (after undo).
+  void _syncFillText() {
+    final fill = _fill;
+    if (fill == null || fill.field.kind != AcroFieldKind.text) return;
+    final value = '${fieldValue(fill.field, _formValues)}';
+    if (value != _fillText.text) {
+      _fillText.value = TextEditingValue(text: value, selection: TextSelection.collapsed(offset: value.length));
+    }
+  }
+
+  /// Leaving the page: keep what was typed and close the field, without
+  /// moving the view back (the new page has its own).
+  void _leaveFill() {
+    if (_fill == null) return;
+    _commitFillText();
+    _fillFocus.unfocus();
+    _revealTimer?.cancel();
+    _fillSavedView = null;
+    _fillSmarts = null;
   }
 
   /// What was typed in the focused text field becomes its value.

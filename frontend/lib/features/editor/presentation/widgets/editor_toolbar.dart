@@ -155,7 +155,7 @@ class EditorToolbar extends StatelessWidget {
                       (c) => Semantics(
                         button: true,
                         selected: _same(color, c),
-                        label: 'Colour',
+                        label: l10n.colorTitle,
                         child: GestureDetector(
                           onTap: () => onColorChanged(c),
                           child: Container(

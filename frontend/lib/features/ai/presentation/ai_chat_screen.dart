@@ -196,7 +196,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         _pageImages = {1: path}; // the image itself is page 1 for OCR
       }
       if (_docImages.isEmpty) {
-        _error = 'Could not read any pages from this file.';
+        if (mounted) _error = AppLocalizations.of(context)!.aChatNoPages;
       } else if (_isForm) {
         // Kick off the form flow automatically.
         await _send(
@@ -444,7 +444,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     final text = (auto ?? _inputCtrl.text).trim();
     if (text.isEmpty || _busy) return;
     if (_docImages.isEmpty) {
-      setState(() => _error = 'Choose a document first.');
+      setState(() => _error = AppLocalizations.of(context)!.aChatChooseDocFirst);
       return;
     }
     setState(() {
@@ -571,9 +571,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final fields = _snapToOcr(_parseFields(reply), ocrByPage);
 
       if (fields.isEmpty) {
-        setState(() => _error =
-            'Could not detect where to place the answers. You can still copy the '
-            'values above and place them manually in the editor.');
+        if (!mounted) return;
+        setState(() => _error = AppLocalizations.of(context)!.aChatPlaceNoFields);
         return;
       }
 
@@ -673,7 +672,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         actions: [
           // E2.3 Chat History — persisted sessions
           IconButton(
-            tooltip: 'Chat History',
+            tooltip: l10n.aChatHistoryTitle,
             icon: const Icon(Icons.history),
             onPressed: () => context.push('/ai/history'),
           ),
@@ -744,7 +743,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             icon: _placing
                 ? const ButtonSpinner(size: 16)
                 : const Icon(Icons.auto_fix_high),
-            label: Text(_placing ? 'Placing answers…' : 'Place answers on the form'),
+            label: Text(_placing ? AppLocalizations.of(context)!.aChatPlacing : AppLocalizations.of(context)!.aChatPlaceAnswers),
           ),
         ),
       ),
@@ -769,7 +768,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _fileName ?? 'Tap to choose a PDF or image',
+                _fileName ?? AppLocalizations.of(context)!.aChatTapToChoose,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -778,7 +777,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             if (_loadingDoc)
               const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
             else
-              Text(_fileName == null ? '' : 'Change',
+              Text(_fileName == null ? '' : AppLocalizations.of(context)!.change,
                   style: TextStyle(color: cs.primary, fontSize: 12, fontWeight: FontWeight.w600)),
           ]),
         ),
@@ -807,10 +806,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
               const SizedBox(height: 16),
               Text(
                 _isForm
-                    ? 'Choose a form (PDF or photo). The AI reads it, auto-fills what it '
-                        'already knows from your profile, asks only for what\'s missing, '
-                        'then places the answers on the real form to export.'
-                    : 'Choose any PDF or image, then chat to understand it, summarize, or extract details.',
+                    ? AppLocalizations.of(context)!.aChatFormIntro
+                    : AppLocalizations.of(context)!.aChatUnderstandIntro,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant),
               ),
@@ -818,7 +815,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               FilledButton.icon(
                 onPressed: _loadingDoc ? null : _pick,
                 icon: const Icon(Icons.folder_open),
-                label: Text(_isForm ? 'Choose a form' : 'Choose file'),
+                label: Text(_isForm ? AppLocalizations.of(context)!.aChatChooseForm : AppLocalizations.of(context)!.chooseFile),
               ),
               if (_isForm) ...[
                 const SizedBox(height: 12),
@@ -881,7 +878,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     }
                   }),
                   const SizedBox(width: 14),
-                  _bubbleAction(cs, Icons.picture_as_pdf_outlined, 'Save PDF',
+                  _bubbleAction(cs, Icons.picture_as_pdf_outlined, AppLocalizations.of(context)!.aChatSavePdf,
                       () => _saveAnswerPdf(m.text)),
                 ]),
               ),
@@ -906,12 +903,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// after the conversation starts, so the user can tap anytime.
   Widget _quickActions(ColorScheme cs) {
     if (_isForm || _docImages.isEmpty) return const SizedBox.shrink();
-    const actions = [
-      ('Summarize', 'Give a concise summary with key takeaways'),
-      ('Key facts', 'List every important name, date, number and amount'),
-      ('Action items', 'What actions, tasks, or deadlines does this document require?'),
-      ('Translate', 'Translate the document into English'),
-      ('Explain', 'Explain this document in simple terms a non-expert can understand'),
+    final l10n = AppLocalizations.of(context)!;
+    // Labels are shown in the UI; the second value is the prompt sent to the AI.
+    final actions = [
+      (l10n.aChatQaSummarize, 'Give a concise summary with key takeaways'),
+      (l10n.aChatQaKeyFacts, 'List every important name, date, number and amount'),
+      (l10n.aChatQaActionItems, 'What actions, tasks, or deadlines does this document require?'),
+      (l10n.aChatQaTranslate, 'Translate the document into English'),
+      (l10n.aChatQaExplain, 'Explain this document in simple terms a non-expert can understand'),
     ];
     return SizedBox(
       height: 38,
@@ -932,19 +931,20 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// Shown in Understand mode after a doc is loaded but before any question,
   /// to give the user quick starting points.
   Widget _suggestionView(ColorScheme cs) {
-    const suggestions = [
-      'Summarize this document',
-      'List the key dates, names and amounts',
-      'Explain it in simple words',
-      'What do I need to do or send?',
-      'Are there any deadlines?',
+    final l10n = AppLocalizations.of(context)!;
+    final suggestions = [
+      l10n.aChatSuggestSummarize,
+      l10n.aChatSuggestKeyData,
+      l10n.aChatSuggestSimple,
+      l10n.aChatSuggestTodo,
+      l10n.aChatSuggestDeadlines,
     ];
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
         Icon(Icons.auto_awesome, size: 40, color: cs.primary),
         const SizedBox(height: 10),
-        Text(AppLocalizations.of(context)!.askAboutYourDocument,
+        Text(l10n.askAboutYourDocument,
             textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
         const SizedBox(height: 16),
         Wrap(
@@ -1114,8 +1114,8 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                   ),
                   Tooltip(
                     message: f.isCheck
-                        ? 'Checkbox'
-                        : (f.isSignature ? 'Signature' : 'Text'),
+                        ? l10n.markCheckbox
+                        : (f.isSignature ? l10n.fieldKindSignature : l10n.fieldKindText),
                     child: Icon(typeIcon, size: 18, color: cs.onSurfaceVariant),
                   ),
                   const SizedBox(width: 8),
@@ -1123,13 +1123,13 @@ class _FieldReviewSheetState extends State<_FieldReviewSheet> {
                     child: TextField(
                       controller: _ctrls[i],
                       decoration: InputDecoration(
-                        labelText: f.field.isNotEmpty ? f.field : 'Value (page ${f.page})',
+                        labelText: f.field.isNotEmpty ? f.field : l10n.aChatValueOnPage(f.page),
                         isDense: true,
                         border: const OutlineInputBorder(),
                         suffixIcon: f.uncertain
-                            ? const Tooltip(
-                                message: 'AI was unsure — please double-check',
-                                child: Icon(Icons.warning_amber_rounded,
+                            ? Tooltip(
+                                message: l10n.aChatAiUnsure,
+                                child: const Icon(Icons.warning_amber_rounded,
                                     size: 20, color: Color(0xFFCF9A4E)),
                               )
                             : null,

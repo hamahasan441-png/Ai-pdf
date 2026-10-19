@@ -44,20 +44,24 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
       final sessions = data.map((j) => _Session.fromJson(j)).toList();
       // Sort newest first (backend already, but ensure)
       sessions.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (!mounted) return;
       setState(() {
         _sessions = sessions;
         _loading = false;
       });
     } on DioException catch (e) {
       // Offline: no server history to show.
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
       setState(() {
         _loading = false;
         _error = e.response?.statusCode == 401
-            ? 'Login required to see chat history'
-            : 'Backend unreachable — showing offline mode (on-device answers only). ${e.message}';
+            ? l10n.aChatHistoryLoginRequired
+            : l10n.aChatHistoryOffline;
         _sessions = [];
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = describeError(e, AppLocalizations.of(context));
@@ -69,11 +73,11 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete chat?'),
-        content: const Text('This will permanently delete this chat session and all its messages.'),
+        title: Text(AppLocalizations.of(ctx)!.aChatHistoryDeleteTitle),
+        content: Text(AppLocalizations.of(ctx)!.aChatHistoryDeleteBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.delete)),
         ],
       ),
     );
@@ -81,11 +85,12 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
     try {
       final api = ref.read(apiClientProvider);
       await api.dio.delete('/chat-history/$id');
+      if (!mounted) return;
       setState(() {
         _sessions.removeWhere((s) => s.id == id);
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.aChatHistoryDeleted)));
       }
     } catch (e) {
       if (mounted) {
@@ -118,11 +123,12 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chat History'),
+        title: Text(l10n.aChatHistoryTitle),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+          IconButton(icon: const Icon(Icons.refresh), tooltip: l10n.aChatHistoryRefresh, onPressed: _load),
         ],
       ),
       body: _loading
@@ -141,7 +147,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                         FilledButton.icon(
                           onPressed: _load,
                           icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
+                          label: Text(l10n.aChatHistoryRetry),
                         ),
                       ],
                     ),
@@ -156,17 +162,17 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                           children: [
                             Icon(Icons.history, size: 64, color: cs.outline),
                             const SizedBox(height: 16),
-                            const Text('No chat history', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                            Text(l10n.aChatHistoryEmpty, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 8),
-                            const Text(
-                              'Your document chats will appear here. Start a chat with a PDF to see page-cited answers, then come back to resume.',
+                            Text(
+                              l10n.aChatHistoryEmptyBody,
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
                             FilledButton.icon(
                               onPressed: () => context.push('/ai'),
                               icon: const Icon(Icons.psychology),
-                              label: const Text('Start new chat'),
+                              label: Text(l10n.aChatHistoryStartNew),
                             ),
                           ],
                         ),
@@ -184,13 +190,13 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                               backgroundColor: cs.primaryContainer,
                               child: Icon(Icons.chat_bubble, color: cs.onPrimaryContainer, size: 20),
                             ),
-                            title: Text(s.title.isEmpty ? 'Untitled chat' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            title: Text(s.title.isEmpty ? l10n.aChatHistoryUntitled : s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (s.documentId != null) Text('Doc: ${s.documentId}', style: TextStyle(fontSize: 11, color: cs.outline)),
+                                if (s.documentId != null) Text(l10n.aChatHistoryDoc(s.documentId!), style: TextStyle(fontSize: 11, color: cs.outline)),
                                 Text(
-                                  '${s.messageCount} messages • ${s.updatedAt.toLocal().toString().split('.').first}',
+                                  l10n.aChatHistoryMeta(s.messageCount, s.updatedAt.toLocal().toString().split('.').first),
                                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                                 ),
                               ],
@@ -201,8 +207,8 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
                                 if (v == 'delete') _delete(s.id);
                               },
                               itemBuilder: (_) => [
-                                const PopupMenuItem(value: 'restore', child: Text('Restore')),
-                                const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                PopupMenuItem(value: 'restore', child: Text(l10n.aChatHistoryRestore)),
+                                PopupMenuItem(value: 'delete', child: Text(l10n.delete)),
                               ],
                             ),
                             onTap: () => _restore(s),
@@ -215,7 +221,7 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
           : FloatingActionButton.extended(
               onPressed: () => context.push('/ai'),
               icon: const Icon(Icons.add),
-              label: const Text('New chat'),
+              label: Text(l10n.newChat),
             ),
     );
   }
