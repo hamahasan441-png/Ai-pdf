@@ -77,9 +77,20 @@ class EditorSearchController extends StateNotifier<EditorSearchState> {
   /// the document or page extraction changes.
   Map<int, List<PdfTextElement>> _pages = const {};
 
+  /// The text layer the current matches index into.
+  Map<int, List<PdfTextElement>> get pages => _pages;
+
+  /// The matches a replace acts on: every match, or only the current one.
+  List<SearchMatch> matchesToReplace({required bool all}) {
+    final current = state.currentMatch;
+    return all ? state.matches : [if (current != null) current];
+  }
+
   void setPages(Map<int, List<PdfTextElement>> pages) {
     _pages = pages;
-    if (state.active && state.query.isNotEmpty) _run();
+    // The same query on a changed layer (for example after a replace) stays
+    // at the same match number, which is now the next match.
+    if (state.active && state.query.isNotEmpty) _run(keepPosition: true);
   }
 
   void open() {
@@ -128,9 +139,10 @@ class EditorSearchController extends StateNotifier<EditorSearchState> {
     );
   }
 
-  void _run() {
+  void _run({bool keepPosition = false}) {
     final matches = _svc.search(_pages, state.query, options: state.options);
-    final idx = matches.isNotEmpty ? 0 : -1;
+    final keep = keepPosition && state.currentMatchIndex >= 0 ? state.currentMatchIndex : 0;
+    final idx = matches.isEmpty ? -1 : (keep < matches.length ? keep : 0);
     state = state.copyWith(matches: matches, currentMatchIndex: idx);
   }
 }

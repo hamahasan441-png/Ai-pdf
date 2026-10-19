@@ -468,5 +468,15 @@
   "toolPrint": "Imprimir",
   "toolPrintDesc": "Enviar un PDF a una impresora",
   "printFailed": "No se puede imprimir: {error}",
-  "editTextFlattened": "Página {pages}: no se pudo quitar el texto reemplazado del propio PDF, así que la página se guardó como imagen."
+  "editTextFlattened": "Página {pages}: no se pudo quitar el texto reemplazado del propio PDF, así que la página se guardó como imagen.",
+  "searchMatchCase": "Coincidir mayúsculas",
+  "searchWholeWord": "Palabra completa",
+  "searchPrevious": "Coincidencia anterior",
+  "searchNext": "Coincidencia siguiente",
+  "searchClose": "Cerrar búsqueda",
+  "replaceToggle": "Buscar y reemplazar",
+  "replaceWithHint": "Reemplazar con",
+  "replaceOne": "Reemplazar",
+  "replaceAll": "Reemplazar todo",
+  "replacedCount": "{count, plural, =0{No se reemplazó nada} =1{Se reemplazó 1 coincidencia} other{Se reemplazaron {count} coincidencias}}"
 }

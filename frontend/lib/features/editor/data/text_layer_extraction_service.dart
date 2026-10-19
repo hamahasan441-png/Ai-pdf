@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Color, Offset, Rect;
 
 /// Where a positioned text box came from.
 ///
@@ -32,6 +32,10 @@ class PdfTextElement {
   final bool isItalic;
   final TextGeometrySource source;
 
+  /// Fill colour the glyphs were painted with, when the content stream sets
+  /// it in a colour space we can read (gray, RGB, CMYK). Null if unknown.
+  final Color? color;
+
   /// 0..1. Native geometry defaults to 1. OCR callers should set a lower value.
   final double confidence;
 
@@ -43,6 +47,7 @@ class PdfTextElement {
     this.isBold = false,
     this.isItalic = false,
     this.source = TextGeometrySource.native,
+    this.color,
     this.confidence = 1,
   });
 
@@ -62,6 +67,7 @@ class PdfTextElement {
       isBold: isBold,
       isItalic: isItalic,
       source: source,
+      color: color,
       confidence: confidence,
     );
   }

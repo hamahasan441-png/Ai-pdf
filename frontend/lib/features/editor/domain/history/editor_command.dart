@@ -38,6 +38,29 @@ class AddCommand extends EditorCommand {
   }
 }
 
+/// Add several annotations as one step (one undo removes them all).
+class AddBatchCommand extends EditorCommand {
+  final List<EditorAnnotation> annotations;
+  AddBatchCommand(Iterable<EditorAnnotation> annotations) : annotations = List.of(annotations);
+
+  @override
+  String get label => 'Add ${annotations.length}';
+
+  @override
+  void execute(PageLayer layer) {
+    for (final a in annotations) {
+      if (!layer.items.contains(a)) layer.items.add(a);
+    }
+  }
+
+  @override
+  void undo(PageLayer layer) {
+    for (final a in annotations) {
+      layer.items.remove(a);
+    }
+  }
+}
+
 /// Remove one annotation.
 class RemoveCommand extends EditorCommand {
   final EditorAnnotation annotation;

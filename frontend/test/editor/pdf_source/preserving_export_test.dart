@@ -8,10 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/pdf.dart' show PdfColors, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 
+import 'package:ai_pdf/features/editor/data/document_search_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
+import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 
@@ -542,6 +544,48 @@ void main() {
           // Under "999": the light blue band survives (a whiteout would be white).
           'color_at': [
             {'page': 0, 'at': [r2.right - 0.004, r2.top + 0.004], 'rgb': [204, 230, 255]},
+          ],
+        });
+      });
+    });
+
+    testWidgets('find and replace all rewrites every match in the page content', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/edit.pdf';
+        File(source).writeAsBytesSync(fixture('edit_text'));
+        // Page 0 only: its font has exact widths, so every match is erasable.
+        final words = {0: const PdfContentTextExtractor().extract(fixture('edit_text'))[0]!};
+        final height = store('edit_text').pages[0].mediaBox[3];
+        const search = DocumentSearchService();
+        const replace = TextReplaceService();
+        final layer = PageLayer();
+        var replaced = 0;
+        for (final (find, by) in [('12345', '54321'), ('total', 'Sum')]) {
+          final visible = replace.unreplaced(words, {0: layer});
+          final plan = replace.plan(visible, search.search(visible, find), by, pageHeightPt: {0: height});
+          replaced += plan.replaced;
+          layer.items.addAll(plan.items[0]!);
+        }
+        expect(replaced, 2);
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {0: layer},
+          pageCount: 1,
+          sourcePages: const [0],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty);
+        expect(result.report.erasedGlyphs, 5 + 5);
+        final text = pageText(File(result.path).readAsBytesSync(), 0);
+        expect(text, allOf(contains('54321'), contains('Sum'), contains('Invoice'), isNot(contains('12345')), isNot(contains('Total'))));
+        keepFor('service_replace_all', result.path, {
+          'pages': [
+            {'text_contains': ['54321', 'Sum', 'Invoice', 'amount', keep], 'text_absent': ['12345', 'Total']},
+          ],
+          'same_positions': [
+            {'source': 'edit_text.pdf', 'source_page': 0, 'page': 0, 'words': ['Invoice', 'number', 'due', 'today', 'amount', 'EUR']},
           ],
         });
       });

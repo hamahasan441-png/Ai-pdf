@@ -199,6 +199,25 @@ void main() {
     expect(word.fontSize, 18);
     expect(word.isBold, isTrue);
   });
+
+  test('the replacement keeps the fill colour of the words it replaces', () {
+    const words = [
+      PdfTextElement(text: 'Total', rect: Rect.fromLTWH(0.1, 0.2, 0.1, 0.02), fontSize: 12, color: Color(0xFF1F4E79)),
+      PdfTextElement(text: 'due', rect: Rect.fromLTWH(0.21, 0.2, 0.06, 0.02), fontSize: 12, color: Color(0xFFC00000)),
+    ];
+    final draft = const EditorExistingTextService().draftForWords(words, pageHeightPt: 800);
+    expect(draft.textBox.color, const Color(0xFF1F4E79));
+    expect(draft.textBox.runs, isNotNull);
+    expect(draft.textBox.runs!.first.color, isNull);
+    expect(draft.textBox.runs!.last.color, const Color(0xFFC00000));
+
+    // Unknown colour (null) falls back to black, as before.
+    final plain = const EditorExistingTextService().draftForWords([
+      const PdfTextElement(text: 'x', rect: Rect.fromLTWH(0.1, 0.2, 0.05, 0.02), fontSize: 12),
+    ], pageHeightPt: 800);
+    expect(plain.textBox.color, Colors.black);
+    expect(plain.textBox.runs, isNull);
+  });
 }
 
 Uint8List _miniPdf() {

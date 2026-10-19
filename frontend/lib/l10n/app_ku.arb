@@ -468,5 +468,15 @@
   "toolPrint": "چاپکردن",
   "toolPrintDesc": "ناردنی PDF بۆ چاپکەر",
   "printFailed": "چاپکردن بەردەست نییە: {error}",
-  "editTextFlattened": "پەڕەی {pages}: دەقە گۆڕدراوەکە لە خودی PDF ـەکە نەسڕایەوە، بۆیە پەڕەکە وەک وێنە پاشەکەوت کرا."
+  "editTextFlattened": "پەڕەی {pages}: دەقە گۆڕدراوەکە لە خودی PDF ـەکە نەسڕایەوە، بۆیە پەڕەکە وەک وێنە پاشەکەوت کرا.",
+  "searchMatchCase": "جیاکردنەوەی پیتی گەورە و بچووک",
+  "searchWholeWord": "تەنها ووشەی تەواو",
+  "searchPrevious": "ئەنجامی پێشوو",
+  "searchNext": "ئەنجامی دواتر",
+  "searchClose": "داخستنی گەڕان",
+  "replaceToggle": "دۆزینەوە و گۆڕین",
+  "replaceWithHint": "بیگۆڕە بە",
+  "replaceOne": "گۆڕین",
+  "replaceAll": "گۆڕینی هەموو",
+  "replacedCount": "{count, plural, =0{هیچ شتێک نەگۆڕدرا} =1{١ ئەنجام گۆڕدرا} other{{count} ئەنجام گۆڕدران}}"
 }

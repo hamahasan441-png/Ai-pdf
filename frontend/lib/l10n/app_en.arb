@@ -533,5 +533,16 @@
   "printFailed": "Printing is not available: {error}",
   "@printFailed": {"placeholders": {"error": {"type": "String"}}},
   "editTextFlattened": "Page {pages}: the replaced text could not be removed from the PDF itself, so the page was saved as an image.",
-  "@editTextFlattened": {"placeholders": {"pages": {"type": "String"}}}
+  "@editTextFlattened": {"placeholders": {"pages": {"type": "String"}}},
+  "searchMatchCase": "Match case",
+  "searchWholeWord": "Whole word",
+  "searchPrevious": "Previous match",
+  "searchNext": "Next match",
+  "searchClose": "Close search",
+  "replaceToggle": "Find and replace",
+  "replaceWithHint": "Replace with",
+  "replaceOne": "Replace",
+  "replaceAll": "Replace all",
+  "replacedCount": "{count, plural, =0{Nothing was replaced} =1{Replaced 1 match} other{Replaced {count} matches}}",
+  "@replacedCount": {"placeholders": {"count": {"type": "int"}}}
 }

@@ -468,5 +468,15 @@
   "toolPrint": "چاپ",
   "toolPrintDesc": "ارسال PDF به چاپگر",
   "printFailed": "چاپ ممکن نیست: {error}",
-  "editTextFlattened": "صفحهٔ {pages}: متن جایگزین‌شده از خود PDF حذف نشد، پس صفحه به‌صورت تصویر ذخیره شد."
+  "editTextFlattened": "صفحهٔ {pages}: متن جایگزین‌شده از خود PDF حذف نشد، پس صفحه به‌صورت تصویر ذخیره شد.",
+  "searchMatchCase": "تطبیق بزرگی و کوچکی حروف",
+  "searchWholeWord": "کلمهٔ کامل",
+  "searchPrevious": "نتیجهٔ قبلی",
+  "searchNext": "نتیجهٔ بعدی",
+  "searchClose": "بستن جستجو",
+  "replaceToggle": "جستجو و جایگزینی",
+  "replaceWithHint": "جایگزین با",
+  "replaceOne": "جایگزینی",
+  "replaceAll": "جایگزینی همه",
+  "replacedCount": "{count, plural, =0{چیزی جایگزین نشد} =1{۱ مورد جایگزین شد} other{{count} مورد جایگزین شد}}"
 }

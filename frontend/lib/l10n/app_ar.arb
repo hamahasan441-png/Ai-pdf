@@ -468,5 +468,15 @@
   "toolPrint": "طباعة",
   "toolPrintDesc": "إرسال ملف PDF إلى طابعة",
   "printFailed": "الطباعة غير متاحة: {error}",
-  "editTextFlattened": "الصفحة {pages}: تعذّر حذف النص المستبدل من ملف PDF نفسه، لذا حُفظت الصفحة كصورة."
+  "editTextFlattened": "الصفحة {pages}: تعذّر حذف النص المستبدل من ملف PDF نفسه، لذا حُفظت الصفحة كصورة.",
+  "searchMatchCase": "مطابقة حالة الأحرف",
+  "searchWholeWord": "كلمة كاملة",
+  "searchPrevious": "النتيجة السابقة",
+  "searchNext": "النتيجة التالية",
+  "searchClose": "إغلاق البحث",
+  "replaceToggle": "بحث واستبدال",
+  "replaceWithHint": "استبدال بـ",
+  "replaceOne": "استبدال",
+  "replaceAll": "استبدال الكل",
+  "replacedCount": "{count, plural, =0{لم يُستبدل شيء} =1{تم استبدال نتيجة واحدة} other{تم استبدال {count} نتيجة}}"
 }

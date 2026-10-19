@@ -16,7 +16,8 @@ class ExistingLineEditDraft {
 }
 
 /// Replacement of existing text: a whiteout and a new text box that copies
-/// the styles we can actually read. A missing font is a substitute, not the
+/// the styles we can actually read (font, size, weight, slant, direction and
+/// fill colour). A missing font is a substitute, not the
 /// original face.
 ///
 /// For words of the PDF's own text ([draftForWords]) the whiteout is marked
@@ -106,7 +107,10 @@ class EditorExistingTextService {
         matcher.match(word, pageHeightPt: pageHeightPt, loadedFamilies: loadedFamilies),
     ];
     final base = styles.first;
-    final multi = styles.any((style) => !_sameStyle(base, style));
+    // The PDF's own fill colour when the extractor could read it.
+    final baseColor = words.first.color ?? Colors.black;
+    final multi = styles.any((style) => !_sameStyle(base, style)) ||
+        words.any((word) => (word.color ?? Colors.black) != baseColor);
 
     var left = words.first.rect.left;
     var top = words.first.rect.top;
@@ -134,6 +138,7 @@ class EditorExistingTextService {
           italic: style.italic == base.italic ? null : style.italic,
           fontFamily: style.editorFamily == base.editorFamily ? null : style.editorFamily,
           sizeScale: _sizeScale(base, style),
+          color: (word.color ?? Colors.black) == baseColor ? null : word.color ?? Colors.black,
         ));
       }
       if (word.rect.left.isFinite && word.rect.left < left) left = word.rect.left;
@@ -154,7 +159,7 @@ class EditorExistingTextService {
       textBox: TextAnnotation(
         Offset(left, top),
         buffer.toString(),
-        Colors.black,
+        baseColor,
         base.normalizedSize > 0 ? base.normalizedSize : 0.04,
         base.bold,
         italic: base.italic,

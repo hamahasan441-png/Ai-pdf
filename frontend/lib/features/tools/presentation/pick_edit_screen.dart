@@ -56,6 +56,7 @@ import 'package:ai_pdf/features/editor/data/editor_file_picker_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_page_transform_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_smart_fill_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_existing_text_service.dart';
+import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_apply_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_rich_text_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_text_scan_service.dart';
@@ -245,6 +246,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
   final EditorTextScanService _textScan = const EditorTextScanService();
   final EditorSmartFillService _smartFill = const EditorSmartFillService();
   final EditorExistingTextService _existingText = const EditorExistingTextService();
+  final TextReplaceService _textReplace = const TextReplaceService();
   final EditorAnnotationApplyService _annotationApply = const EditorAnnotationApplyService();
   final EditorRichTextService _richText = const EditorRichTextService();
   final Map<int, List<DetectedField>> _fields = {}; // page -> detected fields
@@ -904,7 +906,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         changed = true;
       }
     }
-    if (changed) _searchController.setPages(_textLayer);
+    if (changed) _syncSearchPages();
   }
 
   void _commitRedaction() {
@@ -1089,7 +1091,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final bySource = await compute(extractPdfTextLayerFromPath, path);
       if (mounted && gen == _textGen) {
         _setTextLayerFromSource(bySource);
-        _searchController.setPages(_textLayer);
+        _syncSearchPages();
       }
     } catch (_) {
       // The pages still show; Find just has no words for them.
@@ -1146,7 +1148,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       final map = await compute(extractPdfTextLayerFromPath, path);
       if (!mounted || gen != _textGen) return;
       setState(() => _setTextLayerFromSource(map));
-      _searchController.setPages(_textLayer);
+      _syncSearchPages();
       _maskRedactedText();
       if (_searchController.state.active && _searchController.state.hasMatches) {
         _jumpToSearch();
@@ -1156,8 +1158,34 @@ class _PickEditScreenState extends State<PickEditScreen> {
     }
   }
 
+  /// Search the text the page still shows: words a text edit already
+  /// replaces are left out, and come back if that edit is undone.
   void _syncSearchPages() {
-    _searchController.setPages(_textLayer);
+    _searchController.setPages(_textReplace.unreplaced(_textLayer, _layers));
+  }
+
+  /// Replace the current match, or every match, with [replacement].
+  void _replaceMatches(String replacement, {required bool all}) {
+    final matches = _searchController.matchesToReplace(all: all);
+    if (matches.isEmpty) return;
+    final plan = _textReplace.plan(
+      _searchController.pages,
+      matches,
+      replacement,
+      pageHeightPt: _pageHeightPt,
+    );
+    setState(() {
+      for (final entry in plan.items.entries) {
+        final layer = _layers.putIfAbsent(entry.key, () => PageLayer());
+        _editorController.pushAnnotations(layer, entry.value, page: entry.key);
+      }
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    _jumpToSearch();
+    final l10n = AppLocalizations.of(context);
+    if (all) _showError(l10n?.replacedCount(plan.replaced) ?? 'Replaced ${plan.replaced}');
   }
 
   void _jumpToSearch() {
@@ -1218,6 +1246,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
         (_layer.items.last as ShapeAnnotation).type == ShapeType.whiteout) {
       setState(() => _layer.items.removeLast());
     }
+    setState(_syncSearchPages);
   }
 
   void _copyWords() {
@@ -2606,6 +2635,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _editorController.undo(_layer);
       _selected = null;
       _multi.clear();
+      _syncSearchPages();
     });
     _schedulePersist();
   }
@@ -2615,6 +2645,7 @@ class _PickEditScreenState extends State<PickEditScreen> {
       _editorController.redo(_layer);
       _selected = null;
       _multi.clear();
+      _syncSearchPages();
     });
     _schedulePersist();
   }
@@ -2961,6 +2992,8 @@ class _PickEditScreenState extends State<PickEditScreen> {
                 onClose: () => setState(() => _searchController.close()),
                 onCaseSensitiveChanged: (v) => setState(() => _searchController.setCaseSensitive(v)),
                 onWholeWordChanged: (v) => setState(() => _searchController.setWholeWord(v)),
+                onReplace: (text) => _replaceMatches(text, all: false),
+                onReplaceAll: (text) => _replaceMatches(text, all: true),
               )
             : null,
         textSelectionBar: _wordSelection != null && _wordSelection!.isNotEmpty

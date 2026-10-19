@@ -468,5 +468,15 @@
   "toolPrint": "Drucken",
   "toolPrintDesc": "PDF an einen Drucker senden",
   "printFailed": "Drucken nicht möglich: {error}",
-  "editTextFlattened": "Seite {pages}: Der ersetzte Text ließ sich nicht aus dem PDF entfernen, daher wurde die Seite als Bild gespeichert."
+  "editTextFlattened": "Seite {pages}: Der ersetzte Text ließ sich nicht aus dem PDF entfernen, daher wurde die Seite als Bild gespeichert.",
+  "searchMatchCase": "Groß-/Kleinschreibung",
+  "searchWholeWord": "Ganzes Wort",
+  "searchPrevious": "Vorheriger Treffer",
+  "searchNext": "Nächster Treffer",
+  "searchClose": "Suche schließen",
+  "replaceToggle": "Suchen und ersetzen",
+  "replaceWithHint": "Ersetzen durch",
+  "replaceOne": "Ersetzen",
+  "replaceAll": "Alle ersetzen",
+  "replacedCount": "{count, plural, =0{Nichts wurde ersetzt} =1{1 Treffer ersetzt} other{{count} Treffer ersetzt}}"
 }

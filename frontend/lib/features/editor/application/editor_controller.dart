@@ -259,6 +259,14 @@ class EditorController extends StateNotifier<EditorState> {
     markDirty();
   }
 
+  /// Add [annotations] to [layer] as one undo step. [page] as in
+  /// [pushAnnotation].
+  void pushAnnotations(PageLayer layer, List<EditorAnnotation> annotations, {int? page}) {
+    if (annotations.isEmpty) return;
+    _historyFor(page ?? state.currentPage).push(AddBatchCommand(annotations), layer);
+    markDirty();
+  }
+
   /// Move per-page histories along with the pages after a delete or insert.
   ///
   /// [shift] is the same function the screen applies to its other per-page
