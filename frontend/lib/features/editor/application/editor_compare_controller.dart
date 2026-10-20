@@ -41,6 +41,11 @@ class EditorCompareState {
 }
 
 class EditorCompareController extends StateNotifier<EditorCompareState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected) — same convention as
+  /// [EditorOutlineController.current].
+  EditorCompareState get current => state;
+
   EditorCompareController() : super(const EditorCompareState());
 
   static const _svc = DocumentDiffService();

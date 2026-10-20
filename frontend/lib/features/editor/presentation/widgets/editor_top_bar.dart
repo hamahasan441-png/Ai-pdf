@@ -10,6 +10,10 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
   final bool canRedo;
   final bool canPaste;
   final bool loading;
+  final bool unsavedChanges;
+
+  /// Notifies when the document is not saved yet; shown as a quiet dot so
+  /// the user always knows whether their work is safe.
   final VoidCallback? onUndo;
   final VoidCallback? onRedo;
   final VoidCallback? onPaste;
@@ -25,6 +29,7 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
     required this.canRedo,
     required this.canPaste,
     required this.loading,
+    this.unsavedChanges = false,
     this.onUndo,
     this.onRedo,
     this.onPaste,
@@ -39,15 +44,37 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
     return AppBar(
+      titleSpacing: 16,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 15),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontSize: 15),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (unsavedChanges) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: l10n.unsavedChangesDot,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: AppColorsDot.of(context),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           if (pageCount > 0)
             Text(
@@ -73,10 +100,17 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
             tooltip: l10n.shortcutPaste,
             onPressed: canPaste ? onPaste : null,
           ),
-          IconButton(
-            icon: const Icon(Icons.ios_share),
-            tooltip: l10n.export,
-            onPressed: loading ? null : onExport,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: loading ? null : onExport,
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              icon: const Icon(Icons.ios_share, size: 17),
+              label: Text(l10n.export),
+            ),
           ),
         ],
       ],
@@ -84,41 +118,10 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-class EditorPageNavigation extends StatelessWidget {
-  final int currentPage;
-  final int pageCount;
-  final VoidCallback? onPrev;
-  final VoidCallback? onNext;
-
-  const EditorPageNavigation({
-    super.key,
-    required this.currentPage,
-    required this.pageCount,
-    this.onPrev,
-    this.onNext,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (pageCount <= 1) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'prev',
-            onPressed: currentPage > 0 ? onPrev : null,
-            child: const Icon(Icons.chevron_left),
-          ),
-          const SizedBox(width: 12),
-          FloatingActionButton.small(
-            heroTag: 'next',
-            onPressed: currentPage < pageCount - 1 ? onNext : null,
-            child: const Icon(Icons.chevron_right),
-          ),
-        ],
-      ),
-    );
-  }
+/// The unsaved-changes dot colour: the calm accent in both themes.
+class AppColorsDot {
+  static Color of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF63CFC2)
+          : const Color(0xFF2BB5A6);
 }

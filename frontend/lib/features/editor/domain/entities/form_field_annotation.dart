@@ -4,6 +4,24 @@ import 'package:flutter/material.dart' show Color;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 
+/// The neutral, on-paper look for user-placed form fields. Shared by the
+/// annotation default, the on-screen box and the exported PDF so the three
+/// agree: a white surface with a quiet graphite hairline.
+class EditorFieldStyle {
+  EditorFieldStyle._();
+
+  /// Border colour of a placed field (also embedded in exported PDFs).
+  static const Color border = Color(0xFFB9C0CF);
+
+  /// Fill colour of a placed field (opaque white in the exported PDF).
+  static const Color fill = Color(0xFFFFFFFF);
+
+  /// The legacy blue defaults (pre-redesign); migrated on load so saved
+  /// documents do not keep shouting with the old selection blue.
+  static const int legacyBorderArgb = 0xFF2563EB;
+  static const int legacyFillArgb = 0x1A2563EB;
+}
+
 /// Form field sub-types (mirrors the detected field types).
 enum FormFieldKind {
   text,
@@ -60,8 +78,11 @@ class FormFieldAnnotation extends EditorAnnotation {
     this.checked = false,
     this.options = const [],
     this.multiline = false,
-    this.borderColor = const Color(0xFF2563EB),
-    this.fillColor = const Color(0x1A2563EB),
+    // Quiet on-paper look: a white surface with a graphite hairline. The
+    // old defaults were the loud selection blue (0xFF2563EB border on a
+    // blue tint), which made every placed field look permanently selected.
+    this.borderColor = EditorFieldStyle.border,
+    this.fillColor = EditorFieldStyle.fill,
     this.fontSize = 0.018,
     super.id,
   });

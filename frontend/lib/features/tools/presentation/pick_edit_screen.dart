@@ -25,6 +25,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/acro_form_layer.dart
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_dialogs.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_form_field_properties.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_banner.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/form_fill_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_reading_mode_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shortcuts_sheet.dart';
@@ -115,6 +116,8 @@ import 'package:ai_pdf/features/editor/domain/services/page_coordinate_transform
 import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_compare_controller.dart';
+import 'package:ai_pdf/features/editor/data/document_plain_text.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_compare_sheet.dart';
 import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
 import 'package:ai_pdf/features/editor/application/editor_page_ops_controller.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_search_bar.dart';
@@ -200,7 +203,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   set _pageCount(int value) => _editorController.setPageCount(value);
 
   int get _current => _editorController.current.currentPage;
-  set _current(int value) => _editorController.setCurrentPage(value);
+  set _current(int value) {
+    _editorController.setCurrentPage(value);
+    // The outline panel highlights the section for the visible page; without
+    // this it stayed computed for page 0 forever.
+    _outlineController.setCurrentPage(value);
+  }
 
   bool get _loading => _editorController.current.loading;
 
@@ -224,6 +232,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   EditorAnnotation? _selected; // currently selected annotation (for move/resize)
   EditorAnnotation? _clipboard; // copied object, pasteable onto any page
   Offset? _dragOffset; // offset during move
+
+  /// The explicit Move/Resize state. Handles and the bounding box appear on
+  /// the page ONLY in this mode; a plain selection is a light tint plus the
+  /// compact contextual bar.
+  bool _transformMode = false;
+
+  /// A field kind waiting to be placed by the next tap on the page
+  /// (tap-to-place form building).
+  FormFieldKind? _placingField;
 
   // --- Snapping guides (E3.4) ---
   double? _guideX; // normalized x for a vertical alignment guide
@@ -808,6 +825,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _readPending.clear();
       _form = AcroFormSnapshot.empty;
       _formValues.clear();
+      // Decoded images belong to the previous document's annotations. Keep
+      // them alive across a long session and memory grows without bound;
+      // the new document re-prepares what it needs lazily.
+      _imageRenderer.clear();
     });
 
     try {
@@ -863,6 +884,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (superseded()) return;
       if (saved.corrupt) {
         _showError(l10n.cEditSavedMarksUnreadable);
+      } else if (saved.unsupportedVersion != null) {
+        // Written by a newer app version. The file was kept untouched on
+        // purpose (a newer build can restore it), so the message must not
+        // claim the marks were unreadable or lost.
+        _showError(l10n.cEditSavedMarksNewerApp);
       }
       _formValues
         ..clear()
@@ -1373,6 +1399,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   Future<void> _goToPage(int index) async {
     if (index < 0 || index >= _pageCount) return;
     _leaveFill();
+    _endPlacementNoRebuild();
     final ticket = ++_navTicket;
     _editorController.beginPageChange();
     final hadPreview = _pageCache.containsKey(index);
@@ -1380,6 +1407,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _editorController.finishPageChange(index);
       setState(() {
         _selected = null;
+        _transformMode = false;
         _multi.clear();
         _showFields = false;
         _showEditLines = false;
@@ -1398,6 +1426,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _editorController.finishPageChange(index);
       setState(() {
         _selected = null;
+        _transformMode = false;
         _multi.clear();
         _showFields = false;
         _showEditLines = false;
@@ -2070,7 +2099,23 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (_tool == EditTool.eraser) {
       _eraseAt(n);
     } else if (_tool == EditTool.pan) {
-      setState(() => _selected = _hitTest(n));
+      // Tap-to-place form building: the tap point becomes the field's centre.
+      if (_placingField != null) {
+        _placeFieldAt(_placingField!, n);
+        return;
+      }
+      final hit = _hitTest(n);
+      if (hit != null && identical(hit, _selected)) {
+        // Second tap on the same object: open its editor. Selection itself
+        // stays a quiet tint; no outline is drawn for this step.
+        _openSelectedEditor(hit);
+      } else {
+        setState(() {
+          _selected = hit;
+          _transformMode = false;
+          _wordSelection = null;
+        });
+      }
     } else if (_tool == EditTool.select) {
       final hit = _hitTest(n);
       if (hit != null) {
@@ -2441,30 +2486,105 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
   }
 
-  /// Add a fillable form field in the middle of the page, selected so it can
-  /// be moved and resized, and open its properties.
+  /// Add a fillable form field: pick the kind, then tap the page where it
+  /// should go (tap-to-place). The banner stays until the field is placed
+  /// or the user cancels, so several fields can be laid out in a row.
   Future<void> _addFormField() async {
     final kind = await showAddFormFieldSheet(context);
     if (kind == null || !mounted) return;
+    setState(() {
+      _placingField = kind;
+      _tool = EditTool.pan;
+      _selected = null;
+      _transformMode = false;
+    });
+  }
+
+  /// Cancels tap-to-place mode (banner Done, tool switch, page turn).
+  void _endPlacement() {
+    if (_placingField == null) return;
+    setState(() => _placingField = null);
+  }
+
+  /// Same as [_endPlacement] for use inside an existing setState block.
+  void _endPlacementNoRebuild() => _placingField = null;
+
+  /// Places the pending field centred on [n] (normalized tap point),
+  /// selects it and offers its properties — without drawing any selection
+  /// outline on the page.
+  void _placeFieldAt(FormFieldKind kind, Offset n) {
     final l10n = AppLocalizations.of(context);
-    var n = 1;
+    var count = 1;
     for (final layer in _layers.values) {
-      n += layer.fields.length;
+      count += layer.fields.length;
     }
-    final field = newFormField(kind, label: '${fieldKindLabel(l10n, kind)} $n', aspect: _aspectFor(_current));
+    final aspect = _aspectFor(_current);
+    final (double w, double h) = switch (kind) {
+      FormFieldKind.checkbox || FormFieldKind.radio => (0.035, 0.035 * aspect),
+      FormFieldKind.signature => (0.35, 0.06),
+      FormFieldKind.combobox => (0.3, 0.03),
+      _ => (0.35, 0.03),
+    };
+    final field = FormFieldAnnotation(
+      pos: Offset(
+        (n.dx - w / 2).clamp(0.0, 1.0 - w),
+        (n.dy - h / 2).clamp(0.0, 1.0 - h),
+      ),
+      width: w,
+      height: h,
+      fieldKind: kind,
+      label: '${fieldKindLabel(l10n, kind)} $count',
+      options: kind == FormFieldKind.combobox ? const ['1', '2', '3'] : const [],
+    );
+    HapticFeedback.selectionClick();
     setState(() {
       _pushItem(field);
       _selected = field;
+      _transformMode = false;
+      _placingField = null;
       _tool = EditTool.pan;
       _hasUnsavedChanges = true;
     });
-    await _editField(field);
+    _schedulePersist();
+  }
+
+  /// Second tap on the selected object: open the editor that fits its type.
+  /// This is the "edit" half of the two-tap model — selection stays quiet,
+  /// and editing is always an explicit, expected action.
+  void _openSelectedEditor(EditorAnnotation a) {
+    if (a is TextAnnotation) {
+      _editTextBox(a);
+    } else if (a is FormFieldAnnotation) {
+      _editField(a);
+    } else if (a is ShapeAnnotation) {
+      _editShapeStyle(a);
+    } else if (a is StickyNoteAnnotation) {
+      _editNote(a);
+    } else if (a is ImageAnnotation || a is StampAnnotation) {
+      // For visual objects, "editing" is transforming them: this is where
+      // handles legitimately appear.
+      setState(() => _transformMode = true);
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  /// Toggles the explicit Move/Resize mode from the contextual bar.
+  void _toggleTransformMode() {
+    setState(() => _transformMode = !_transformMode);
+    HapticFeedback.selectionClick();
   }
 
   /// A field's properties, as one undo step.
   Future<void> _editField(FormFieldAnnotation field) async {
     _editorController.beginEdit([field], label: 'Field');
-    final saved = await showFormFieldPropertiesDialog(context, field);
+    // The other placed field names, so the properties sheet can reject a
+    // duplicate identifier before it ever reaches the exported PDF.
+    final otherNames = <String>{
+      for (final layer in _layers.values)
+        for (final other in layer.fields)
+          if (!identical(other, field)) other.label,
+    };
+    final saved = await showFormFieldPropertiesDialog(context, field, otherNames: otherNames);
     if (!mounted) return;
     setState(() {
       if (saved) {
@@ -2480,7 +2600,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   /// Show the paragraphs of the page's own text as tappable boxes. False
   /// when the page has no text of its own (a scan): then OCR is the way.
   bool _showNativeBlocks() {
-    final words = _textReplace.unreplaced({_current: _textLayer[_current] ?? const []}, _layers)[_current]!;
+    final words = _textReplace.unreplaced({_current: _textLayer[_current] ?? const []}, _layers)[_current] ?? const <PdfTextElement>[];
     if (words.isEmpty) return false;
     final blocks = _textBlocks.blocks(words, aspect: _aspectFor(_current));
     _nativeBlocks.clear();
@@ -2740,6 +2860,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _selected = box;
       _tool = EditTool.pan;
     });
+  }
+
+  /// A tap on a text box on the page: the first tap selects it (a quiet
+  /// tint), the second opens the inline editor. One handler serves both the
+  /// canvas hit-test path and the text box's own gesture detector.
+  void _onTextTap(TextAnnotation t) {
+    if (identical(t, _selected)) {
+      _editTextBox(t);
+    } else {
+      setState(() {
+        _selected = t;
+        _transformMode = false;
+      });
+    }
   }
 
   void _commitInlineEdit() {
@@ -3068,6 +3202,65 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (outPath == null || !mounted) return;
     await _offerExportedFile(outPath);
   }
+
+  /// Compare this document's text with another picked PDF (Phase 30 wiring).
+  ///
+  /// Both texts come from the same on-device content-stream extractor, so the
+  /// diff compares like with like. A scanned "other" document yields no text
+  /// layer; the result is then an honest "everything changed" diff rather
+  /// than a silently wrong one.
+  Future<void> _compareWith() async {
+    final l10n = AppLocalizations.of(context)!;
+    final sourcePath = _editorController.filePath;
+    if (sourcePath == null || !_docIsPdf(sourcePath)) {
+      _showError(l10n.compareNeedsPdf);
+      return;
+    }
+    final picked = await _filePicker.pickSupportedFile();
+    if (picked == null || !mounted) return;
+    if (!_docIsPdf(picked.path)) {
+      _showError(l10n.compareNeedsPdf);
+      return;
+    }
+    if (picked.path == sourcePath) {
+      _showError(l10n.compareSameFile);
+      return;
+    }
+    setState(() => _editorController.setLoading(true));
+    try {
+      final otherLayer = await compute(extractPdfTextLayerFromPath, picked.path);
+      final thisLayer = _textLayer.isNotEmpty
+          ? _textLayer
+          : await compute(extractPdfTextLayerFromPath, sourcePath);
+      if (!mounted) return;
+      final otherText = plainTextFromTextLayer(otherLayer);
+      final thisText = plainTextFromTextLayer(thisLayer);
+      if (otherText.isEmpty && thisText.isEmpty) {
+        _showError(l10n.compareNoText);
+        return;
+      }
+      _compareController.compare(
+        otherText,
+        thisText,
+        oldLabel: picked.name,
+        newLabel: _fileName ?? l10n.toolEditor,
+      );
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: false,
+        builder: (_) => EditorCompareSheet(state: _compareController.current),
+      );
+      _compareController.close();
+    } catch (e) {
+      if (mounted) _showError(l10n.compareFailed(describeError(e, l10n)));
+    } finally {
+      if (mounted) setState(() => _editorController.setLoading(false));
+    }
+  }
+
+  bool _docIsPdf(String path) => path.toLowerCase().endsWith('.pdf');
 
   /// The form fields on the shown page, or null when it has none.
   Widget? _formLayer() => _formLayerFor(_current, interactive: true);
@@ -3413,8 +3606,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           });
           Navigator.of(context).pop();
         } else if (action == 'save' && context.mounted) {
-          await _export();
-          if (context.mounted) Navigator.of(context).pop();
+          // Save-and-leave must not pop when the export failed: the user chose
+          // "save", and popping after an error would silently lose the edits
+          // (the recovery file alone would be left to carry them). Pop only
+          // when a file was actually written; the error snackbar is shown by
+          // _renderToPdfFile, and the screen stays so the user can retry.
+          final outPath = await _renderToPdfFile();
+          if (outPath != null && context.mounted) Navigator.of(context).pop();
         }
       },
       // Hardware keyboard shortcuts. Keys go to a focused text field first.
@@ -3422,7 +3620,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       autofocus: true,
       onKeyEvent: _onKey,
       child: Scaffold(
-      backgroundColor: const Color(0xFF2B2B2B),
+      // A quiet, premium workspace surface that adapts to the theme; the
+      // page stays the visual focus.
+      backgroundColor: EditorPalette.of(context).canvasBackground,
       // Prevent the Scaffold from shrinking when the soft keyboard opens.
       // The inline text editor uses Positioned overlays that handle their own
       // layout, so resizing the body causes the PDF viewport to collapse.
@@ -3436,6 +3636,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         canRedo: _editorController.canRedo,
         canPaste: _clipboard != null,
         loading: _loading,
+        unsavedChanges: _hasUnsavedChanges,
         onUndo: _undo,
         onRedo: _redoAction,
         onPaste: _pasteClipboard,
@@ -3460,7 +3661,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onReset: _resetFill,
                 onDone: _endFill,
               ),
-        modeBanner: _editTextMode && _inlineEditing == null
+        modeBanner: _placingField != null
+            ? EditorModeBanner(
+                icon: Icons.dynamic_form_outlined,
+                title: l10n.placingFieldTitle,
+                hint: l10n.placingFieldHint,
+                doneLabel: l10n.cancel,
+                onDone: _endPlacement,
+              )
+            : _editTextMode && _inlineEditing == null
             ? EditorModeBanner(
                 icon: Icons.edit_note,
                 title: l10n.editText,
@@ -3622,6 +3831,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             imageRenderer: _imageRenderer,
             stampRenderer: _stampRenderer,
             canvasRevision: _canvasRevision,
+            transformMode: _transformMode,
+            onToggleTransform: _toggleTransformMode,
             formLayer: _formLayer(),
             onTapUp: _onTapUp,
             onPanStart: _onPanStart,
@@ -3630,7 +3841,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             onFieldTap: _openFieldInput,
             onEditLineTap: _editExistingLine,
             onEditText: _editTextBox,
-            onSelectText: (t) => setState(() => _selected = t),
+            onSelectText: _onTextTap,
             onMoveText: (t, d, size) => setState(() {
               t.pos = Offset(
                 (t.pos.dx + d.delta.dx / size.width).clamp(0.0, 0.98),
@@ -3726,6 +3937,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             final enteringHighlight =
                 tool == EditTool.highlight && _tool != EditTool.highlight;
             _tool = tool;
+            _transformMode = false;
+            _endPlacementNoRebuild();
             _markupPreview = const [];
             _wordSelection = null;
             _shapeStart = null;
@@ -3754,6 +3967,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onPageOps: _showPageOps,
           onReadingMode: _chooseReadingMode,
           onReadingView: _openReadingView,
+          onCompare: _compareWith,
           onColorChanged: (c) => setState(() => _color = c),
           recentColors: RecentColors.current,
           onPickColor: () async {
@@ -3765,15 +3979,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onToggleBold: () => setState(() => _bold = !_bold),
         ),
       ),
-      floatingActionButton: bytes == null
-          ? null
-          : EditorPageNavigation(
-              currentPage: _current,
-              pageCount: _pageCount,
-              onPrev: _current > 0 ? () => _goToPage(_current - 1) : null,
-              onNext: _current < _pageCount - 1 ? () => _goToPage(_current + 1) : null,
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      // No permanent floating navigation: the thumbnail strip, the outline
+      // and the page-ops sheet already cover page travel, and a pair of
+      // always-on FABs covered the document and fought the contextual bars.
     ),
       ),
     );

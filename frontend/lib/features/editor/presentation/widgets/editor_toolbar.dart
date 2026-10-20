@@ -54,6 +54,9 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback? onPageOps;
   final VoidCallback? onReadingMode;
   final VoidCallback? onReadingView;
+
+  /// Compares this document with another PDF. Hidden when null.
+  final VoidCallback? onCompare;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -98,6 +101,7 @@ class EditorToolbar extends StatelessWidget {
     this.onPageOps,
     this.onReadingMode,
     this.onReadingView,
+    this.onCompare,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -120,7 +124,8 @@ class EditorToolbar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, -2))],
+        border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6))),
+        boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 14, offset: Offset(0, -3))],
       ),
       child: SafeArea(
         top: false,
@@ -146,69 +151,78 @@ class EditorToolbar extends StatelessWidget {
                 ],
               ),
             ),
-            if (showStyle)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6, left: 10, right: 10),
-                child: Row(
-                  children: [
-                    ...quickColors(color, recentColors).map(
-                      (c) => Semantics(
-                        button: true,
-                        selected: _same(color, c),
-                        label: l10n.colorTitle,
-                        child: GestureDetector(
-                          onTap: () => onColorChanged(c),
-                          child: Container(
-                            width: 26,
-                            height: 26,
-                            margin: const EdgeInsets.only(right: 6),
-                            decoration: BoxDecoration(
-                              color: c,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: _same(color, c) ? cs.primary : Colors.grey.shade400,
-                                width: _same(color, c) ? 3 : 1,
+            // Style row: colours and size controls appear with a soft fade
+            // only for the tools that use them.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: showStyle
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 6, left: 10, right: 10),
+                      child: Row(
+                        children: [
+                          ...quickColors(color, recentColors).map(
+                            (c) => Semantics(
+                              button: true,
+                              selected: _same(color, c),
+                              label: l10n.colorTitle,
+                              child: GestureDetector(
+                                onTap: () => onColorChanged(c),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  width: 26,
+                                  height: 26,
+                                  margin: const EdgeInsets.only(right: 6),
+                                  decoration: BoxDecoration(
+                                    color: c,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _same(color, c) ? cs.primary : Colors.grey.shade400,
+                                      width: _same(color, c) ? 3 : 1,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                          if (onPickColor != null)
+                            IconButton(
+                              tooltip: l10n.colorMore,
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.palette_outlined),
+                              onPressed: onPickColor,
+                            ),
+                          if (tool == EditTool.draw || isShape)
+                            Expanded(
+                              child: Slider(
+                                value: stroke,
+                                min: 1,
+                                max: 12,
+                                onChanged: onStrokeChanged,
+                              ),
+                            ),
+                          if (tool == EditTool.text) ...[
+                            Expanded(
+                              child: Slider(
+                                value: textSize,
+                                min: 0.008,
+                                max: 0.08,
+                                onChanged: onTextSizeChanged,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: l10n.bold,
+                              isSelected: bold,
+                              icon: const Icon(Icons.format_bold),
+                              onPressed: onToggleBold,
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                    if (onPickColor != null)
-                      IconButton(
-                        tooltip: l10n.colorMore,
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.palette_outlined),
-                        onPressed: onPickColor,
-                      ),
-                    if (tool == EditTool.draw || isShape)
-                      Expanded(
-                        child: Slider(
-                          value: stroke,
-                          min: 1,
-                          max: 12,
-                          onChanged: onStrokeChanged,
-                        ),
-                      ),
-                    if (tool == EditTool.text) ...[
-                      Expanded(
-                        child: Slider(
-                          value: textSize,
-                          min: 0.008,
-                          max: 0.08,
-                          onChanged: onTextSizeChanged,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: l10n.bold,
-                        isSelected: bold,
-                        icon: const Icon(Icons.format_bold),
-                        onPressed: onToggleBold,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                    )
+              : const SizedBox(width: double.infinity),
+            ),
           ],
         ),
       ),
@@ -312,13 +326,14 @@ class EditorToolbar extends StatelessWidget {
               _moreLabel(l10n.moreDocument, cs),
               Wrap(
                 children: [
-                  _actionBtn(Icons.auto_fix_high, l10n.autoFill, () => act(detecting ? () {} : onAutoFill), cs),
-                  _actionBtn(Icons.psychology, l10n.aiFill, () => act(detecting ? () {} : onAiFill), cs),
+                  _actionBtn(Icons.auto_fix_high, l10n.autoFill, detecting ? null : () => act(onAutoFill), cs, disabled: detecting),
+                  _actionBtn(Icons.psychology, l10n.aiFill, detecting ? null : () => act(onAiFill), cs, disabled: detecting),
                   _actionBtn(
                     showEditLines ? Icons.text_fields : Icons.text_format,
                     l10n.editTextTool,
-                    () => act(detecting ? () {} : onEditTextTool),
+                    detecting ? null : () => act(onEditTextTool),
                     cs,
+                    disabled: detecting,
                   ),
                   if (hasPageFields)
                     _actionBtn(
@@ -338,6 +353,8 @@ class EditorToolbar extends StatelessWidget {
                     _actionBtn(Icons.auto_awesome, l10n.toolChat, () => act(onChat!), cs),
                   if (onPageOps != null)
                     _actionBtn(Icons.pages, l10n.toolPages, () => act(onPageOps!), cs),
+                  if (onCompare != null)
+                    _actionBtn(Icons.difference_outlined, l10n.toolCompare, () => act(onCompare!), cs),
                   if (onReadingView != null)
                     _actionBtn(Icons.view_agenda_outlined, l10n.toolReadView, () => act(onReadingView!), cs),
                   if (onReadingMode != null)
@@ -372,12 +389,14 @@ class EditorToolbar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
         onTap: () => onToolChanged(value),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: active ? cs.primaryContainer : null,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -391,7 +410,11 @@ class EditorToolbar extends StatelessWidget {
     );
   }
 
-  Widget _actionBtn(IconData icon, String label, VoidCallback onTap, ColorScheme cs) {
+  Widget _actionBtn(IconData icon, String label, VoidCallback? onTap, ColorScheme cs, {bool disabled = false}) {
+    // A disabled action must look disabled. Passing a no-op callback left the
+    // button looking active while silently doing nothing.
+    final iconColor = disabled ? cs.onSurface.withValues(alpha: 0.38) : cs.onSurface;
+    final labelColor = disabled ? cs.onSurfaceVariant.withValues(alpha: 0.38) : cs.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
@@ -402,8 +425,8 @@ class EditorToolbar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 22, color: cs.onSurface),
-              Text(label, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+              Icon(icon, size: 22, color: iconColor),
+              Text(label, style: TextStyle(fontSize: 10, color: labelColor)),
             ],
           ),
         ),

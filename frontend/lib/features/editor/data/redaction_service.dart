@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:ui' show Rect;
 import 'dart:convert';
+import 'dart:typed_data' show Uint8List;
 
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:ai_pdf/core/config/app_settings.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
 /// A rectangular region marked for redaction (Phase 17 + E1.7).
@@ -297,6 +299,24 @@ class RedactionService {
     }
     if (!_looksLikePdf(body)) {
       return const BackendRedactionResult.failure('The server did not return a PDF. Nothing was redacted.', RedactionFailure.badResponse);
+    }
+    // Structural validation before the file is trusted. A magic check alone
+    // would accept a truncated or corrupt response; parsing proves the
+    // object tree, xref and page tree are intact, and that at least one page
+    // survived. Failure here means the output is NOT adopted as redacted.
+    try {
+      final parsed = PdfObjectStore.parse(Uint8List.fromList(body));
+      if (parsed.pages.isEmpty) {
+        return const BackendRedactionResult.failure(
+          'The redacted PDF has no pages. The file was not used.',
+          RedactionFailure.badResponse,
+        );
+      }
+    } catch (_) {
+      return const BackendRedactionResult.failure(
+        'The redacted PDF failed validation. The file was not used.',
+        RedactionFailure.badResponse,
+      );
     }
     final verified = (resp.headers.value('x-redaction-verified') ?? '')
         .split(',')

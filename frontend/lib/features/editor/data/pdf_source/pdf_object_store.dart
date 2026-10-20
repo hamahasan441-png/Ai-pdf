@@ -75,6 +75,12 @@ class PdfObjectStore {
       obj = null;
     } on FormatException {
       obj = null;
+    } on TypeError {
+      // A malformed file can still reach an unchecked cast inside a helper.
+      // Treat it like any other unreadable object instead of crashing.
+      obj = null;
+    } on ArgumentError {
+      obj = null;
     }
     if (obj != null) _cache[num] = obj;
     return obj;
@@ -199,11 +205,18 @@ class PdfObjectStore {
     final dict = obj.value;
     if (dict is! PdfDict || obj.stream == null) throw const PdfSourceException('Bad xref stream.');
     final data = _decode(dict, obj.stream!);
-    final w = (dict['/W'] as PdfArray).items.map((e) => (e as PdfNum).toInt()).toList();
-    if (w.length != 3) throw const PdfSourceException('Bad /W.');
-    final size = (dict['/Size'] as PdfNum).toInt();
-    final index = dict['/Index'] is PdfArray
-        ? (dict['/Index'] as PdfArray).items.map((e) => (e as PdfNum).toInt()).toList()
+    // Malformed files must surface as PdfSourceException, not as an uncaught
+    // TypeError: object() does not catch TypeError, and parse() would crash
+    // the isolate instead of reporting a damaged PDF.
+    final wRaw = dict['/W'];
+    if (wRaw is! PdfArray) throw const PdfSourceException('Bad /W.');
+    final w = [for (final e in wRaw.items) (e is PdfNum ? e.toInt() : -1)];
+    if (w.length != 3 || w.any((v) => v < 0)) throw const PdfSourceException('Bad /W.');
+    final sizeRaw = dict['/Size'];
+    final size = sizeRaw is PdfNum ? sizeRaw.toInt() : 0;
+    final indexRaw = dict['/Index'];
+    final index = indexRaw is PdfArray
+        ? [for (final e in indexRaw.items) (e is PdfNum ? e.toInt() : 0)]
         : [0, size];
     final rowLen = w[0] + w[1] + w[2];
     var pos = 0;
@@ -361,8 +374,18 @@ class PdfObjectStore {
       throw const PdfSourceException('Missing object stream.');
     }
     final data = _decode(dict, container.stream!);
-    final first = (resolve(dict['/First']) as PdfNum).toInt();
-    final n = (resolve(dict['/N']) as PdfNum).toInt();
+    // Type-safe reads: a malformed object stream must raise PdfSourceException
+    // (handled by object()) rather than an uncaught TypeError.
+    final firstRaw = resolve(dict['/First']);
+    final nRaw = resolve(dict['/N']);
+    if (firstRaw is! PdfNum || nRaw is! PdfNum) {
+      throw const PdfSourceException('Bad object stream dictionary.');
+    }
+    final first = firstRaw.toInt();
+    final n = nRaw.toInt();
+    if (n < 0 || first < 0 || first > data.length) {
+      throw const PdfSourceException('Bad object stream dictionary.');
+    }
     final lex = PdfLexer(data, 0);
     final entries = [for (var i = 0; i < n; i++) (lex.readInt(), first + lex.readInt())];
     return _objStmCache[streamNum] = (data, entries);
@@ -485,7 +508,8 @@ class PdfObjectStore {
     }
 
     walk(pagesRef, const {}, 0);
-    final count = resolve((resolve(pagesRef) as PdfDict?)?['/Count']);
+    final pagesDict = resolve(pagesRef);
+    final count = pagesDict is PdfDict ? resolve(pagesDict['/Count']) : null;
     if (count is PdfNum && count.toInt() != result.length) {
       throw const PdfSourceException('The page tree does not match its page count.');
     }

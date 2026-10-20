@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/domain/services/rotation_math.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 
 /// A single icon button used inside the floating selection action bars.
 /// Meets the 44×44 dp minimum touch target required by Material and
@@ -20,17 +22,22 @@ class EditorMiniButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        // Enforce minimum 44×44 touch target (WCAG / Material spec).
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(10),
+        // The tap target is the full 44×44 box; the icon stays visually
+        // compact so the bars keep their density.
         child: SizedBox(
-          width: 36,
-          height: 36,
+          width: 44,
+          height: 44,
           child: Center(
-            child: Icon(icon, size: 20, color: Colors.white),
+            child: Icon(icon, size: 20, color: palette.barForeground),
           ),
         ),
       ),
@@ -38,7 +45,9 @@ class EditorMiniButton extends StatelessWidget {
   }
 }
 
-/// Blue dashed bounding box drawn around the selected annotation.
+/// A quiet bounding box drawn around the selected annotation *only while
+/// the user is in the explicit Move/Resize (transform) mode*. Plain
+/// selection is communicated with a light tint, never a border.
 class EditorSelectionBox extends StatelessWidget {
   final Size size;
   final Rect bounds;
@@ -51,19 +60,20 @@ class EditorSelectionBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     return Positioned(
-      left: bounds.left * size.width - 3,
-      top: bounds.top * size.height - 3,
-      width: (bounds.width * size.width + 6).clamp(8.0, size.width),
-      height: (bounds.height * size.height + 6).clamp(8.0, size.height),
+      left: bounds.left * size.width - 2,
+      top: bounds.top * size.height - 2,
+      width: (bounds.width * size.width + 4).clamp(8.0, size.width),
+      height: (bounds.height * size.height + 4).clamp(8.0, size.height),
       child: IgnorePointer(
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(
-              // Use a professional selection blue consistent with desktop editors.
-              color: const Color(0xFF2563EB),
-              width: 1.5,
+              color: palette.selectionBorder,
+              width: 1.2,
             ),
+            borderRadius: BorderRadius.circular(3),
           ),
         ),
       ),
@@ -72,6 +82,8 @@ class EditorSelectionBox extends StatelessWidget {
 }
 
 /// A circular resize handle rendered at a corner of the selection box.
+/// Compact (22 dp visual inside a 44 dp touch target) and shown only in
+/// transform mode, so the page is never dotted with handles by accident.
 class EditorScaleHandle extends StatelessWidget {
   final Size size;
   final Rect bounds;
@@ -95,12 +107,16 @@ class EditorScaleHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     final hx = (bottomRight ? bounds.right : bounds.left) * size.width;
     final hy = (bottomRight ? bounds.bottom : bounds.top) * size.height;
     return Positioned(
-      left: hx - 15,
-      top: hy - 15,
+      left: hx - 22,
+      top: hy - 22,
+      width: 44,
+      height: 44,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onPanStart: onResizeStart == null ? null : (_) => onResizeStart!(),
         onPanEnd: onResizeEnd == null ? null : (_) => onResizeEnd!(),
         onPanUpdate: (d) {
@@ -115,21 +131,18 @@ class EditorScaleHandle extends StatelessWidget {
           if (nextBounds.width < 0.02 || nextBounds.height < 0.01) return;
           onResizeBounds(nextBounds);
         },
-        child: Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2563EB),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: const [
-              BoxShadow(color: Color(0x66000000), blurRadius: 4),
-            ],
-          ),
-          child: Icon(
-            bottomRight ? Icons.open_in_full : Icons.close_fullscreen,
-            size: 12,
-            color: Colors.white,
+        child: Center(
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: palette.handleColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [
+                BoxShadow(color: Color(0x42000000), blurRadius: 4, offset: Offset(0, 1)),
+              ],
+            ),
           ),
         ),
       ),
@@ -139,7 +152,8 @@ class EditorScaleHandle extends StatelessWidget {
 
 /// A circular rotation handle rendered above the selection box. Dragging it
 /// turns the object around its centre. Shown only for object types that render
-/// and export rotation end-to-end (images and stamps).
+/// and export rotation end-to-end (images and stamps), and only while the
+/// user is in transform mode.
 class EditorRotateHandle extends StatelessWidget {
   final Size size;
   final Rect bounds;
@@ -158,8 +172,9 @@ class EditorRotateHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = bounds.center.dx * size.width - 15;
-    final top = bounds.top * size.height - 44;
+    final palette = EditorPalette.of(context);
+    final left = bounds.center.dx * size.width - 22;
+    final top = bounds.top * size.height - 50;
     final center = Offset(
       bounds.center.dx * size.width,
       bounds.center.dy * size.height,
@@ -167,34 +182,71 @@ class EditorRotateHandle extends StatelessWidget {
     return Positioned(
       left: left,
       top: top,
+      width: 44,
+      height: 44,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onPanStart: onRotateStart == null ? null : (_) => onRotateStart!(),
         onPanEnd: onRotateEnd == null ? null : (_) => onRotateEnd!(),
         onPanUpdate: (d) {
           final pointer = Offset(left + d.localPosition.dx, top + d.localPosition.dy);
           onRotate(rotationForHandle(center, pointer));
         },
-        child: Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2563EB),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: const [
-              BoxShadow(color: Color(0x66000000), blurRadius: 4),
-            ],
+        child: Center(
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: palette.handleColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [
+                BoxShadow(color: Color(0x42000000), blurRadius: 4, offset: Offset(0, 1)),
+              ],
+            ),
+            child: const Icon(Icons.rotate_right, size: 12, color: Colors.white),
           ),
-          child: const Icon(Icons.rotate_right, size: 14, color: Colors.white),
         ),
       ),
     );
   }
 }
 
+/// The surface shared by the floating contextual bars: a quiet dark panel
+/// with a soft edge, matching the editor chrome in both themes.
+class _BarSurface extends StatelessWidget {
+  final Widget child;
+
+  const _BarSurface({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: palette.barSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x40000000), blurRadius: 12, offset: Offset(0, 4)),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
 /// Floating action bar shown when a single annotation is selected.
-/// Appears at the top-right of the canvas with contextual actions for
-/// text or shape annotations.
+///
+/// Compact and contextual: the primary action for the selected type
+/// (Edit / Properties / Style), Move/Resize (which is also where handles
+/// appear), Duplicate, Delete and Deselect. Less-used actions (copy,
+/// z-order) live behind one overflow menu so the bar never sprawls.
 class EditorSelectionActionBar extends StatelessWidget {
   final bool showTextActions;
   final bool showShapeActions;
@@ -213,6 +265,11 @@ class EditorSelectionActionBar extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onDeselect;
 
+  /// Toggles the explicit Move/Resize (transform) mode — the only state in
+  /// which handles and the bounding box are shown.
+  final bool transformMode;
+  final VoidCallback? onToggleTransform;
+
   const EditorSelectionActionBar({
     super.key,
     required this.showTextActions,
@@ -229,76 +286,138 @@ class EditorSelectionActionBar extends StatelessWidget {
     required this.onSendToBack,
     required this.onDelete,
     required this.onDeselect,
+    this.transformMode = false,
+    this.onToggleTransform,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final palette = EditorPalette.of(context);
     return Positioned(
       top: 8,
       right: 8,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            // withOpacity() deprecated → withValues(alpha:)
-            color: Colors.black.withValues(alpha: 0.87),
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: const [
-              BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 2)),
+      child: _BarSurface(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showTextActions && onEditText != null)
+              EditorMiniButton(icon: Icons.edit, tooltip: l10n.editText, onTap: onEditText!),
+            if (showTextActions && onEditText != null) _divider(palette),
+            if (onEditField != null)
+              EditorMiniButton(icon: Icons.tune, tooltip: l10n.fieldProperties, onTap: onEditField!),
+            if (onEditField != null) _divider(palette),
+            if (showShapeActions)
+              EditorMiniButton(icon: Icons.tune, tooltip: l10n.style, onTap: onEditShapeStyle!),
+            if (showShapeActions) _divider(palette),
+            if (onToggleTransform != null) ...[
+              Tooltip(
+                message: l10n.moveResize,
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onToggleTransform!();
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: transformMode ? palette.handleColor : Colors.white.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(
+                          Icons.open_in_full,
+                          size: 15,
+                          color: transformMode ? Colors.white : palette.barForeground,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              _divider(palette),
             ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showTextActions) ...[
-                EditorMiniButton(icon: Icons.edit, tooltip: l10n.editText, onTap: onEditText!),
-                EditorMiniButton(icon: Icons.text_decrease, tooltip: 'A−', onTap: onTextDecrease!),
-                EditorMiniButton(icon: Icons.text_increase, tooltip: 'A+', onTap: onTextIncrease!),
-                EditorMiniButton(
-                    icon: Icons.palette_outlined, tooltip: l10n.colorTitle, onTap: onPickTextColor!),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
+            EditorMiniButton(icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
+            _OverflowMenu(
+              items: [
+                _OverflowItem(icon: Icons.content_copy, label: l10n.copy, onTap: onCopy),
+                _OverflowItem(icon: Icons.flip_to_front, label: l10n.bringToFront, onTap: onBringToFront),
+                _OverflowItem(icon: Icons.flip_to_back, label: l10n.sendToBack, onTap: onSendToBack),
+                if (showTextActions) ...[
+                  _OverflowItem(icon: Icons.text_decrease, label: 'A\u2212', onTap: onTextDecrease!),
+                  _OverflowItem(icon: Icons.text_increase, label: 'A+', onTap: onTextIncrease!),
+                  _OverflowItem(icon: Icons.palette_outlined, label: l10n.colorTitle, onTap: onPickTextColor!),
+                ],
               ],
-              if (onEditField != null) ...[
-                EditorMiniButton(icon: Icons.tune, tooltip: l10n.fieldProperties, onTap: onEditField!),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
-              ],
-              if (showShapeActions) ...[
-                EditorMiniButton(icon: Icons.tune, tooltip: l10n.style, onTap: onEditShapeStyle!),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
-              ],
-              EditorMiniButton(icon: Icons.content_copy, tooltip: l10n.copy, onTap: onCopy),
-              EditorMiniButton(icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
-              const SizedBox(width: 4),
-              const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-              const SizedBox(width: 4),
-              EditorMiniButton(
-                  icon: Icons.flip_to_front, tooltip: l10n.bringToFront, onTap: onBringToFront),
-              EditorMiniButton(
-                  icon: Icons.flip_to_back, tooltip: l10n.sendToBack, onTap: onSendToBack),
-              const SizedBox(width: 4),
-              const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-              const SizedBox(width: 4),
-              EditorMiniButton(
-                  icon: Icons.delete_outline, tooltip: l10n.delete, onTap: onDelete),
-              EditorMiniButton(icon: Icons.close, tooltip: l10n.deselect, onTap: onDeselect),
-            ],
-          ),
+            ),
+            _divider(palette),
+            EditorMiniButton(
+                icon: Icons.delete_outline, tooltip: l10n.delete, onTap: onDelete),
+            EditorMiniButton(icon: Icons.close, tooltip: l10n.deselect, onTap: onDeselect),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _divider(EditorPalette palette) => SizedBox(
+        height: 24,
+        child: VerticalDivider(color: Colors.white.withValues(alpha: 0.14), width: 4, thickness: 1),
+      );
+}
+
+/// One entry of the overflow menu in the selection bar.
+class _OverflowItem {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _OverflowItem({required this.icon, required this.label, required this.onTap});
+}
+
+class _OverflowMenu extends StatelessWidget {
+  final List<_OverflowItem> items;
+
+  const _OverflowMenu({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final palette = EditorPalette.of(context);
+    return PopupMenuButton<void>(
+      tooltip: l10n.moreActions,
+      color: palette.barSurface,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 6),
+      constraints: const BoxConstraints(minWidth: 190),
+      icon: Icon(Icons.more_horiz, size: 22, color: palette.barForeground),
+      padding: EdgeInsets.zero,
+      onSelected: (_) {},
+      itemBuilder: (ctx) => [
+        for (final it in items)
+          PopupMenuItem<void>(
+            height: 44,
+            onTap: it.onTap,
+            child: Row(children: [
+              Icon(it.icon, size: 19, color: palette.barForeground.withValues(alpha: 0.9)),
+              const SizedBox(width: 12),
+              Flexible(child: Text(it.label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+            ]),
+          ),
+      ],
     );
   }
 }
 
 /// Floating action bar shown when multiple annotations are selected (marquee).
+/// Align / distribute are grouped behind two compact menus.
 class EditorMultiSelectionActionBar extends StatelessWidget {
   final int count;
   final VoidCallback onAlignLeft;
@@ -332,89 +451,94 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final palette = EditorPalette.of(context);
     return Positioned(
       top: 8,
       left: 8,
       right: 8,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.87),
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: const [
-              BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 2)),
-            ],
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                Text(
+      child: _BarSurface(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 8, right: 4),
+                child: Text(
                   l10n.nSelected(count),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
+                  style: TextStyle(
+                    color: palette.barForeground,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(width: 8),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 8),
-                EditorMiniButton(
-                    icon: Icons.align_horizontal_left,
-                    tooltip: l10n.alignLeft,
-                    onTap: onAlignLeft),
-                EditorMiniButton(
-                    icon: Icons.align_horizontal_center,
-                    tooltip: l10n.alignCenter,
-                    onTap: onAlignCenter),
-                EditorMiniButton(
-                    icon: Icons.align_horizontal_right,
-                    tooltip: l10n.alignRight,
-                    onTap: onAlignRight),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
-                EditorMiniButton(
-                    icon: Icons.align_vertical_top,
-                    tooltip: l10n.alignTop,
-                    onTap: onAlignTop),
-                EditorMiniButton(
-                    icon: Icons.align_vertical_center,
-                    tooltip: l10n.alignMiddle,
-                    onTap: onAlignMiddle),
-                EditorMiniButton(
-                    icon: Icons.align_vertical_bottom,
-                    tooltip: l10n.alignBottom,
-                    onTap: onAlignBottom),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
-                EditorMiniButton(
-                    icon: Icons.horizontal_distribute,
-                    tooltip: l10n.distributeH,
-                    onTap: onDistributeH),
-                EditorMiniButton(
-                    icon: Icons.vertical_distribute,
-                    tooltip: l10n.distributeV,
-                    onTap: onDistributeV),
-                const SizedBox(width: 4),
-                const VerticalDivider(color: Colors.white24, width: 1, thickness: 1),
-                const SizedBox(width: 4),
-                EditorMiniButton(
-                    icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
-                EditorMiniButton(
-                    icon: Icons.delete_outline, tooltip: l10n.delete, onTap: onDelete),
-                EditorMiniButton(
-                    icon: Icons.close, tooltip: l10n.deselect, onTap: onDeselect),
-              ],
-            ),
+              ),
+              _divider(),
+              PopupMenuButton<String>(
+                tooltip: l10n.alignTools,
+                color: palette.barSurface,
+                elevation: 6,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                position: PopupMenuPosition.under,
+                offset: const Offset(0, 6),
+                constraints: const BoxConstraints(minWidth: 190),
+                icon: Icon(Icons.align_horizontal_left, size: 21, color: palette.barForeground),
+                padding: EdgeInsets.zero,
+                onSelected: (_) {},
+                itemBuilder: (ctx) => [
+                  _alignItem('left', Icons.align_horizontal_left, l10n.alignLeft, onAlignLeft),
+                  _alignItem('center', Icons.align_horizontal_center, l10n.alignCenter, onAlignCenter),
+                  _alignItem('right', Icons.align_horizontal_right, l10n.alignRight, onAlignRight),
+                  _alignItem('top', Icons.align_vertical_top, l10n.alignTop, onAlignTop),
+                  _alignItem('middle', Icons.align_vertical_center, l10n.alignMiddle, onAlignMiddle),
+                  _alignItem('bottom', Icons.align_vertical_bottom, l10n.alignBottom, onAlignBottom),
+                ],
+              ),
+              _divider(),
+              PopupMenuButton<String>(
+                tooltip: l10n.distributeTools,
+                color: palette.barSurface,
+                elevation: 6,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                position: PopupMenuPosition.under,
+                offset: const Offset(0, 6),
+                constraints: const BoxConstraints(minWidth: 190),
+                icon: Icon(Icons.horizontal_distribute, size: 21, color: palette.barForeground),
+                padding: EdgeInsets.zero,
+                onSelected: (_) {},
+                itemBuilder: (ctx) => [
+                  _alignItem('dh', Icons.horizontal_distribute, l10n.distributeH, onDistributeH),
+                  _alignItem('dv', Icons.vertical_distribute, l10n.distributeV, onDistributeV),
+                ],
+              ),
+              _divider(),
+              EditorMiniButton(
+                  icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
+              EditorMiniButton(
+                  icon: Icons.delete_outline, tooltip: l10n.delete, onTap: onDelete),
+              EditorMiniButton(
+                  icon: Icons.close, tooltip: l10n.deselect, onTap: onDeselect),
+            ],
           ),
         ),
       ),
     );
   }
+
+  PopupMenuItem<String> _alignItem(String value, IconData icon, String label, VoidCallback onTap) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 44,
+      onTap: onTap,
+      child: Row(children: [
+        Icon(icon, size: 19),
+        const SizedBox(width: 12),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+      ]),
+    );
+  }
+
+  Widget _divider() => SizedBox(
+        height: 24,
+        child: VerticalDivider(color: Colors.white.withValues(alpha: 0.14), width: 6, thickness: 1),
+      );
 }
