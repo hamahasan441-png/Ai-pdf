@@ -15,6 +15,11 @@ class AnnotationLoadResult {
   /// treated as an empty document.
   final bool corrupt;
 
+  /// The file is healthy but was written by a newer schema. Nothing was
+  /// loaded and the file was NOT quarantined: a newer app version can still
+  /// read it, so moving it aside would destroy the user's work.
+  final int? unsupportedVersion;
+
   /// Page order and rotations the marks belong to. Null for files saved
   /// before structure was recorded, or when nothing was saved.
   final SavedPageStructure? structure;
@@ -25,6 +30,7 @@ class AnnotationLoadResult {
   const AnnotationLoadResult({
     required this.layers,
     this.corrupt = false,
+    this.unsupportedVersion,
     this.structure,
     this.formValues = const {},
   });
@@ -78,6 +84,13 @@ class AnnotationPersistenceService {
       }
       final json = Map<String, dynamic>.from(decoded);
       final version = json['version'];
+      if (version is int && version > 1) {
+        // A future schema is not corruption. Keep the file exactly where it
+        // is so an updated app can still restore the user's marks; report
+        // the version so the UI can say so instead of claiming the file was
+        // unreadable.
+        return AnnotationLoadResult(layers: {}, unsupportedVersion: version);
+      }
       if (version != 1) {
         throw FormatException('unsupported annotation schema: $version');
       }

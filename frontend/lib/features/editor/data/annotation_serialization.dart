@@ -79,22 +79,33 @@ Map<String, dynamic> _fieldToJson(FormFieldAnnotation f) => {
       ..._baseToJson(f),
     };
 
-FormFieldAnnotation _fieldFromJson(Map<String, dynamic> j) => FormFieldAnnotation(
-      pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
-      width: (j['width'] as num).toDouble(),
-      height: (j['height'] as num).toDouble(),
-      fieldKind: FormFieldKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => FormFieldKind.text),
-      label: j['label'] as String? ?? '',
-      value: j['value'] as String? ?? '',
-      required: j['required'] as bool? ?? false,
-      checked: j['checked'] as bool? ?? false,
-      options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
-      multiline: j['multiline'] as bool? ?? false,
-      borderColor: Color(j['borderColor'] as int? ?? 0xFF2563EB),
-      fillColor: Color(j['fillColor'] as int? ?? 0x1A2563EB),
-      fontSize: (j['fontSize'] as num?)?.toDouble() ?? 0.018,
-      id: j['id'] as String?,
-    );
+FormFieldAnnotation _fieldFromJson(Map<String, dynamic> j) {
+  // Migrate the pre-redesign defaults: fields saved with the old blue
+  // frame (which read as a permanent selection outline) come back with
+  // the quiet on-paper style instead.
+  final borderArgb = j['borderColor'] as int?;
+  final fillArgb = j['fillColor'] as int?;
+  return FormFieldAnnotation(
+    pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+    width: (j['width'] as num).toDouble(),
+    height: (j['height'] as num).toDouble(),
+    fieldKind: FormFieldKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => FormFieldKind.text),
+    label: j['label'] as String? ?? '',
+    value: j['value'] as String? ?? '',
+    required: j['required'] as bool? ?? false,
+    checked: j['checked'] as bool? ?? false,
+    options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
+    multiline: j['multiline'] as bool? ?? false,
+    borderColor: borderArgb == null || borderArgb == EditorFieldStyle.legacyBorderArgb
+        ? EditorFieldStyle.border
+        : Color(borderArgb),
+    fillColor: fillArgb == null || fillArgb == EditorFieldStyle.legacyFillArgb
+        ? EditorFieldStyle.fill
+        : Color(fillArgb),
+    fontSize: (j['fontSize'] as num?)?.toDouble() ?? 0.018,
+    id: j['id'] as String?,
+  );
+}
 
 Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       'type': 'image',

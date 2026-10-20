@@ -10,9 +10,21 @@
   "typeYourSignature": "Type your signature",
   "fillRemainingFields": "Fill remaining fields",
   "fillRemainingBody": "{count} field(s) had no saved value. Fill them one by one now?",
-  "@fillRemainingBody": { "placeholders": { "count": { "type": "int" } } },
+  "@fillRemainingBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "autoFilledCount": "Auto-filled {count} field(s) from your profile",
-  "@autoFilledCount": { "placeholders": { "count": { "type": "int" } } },
+  "@autoFilledCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noProfileMatches": "No saved profile matches — set up My Profile to auto-fill",
   "smartFormFiller": "Smart Form Filler",
   "smartFormFillerDesc": "Form + your info → auto-filled, on-device",
@@ -25,7 +37,13 @@
   "smartFillMatching": "Matching fields…",
   "smartFillNoMatch": "Couldn't confidently match any fields. Make sure the info document is clear and readable, or open the form in the editor and use Smart Fill / Auto-fill to place values manually.",
   "smartFillPlaced": "Placed {count} value(s) — review and export.",
-  "@smartFillPlaced": { "placeholders": { "count": { "type": "int" } } },
+  "@smartFillPlaced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "smartFillRun": "Fill the form",
   "smartFillUncertain": "Low confidence — double-check this value",
   "smartDocuments": "Smart Documents",
@@ -129,9 +147,21 @@
   "compressing": "Compressing…",
   "compress": "Compress",
   "percentSmaller": "{percent}% smaller",
-  "@percentSmaller": { "placeholders": { "percent": { "type": "String" } } },
+  "@percentSmaller": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "compressionFailed": "Compression failed: {error}",
-  "@compressionFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@compressionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "mergePdfsTitle": "Merge PDFs",
   "choosePdfsToMerge": "Choose PDFs to merge",
   "chooseAPdf": "Choose a PDF",
@@ -143,13 +173,37 @@
   "working": "Working…",
   "run": "Run",
   "pdfsCombined": "{count} PDFs combined",
-  "@pdfsCombined": { "placeholders": { "count": { "type": "int" } } },
+  "@pdfsCombined": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "pagesCreated": "{count} pages created",
-  "@pagesCreated": { "placeholders": { "count": { "type": "int" } } },
+  "@pagesCreated": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "resultsCount": "Results ({count})",
-  "@resultsCount": { "placeholders": { "count": { "type": "int" } } },
+  "@resultsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "operationFailed": "Failed: {error}",
-  "@operationFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@operationFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "pdfCreated": "PDF Created",
   "pdfReady": "PDF Ready",
   "noImagesSelected": "No images selected",
@@ -158,13 +212,31 @@
   "converting": "Converting…",
   "createPdf": "Create PDF",
   "imagesConverted": "{count} images converted",
-  "@imagesConverted": { "placeholders": { "count": { "type": "int" } } },
+  "@imagesConverted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "conversionFailed": "Conversion failed: {error}",
-  "@conversionFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@conversionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "tapToChoosePdf": "Tap to choose a PDF",
   "rotation": "Rotation",
   "rotatedDegrees": "Rotated {degrees}°",
-  "@rotatedDegrees": { "placeholders": { "degrees": { "type": "int" } } },
+  "@rotatedDegrees": {
+    "placeholders": {
+      "degrees": {
+        "type": "int"
+      }
+    }
+  },
   "everyPageRotated": "Every page rotated",
   "rotateCw90": "Clockwise quarter turn",
   "rotate180": "Upside down",
@@ -174,15 +246,36 @@
   "ocrTitle": "Extract Text (OCR)",
   "reading": "Reading…",
   "readingPageOf": "Reading page {current} of {total}…",
-  "@readingPageOf": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } },
+  "@readingPageOf": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "readingImage": "Reading image…",
   "noTextFound": "No text found in this document.",
   "couldNotReadText": "Could not read text: {error}",
-  "@couldNotReadText": { "placeholders": { "error": { "type": "String" } } },
+  "@couldNotReadText": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "extractedText": "Extracted Text",
   "savedAsPdf": "Saved as PDF",
   "saveFailed": "Save failed: {error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "copy": "Copy",
   "copied": "Copied",
   "saveAsPdf": "Save as PDF",
@@ -201,7 +294,13 @@
   "exporting": "Exporting…",
   "exportToImages": "Export to Images",
   "imagesExported": "Exported {count} images",
-  "@imagesExported": { "placeholders": { "count": { "type": "int" } } },
+  "@imagesExported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "ocrExtractsAllText": "OCR extracts all text from every page",
   "textExtracted": "Text extracted",
   "txtFileReady": ".txt file ready",
@@ -217,24 +316,90 @@
   "removing": "Removing…",
   "wouldDeleteEveryPage": "That would delete every page",
   "nPages": "{count} pages",
-  "@nPages": { "placeholders": { "count": { "type": "int" } } },
+  "@nPages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "totalPagesInFile": "Total pages in file: {count}",
-  "@totalPagesInFile": { "placeholders": { "count": { "type": "int" } } },
+  "@totalPagesInFile": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "extractedPagesRange": "Extracted pages {from}–{to}",
-  "@extractedPagesRange": { "placeholders": { "from": { "type": "int" }, "to": { "type": "int" } } },
+  "@extractedPagesRange": {
+    "placeholders": {
+      "from": {
+        "type": "int"
+      },
+      "to": {
+        "type": "int"
+      }
+    }
+  },
   "totalPagesKept": "Total pages: {count}. The rest are kept in order.",
-  "@totalPagesKept": { "placeholders": { "count": { "type": "int" } } },
+  "@totalPagesKept": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "deletedPagesRange": "Deleted pages {from}–{to}",
-  "@deletedPagesRange": { "placeholders": { "from": { "type": "int" }, "to": { "type": "int" } } },
+  "@deletedPagesRange": {
+    "placeholders": {
+      "from": {
+        "type": "int"
+      },
+      "to": {
+        "type": "int"
+      }
+    }
+  },
   "pagesKept": "{count} pages kept",
-  "@pagesKept": { "placeholders": { "count": { "type": "int" } } },
+  "@pagesKept": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "couldNotAddFile": "Could not add file: {error}",
-  "@couldNotAddFile": { "placeholders": { "error": { "type": "String" } } },
+  "@couldNotAddFile": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "loadingPageOf": "Loading page {current} of {total}…",
-  "@loadingPageOf": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } },
+  "@loadingPageOf": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "buildingPdf": "Building PDF…",
   "addingPageOf": "Adding page {current} of {total}…",
-  "@addingPageOf": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } },
+  "@addingPageOf": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "organizedPdf": "Organized PDF",
   "addMore": "Add more",
   "longPressToReorder": "Long-press & drag to reorder",
@@ -243,7 +408,13 @@
   "organizeYourPagesBody": "Add PDFs and images, then reorder, rotate or delete pages and export one clean PDF.",
   "addFiles": "Add files",
   "pageNumber": "Page {number}",
-  "@pageNumber": { "placeholders": { "number": { "type": "int" } } },
+  "@pageNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "rotate": "Rotate",
   "delete": "Delete",
   "addWatermark": "Add Watermark",
@@ -273,7 +444,16 @@
   "signHere": "Sign Here",
   "done": "Done",
   "pageOfPages": "Page {current} of {total}",
-  "@pageOfPages": { "placeholders": { "current": { "type": "int" }, "total": { "type": "int" } } },
+  "@pageOfPages": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "fillFormWithAi": "Fill Form with AI",
   "understandWithAi": "Understand with AI",
   "aiAnswer": "AI Answer",
@@ -287,7 +467,13 @@
   "reviewBeforePlacing": "Review before placing",
   "editAnyValue": "Edit any value or untick what you don't want. Then place them on the form.",
   "placeNValues": "Place {count} value(s)",
-  "@placeNValues": { "placeholders": { "count": { "type": "int" } } },
+  "@placeNValues": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "typeHere": "Type here…",
   "add": "Add",
   "typeText": "Type text…",
@@ -302,7 +488,13 @@
   "fill": "Fill",
   "drawNewSignature": "Draw new signature",
   "savedSignatureN": "Saved signature {number}",
-  "@savedSignatureN": { "placeholders": { "number": { "type": "int" } } },
+  "@savedSignatureN": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "saveThisSignature": "Save this signature?",
   "savedSignaturesReused": "Saved signatures can be reused instantly next time.",
   "no": "No",
@@ -311,7 +503,13 @@
   "discard": "Discard",
   "saveAndExit": "Save & exit",
   "nSelected": "{count} selected",
-  "@nSelected": { "placeholders": { "count": { "type": "int" } } },
+  "@nSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alignLeft": "Align left",
   "alignCenter": "Align center",
   "alignRight": "Align right",
@@ -384,7 +582,9 @@
   "redactSecureDoneElsewhere": "Content removed. The same text still appears {count} more time(s) elsewhere in the document; it was not redacted.",
   "@redactSecureDoneElsewhere": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "redactErrInvalidArea": "The box is outside the page.",
@@ -398,7 +598,9 @@
   "redactErrRefused": "The server refused the request: {detail}",
   "@redactErrRefused": {
     "placeholders": {
-      "detail": {"type": "String"}
+      "detail": {
+        "type": "String"
+      }
     }
   },
   "redactErrServer": "The redaction server failed.",
@@ -415,14 +617,18 @@
   "redactSecureFailed": "Secure redaction failed: {reason}",
   "@redactSecureFailed": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "exportFlattenTitle": "Some pages will be saved as images",
   "exportFlattenBody": "Pages {pages} have a cover or whiteout. So that the text under it is not in the file, these pages are saved as images and their text will not be searchable. Every other page keeps its original text, links and form fields.",
   "@exportFlattenBody": {
     "placeholders": {
-      "pages": {"type": "String"}
+      "pages": {
+        "type": "String"
+      }
     }
   },
   "exportFlattenContinue": "Save",
@@ -430,7 +636,9 @@
   "exportImageFallbackBody": "{reason}\n\nSave every page as an image instead? Text in that file will not be searchable or selectable, and links, form fields and bookmarks will be lost.",
   "@exportImageFallbackBody": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "exportImageFallbackConfirm": "Save as images",
@@ -448,7 +656,13 @@
   "startFreeTrial": "Start 3-day free trial",
   "trialTagline": "Unlock every Pro feature free for 3 days",
   "trialActive": "Free trial active — {days} days left",
-  "@trialActive": { "placeholders": { "days": { "type": "int" } } },
+  "@trialActive": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
   "proFeatureTitle": "Pro feature",
   "proFeatureBody": "Convert is a Pro feature. Start your free trial, watch a short ad to convert once, or go Pro.",
   "watchAdToUse": "Watch ad to convert once",
@@ -486,15 +700,45 @@
   "layersShowAll": "Show all",
   "layersHideAll": "Hide all",
   "layersShow": "Show {layer}",
-  "@layersShow": {"placeholders": {"layer": {"type": "String"}}},
+  "@layersShow": {
+    "placeholders": {
+      "layer": {
+        "type": "String"
+      }
+    }
+  },
   "layersHide": "Hide {layer}",
-  "@layersHide": {"placeholders": {"layer": {"type": "String"}}},
+  "@layersHide": {
+    "placeholders": {
+      "layer": {
+        "type": "String"
+      }
+    }
+  },
   "layersLock": "Lock {layer}",
-  "@layersLock": {"placeholders": {"layer": {"type": "String"}}},
+  "@layersLock": {
+    "placeholders": {
+      "layer": {
+        "type": "String"
+      }
+    }
+  },
   "layersUnlock": "Unlock {layer}",
-  "@layersUnlock": {"placeholders": {"layer": {"type": "String"}}},
+  "@layersUnlock": {
+    "placeholders": {
+      "layer": {
+        "type": "String"
+      }
+    }
+  },
   "layersCount": "{count} marks",
-  "@layersCount": {"placeholders": {"count": {"type": "int"}}},
+  "@layersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "layerText": "Text",
   "layerShapes": "Shapes",
   "layerDrawings": "Drawings",
@@ -517,19 +761,49 @@
   "pageMoveLater": "Move page later",
   "formTypeValue": "Type a value",
   "formCheckbox": "{field}, check box, {state}",
-  "@formCheckbox": {"placeholders": {"field": {"type": "String"}, "state": {"type": "String"}}},
+  "@formCheckbox": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      },
+      "state": {
+        "type": "String"
+      }
+    }
+  },
   "formChecked": "checked",
   "formNotChecked": "not checked",
   "formOption": "{field}, option {option}",
-  "@formOption": {"placeholders": {"field": {"type": "String"}, "option": {"type": "String"}}},
+  "@formOption": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      },
+      "option": {
+        "type": "String"
+      }
+    }
+  },
   "formSelected": "selected",
   "toolReadView": "Read",
   "toolPrint": "Print",
   "toolPrintDesc": "Send a PDF to a printer",
   "printFailed": "Printing is not available: {error}",
-  "@printFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@printFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "editTextFlattened": "Page {pages}: the replaced text could not be removed from the PDF itself, so the page was saved as an image.",
-  "@editTextFlattened": {"placeholders": {"pages": {"type": "String"}}},
+  "@editTextFlattened": {
+    "placeholders": {
+      "pages": {
+        "type": "String"
+      }
+    }
+  },
   "searchMatchCase": "Match case",
   "searchWholeWord": "Whole word",
   "searchPrevious": "Previous match",
@@ -540,7 +814,13 @@
   "replaceOne": "Replace",
   "replaceAll": "Replace all",
   "replacedCount": "{count, plural, =0{Nothing was replaced} =1{Replaced 1 match} other{Replaced {count} matches}}",
-  "@replacedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@replacedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "fontSerif": "Serif",
   "fontMono": "Monospace",
   "textSmaller": "Smaller text",
@@ -569,7 +849,13 @@
   "formNextField": "Next field",
   "requiredFieldsTitle": "Required fields are empty",
   "requiredFieldsBody": "{count, plural, =1{This form asks for 1 more field:} other{This form asks for {count} more fields:}}",
-  "@requiredFieldsBody": {"placeholders": {"count": {"type": "int"}}},
+  "@requiredFieldsBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "exportAnyway": "Save anyway",
   "fillInFields": "Fill in",
   "editTextModeHint": "Tap a paragraph to change its text",
@@ -589,7 +875,13 @@
   "savedToAppFolder": "Saved to the Pdoczy folder",
   "saveCancelled": "Save cancelled",
   "couldNotShare": "Could not share: {error}",
-  "@couldNotShare": {"placeholders": {"error": {"type": "String"}}},
+  "@couldNotShare": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "noFilesToShare": "No files to share",
   "openingDocument": "Opening the document…",
   "analyzingDocument": "Analysing the page…",
@@ -602,7 +894,13 @@
   "libSelectMultiple": "Select several",
   "libSelectAll": "Select all",
   "libSelectedCount": "{count} selected",
-  "@libSelectedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@libSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "libAll": "All",
   "libPdf": "PDF",
   "libImages": "Images",
@@ -628,75 +926,237 @@
   "libPin": "Pin to top",
   "libUnpin": "Unpin",
   "libDeleteOne": "Delete “{name}”?",
-  "@libDeleteOne": {"placeholders": {"name": {"type": "String"}}},
+  "@libDeleteOne": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "libDeleteMany": "Delete {count} documents?",
-  "@libDeleteMany": {"placeholders": {"count": {"type": "int"}}},
+  "@libDeleteMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "libDeleteBody": "The file is removed from this device. This cannot be undone.",
   "libRenameFolder": "Rename folder",
   "libDeleteFolder": "Delete folder",
   "libDeleteFolderBody": "The documents in “{name}” are kept; they just leave the folder.",
-  "@libDeleteFolderBody": {"placeholders": {"name": {"type": "String"}}},
+  "@libDeleteFolderBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "libPageCount": "{count} pages",
-  "@libPageCount": {"placeholders": {"count": {"type": "int"}}},
+  "@libPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "libImported": "Added {count} to the library",
-  "@libImported": {"placeholders": {"count": {"type": "int"}}},
+  "@libImported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "libImportFailed": "Could not import {name}: {error}",
-  "@libImportFailed": {"placeholders": {"name": {"type": "String"}, "error": {"type": "String"}}},
+  "@libImportFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "libLoadFailed": "Could not load the library: {error}",
-  "@libLoadFailed": {"placeholders": {"error": {"type": "String"}}},
+  "@libLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "libRetry": "Try again",
   "libFileGone": "This file is no longer on the device.",
   "libRemoveEntry": "Remove from library",
   "libNew": "New",
   "signatureAdded": "Signature added. Drag to move it; use the corner handles to resize.",
   "errReadFile": "Could not read the file: {error}",
-  "@errReadFile": {"placeholders": {"error": {"type": "String"}}},
+  "@errReadFile": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errExport": "Export failed: {error}",
-  "@errExport": {"placeholders": {"error": {"type": "String"}}},
+  "@errExport": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errRotate": "Could not rotate the page: {error}",
-  "@errRotate": {"placeholders": {"error": {"type": "String"}}},
+  "@errRotate": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errAddImage": "Could not add the image: {error}",
-  "@errAddImage": {"placeholders": {"error": {"type": "String"}}},
+  "@errAddImage": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errFieldDetection": "Could not find the form's fields: {error}",
-  "@errFieldDetection": {"placeholders": {"error": {"type": "String"}}},
+  "@errFieldDetection": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errSmartFill": "Smart fill failed: {error}",
-  "@errSmartFill": {"placeholders": {"error": {"type": "String"}}},
+  "@errSmartFill": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errPlaceAnswers": "Could not place the answers: {error}",
-  "@errPlaceAnswers": {"placeholders": {"error": {"type": "String"}}},
+  "@errPlaceAnswers": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errDelete": "Could not delete: {error}",
-  "@errDelete": {"placeholders": {"error": {"type": "String"}}},
+  "@errDelete": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errRestore": "Could not restore: {error}",
-  "@errRestore": {"placeholders": {"error": {"type": "String"}}},
+  "@errRestore": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errImport": "Import failed: {error}",
-  "@errImport": {"placeholders": {"error": {"type": "String"}}},
+  "@errImport": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errCapture": "Could not take the photo: {error}",
-  "@errCapture": {"placeholders": {"error": {"type": "String"}}},
+  "@errCapture": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "errProcessing": "Processing failed: {error}",
-  "@errProcessing": {"placeholders": {"error": {"type": "String"}}},
+  "@errProcessing": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileDeleteTitle": "Delete profile?",
   "aProfileDeleteBody": "Delete profile for “{name}”? This cannot be undone.",
-  "@aProfileDeleteBody": {"placeholders": {"name": {"type": "String"}}},
+  "@aProfileDeleteBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileDeleted": "Deleted {name}",
-  "@aProfileDeleted": {"placeholders": {"name": {"type": "String"}}},
+  "@aProfileDeleted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileFieldCount": "{count} fields",
-  "@aProfileFieldCount": {"placeholders": {"count": {"type": "int"}}},
+  "@aProfileFieldCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "aProfileShareJson": "Share JSON",
   "aProfileClose": "Close",
   "aProfileShareText": "Form profile: {name}",
-  "@aProfileShareText": {"placeholders": {"name": {"type": "String"}}},
+  "@aProfileShareText": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileImportTitle": "Import profile JSON",
   "aProfileImport": "Import",
   "aProfileImported": "Imported {name}",
-  "@aProfileImported": {"placeholders": {"name": {"type": "String"}}},
+  "@aProfileImported": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileTitle": "Form Profiles",
   "aProfileImportJson": "Import JSON",
   "aProfileRefresh": "Refresh",
   "aProfileError": "Error: {error}",
-  "@aProfileError": {"placeholders": {"error": {"type": "String"}}},
+  "@aProfileError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "aProfileEmptyTitle": "No saved form profiles",
   "aProfileEmptyBody": "When you fill a form and place values, they are saved as a reusable profile for that form type. Next time the same form appears, values are auto-suggested.",
   "aProfileSubtitle": "{count} fields • Saved {date}",
-  "@aProfileSubtitle": {"placeholders": {"count": {"type": "int"}, "date": {"type": "String"}}},
+  "@aProfileSubtitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "bProfileTitle": "Profile",
   "bProfileForgetTitle": "Forget remembered answers?",
   "bProfileForgetBody": "This clears answers the AI learned from forms you filled before. Your profile above is not affected.",
@@ -710,7 +1170,13 @@
   "bProfileRememberedTitle": "Remembered answers",
   "bProfileRememberedEmpty": "Answers you give while filling forms are saved here to auto-fill later",
   "bProfileRememberedCount": "{count, plural, =1{1 field remembered from past forms} other{{count} fields remembered from past forms}}",
-  "@bProfileRememberedCount": {"placeholders": {"count": {"type": "int"}}},
+  "@bProfileRememberedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "bProfileSaveProfile": "Save Profile",
   "bProfileBackendTitle": "Backend server (optional)",
   "bProfileBackendSubtitle": "Not needed for on-device AI or file tools",
@@ -730,14 +1196,26 @@
   "bProfileFieldEmployer": "Employer",
   "bProfileFieldJobTitle": "Job Title",
   "aImportNotSaved": "Not saved: {reason}",
-  "@aImportNotSaved": {"placeholders": {"reason": {"type": "String"}}},
+  "@aImportNotSaved": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "aImportTitle": "Import File from URL",
   "aImportUrlLabel": "File URL",
   "aImportGrab": "Grab File",
   "aImportHeaderTitle": "Fast File Import",
   "aImportHeaderBody": "Grab any file from a URL, then save it to your device",
   "aImportPercentDownloaded": "{percent}% downloaded",
-  "@aImportPercentDownloaded": {"placeholders": {"percent": {"type": "String"}}},
+  "@aImportPercentDownloaded": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "aImportDownloading": "Downloading…",
   "aImportUnavailable": "File Not Available",
   "aImportFailed": "Download Failed",
@@ -749,20 +1227,67 @@
   "aImportInfoSpeed": "Speed",
   "aImportInfoRecovered": "Recovered",
   "aImportRetries": "{count, plural, =1{1 retry} other{{count} retries}}",
-  "@aImportRetries": {"placeholders": {"count": {"type": "int"}}},
+  "@aImportRetries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "aImportSaving": "Saving…",
   "aImportFileFallback": "file",
   "cEditNoFieldsFound": "No obvious fields found on this page. You can still tap Text to add anywhere.",
   "cEditSelectDate": "Select date",
   "cEditEnterValue": "Enter value",
   "cEditFillSimilar": "Fill {count} more \"{label}\" field(s) with the same value?",
-  "@cEditFillSimilar": {"placeholders": {"count": {"type": "int"}, "label": {"type": "String"}}},
+  "@cEditFillSimilar": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "cEditFillAll": "Fill all",
   "cEditPasswordProtected": "This PDF is password-protected and cannot be edited until the password is removed.",
   "cEditCouldNotOpen": "Could not open file: {error}",
-  "@cEditCouldNotOpen": {"placeholders": {"error": {"type": "String"}}},
+  "@cEditCouldNotOpen": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "cEditSavedMarksUnreadable": "Saved marks could not be read. A backup was kept.",
   "cEditSavedMarksMismatch": "Saved marks do not match this file. A backup was kept.",
+  "cEditSavedMarksNewerApp": "These saved edits were made with a newer app version. They were kept and can be restored after you update.",
+  "toolCompare": "Compare",
+  "compareTitle": "Compare with another PDF",
+  "compareAdded": "Added",
+  "compareRemoved": "Removed",
+  "compareUnchanged": "Unchanged",
+  "compareIdentical": "The two documents have the same text.",
+  "compareEllipsised": "… {count} more unchanged lines",
+  "@compareEllipsised": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "compareNeedsPdf": "Comparing works between two PDF files.",
+  "compareSameFile": "That is the same file. Pick a different version to compare.",
+  "compareNoText": "Neither document has selectable text (both are scans?). Comparison needs a text layer.",
+  "compareFailed": "Comparison failed: {error}",
+  "@compareFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "cEditNothingToExport": "Nothing to export",
   "cEditExportNotWritten": "Export file was not written",
   "cOutlineEmpty": "No outline available",
@@ -773,27 +1298,60 @@
   "cPageOpsTitle": "Page Operations",
   "cPageOpsRangeLabel": "Pages (e.g. 1-3, 5, 8-10)",
   "cPageOpsDocPages": "{count, plural, =1{Document has 1 page} other{Document has {count} pages}}",
-  "@cPageOpsDocPages": {"placeholders": {"count": {"type": "int"}}},
+  "@cPageOpsDocPages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "cPageOpsExtract": "Extract",
   "cPageOpsSplit": "Split",
   "cPageOpsInsertBlank": "Insert Blank",
   "cPageOpsRotateLeft": "Rotate Left",
   "cPageOpsRotateRight": "Rotate Right",
   "cPageOpsSummary": "{operation} {count, plural, =1{1 page} other{{count} pages}}",
-  "@cPageOpsSummary": {"placeholders": {"operation": {"type": "String"}, "count": {"type": "int"}}},
+  "@cPageOpsSummary": {
+    "placeholders": {
+      "operation": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "cPageOpsEnterValidRange": "Enter a valid page range",
   "cExportSaved": "Saved",
   "cExportDoMore": "Do more with your file",
   "cMarkCorrect": "Correct",
   "cMarkWrong": "Wrong",
   "cColorSwatchLabel": "Colour {hex}",
-  "@cColorSwatchLabel": {"placeholders": {"hex": {"type": "String"}}},
+  "@cColorSwatchLabel": {
+    "placeholders": {
+      "hex": {
+        "type": "String"
+      }
+    }
+  },
   "aSettingsSaved": "AI settings saved on this device",
   "aSettingsKeyRemoved": "API key removed",
   "aSettingsTestSuccess": "Success! AI replied: “{reply}”",
-  "@aSettingsTestSuccess": {"placeholders": {"reply": {"type": "String"}}},
+  "@aSettingsTestSuccess": {
+    "placeholders": {
+      "reply": {
+        "type": "String"
+      }
+    }
+  },
   "aSettingsModelUsed": "Model used: {model}",
-  "@aSettingsModelUsed": {"placeholders": {"model": {"type": "String"}}},
+  "@aSettingsModelUsed": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
   "aSettingsIntro": "File tools work offline. AI features use the provider you pick below with your own key. OpenRouter is easiest — one key, every model.",
   "aSettingsThemeSystem": "System",
   "aSettingsThemeLight": "Light",
@@ -803,9 +1361,21 @@
   "aSettingsKeySet": "Set",
   "aSettingsReplaceKey": "Replace key (leave blank to keep)",
   "aSettingsPasteKey": "Paste your {provider} key",
-  "@aSettingsPasteKey": {"placeholders": {"provider": {"type": "String"}}},
+  "@aSettingsPasteKey": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
   "aSettingsGetKeyAt": "Get a key at {url}",
-  "@aSettingsGetKeyAt": {"placeholders": {"url": {"type": "String"}}},
+  "@aSettingsGetKeyAt": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "aSettingsRemoveKey": "Remove key",
   "aSettingsServerUrl": "Server URL",
   "aSettingsEndpoint": "OpenAI-compatible endpoint",
@@ -820,7 +1390,16 @@
   "bCommonBack": "Back",
   "bCommonNext": "Next",
   "bOnboardVariant": "Variant {id}: {name}",
-  "@bOnboardVariant": {"placeholders": {"id": {"type": "String"}, "name": {"type": "String"}}},
+  "@bOnboardVariant": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "bOnboardWelcomeTitle": "Private, Offline, AI-Powered",
   "bOnboardWelcomeSubtitle": "Edit, sign, and understand PDFs — with on-device AI that never uploads your files. Your data stays on your phone.",
   "bOnboardWelcomeBullet1": "Offline tools: compress, merge, split, OCR, watermark — no internet needed",
@@ -856,13 +1435,37 @@
   "bOnboardProBullet5": "Cloud sync opt-in encrypted (E8.2) — annotations across devices",
   "bOnboardProBullet6": "Per-team AI quotas + SSO for enterprise (E8.1+E5.3)",
   "bOnboardPricePerYear": "{price}/year",
-  "@bOnboardPricePerYear": {"placeholders": {"price": {"type": "String"}}},
+  "@bOnboardPricePerYear": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
   "bOnboardPricePerMonth": "{price}/month",
-  "@bOnboardPricePerMonth": {"placeholders": {"price": {"type": "String"}}},
+  "@bOnboardPricePerMonth": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
   "bOnboardPriceOnce": "{price} once",
-  "@bOnboardPriceOnce": {"placeholders": {"price": {"type": "String"}}},
+  "@bOnboardPriceOnce": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
   "bOnboardVariantFooter": "Variant {id} • A/B test exposure tracked • Conversion measured",
-  "@bOnboardVariantFooter": {"placeholders": {"id": {"type": "String"}}},
+  "@bOnboardVariantFooter": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
   "aChatHistoryLoginRequired": "Login required to see chat history",
   "aChatHistoryOffline": "Backend unreachable — showing offline mode (on-device answers only).",
   "aChatHistoryDeleteTitle": "Delete chat?",
@@ -876,9 +1479,24 @@
   "aChatHistoryStartNew": "Start new chat",
   "aChatHistoryUntitled": "Untitled chat",
   "aChatHistoryDoc": "Doc: {id}",
-  "@aChatHistoryDoc": {"placeholders": {"id": {"type": "String"}}},
+  "@aChatHistoryDoc": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
   "aChatHistoryMeta": "{count, plural, =1{1 message} other{{count} messages}} • {date}",
-  "@aChatHistoryMeta": {"placeholders": {"count": {"type": "int"}, "date": {"type": "String"}}},
+  "@aChatHistoryMeta": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "aChatHistoryRestore": "Restore",
   "bScanTitleCapture": "Scan Document",
   "bScanTitleCrop": "Adjust Edges",
@@ -894,9 +1512,24 @@
   "bScanAddPage": "Add page",
   "bScanDetectText": "Detect Text",
   "bScanProcessingPage": "Processing page {current} of {total}…",
-  "@bScanProcessingPage": {"placeholders": {"current": {"type": "int"}, "total": {"type": "int"}}},
+  "@bScanProcessingPage": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "bScanOcrFailed": "{count, plural, =1{OCR failed for 1 page. That page may be blank or unreadable.} other{OCR failed for {count} pages. Those pages may be blank or unreadable.}}",
-  "@bScanOcrFailed": {"placeholders": {"count": {"type": "int"}}},
+  "@bScanOcrFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "bScanNoTextDetectedRetry": "No text detected.\nTry running text detection again.",
   "bScanRunningOcr": "Running OCR…",
   "bScanCopyAllText": "Copy all text",
@@ -906,7 +1539,13 @@
   "bScanSearchablePdf": "Searchable PDF",
   "bScanShareDocument": "Scanned document",
   "bScanSavedTo": "Saved to: {path}",
-  "@bScanSavedTo": {"placeholders": {"path": {"type": "String"}}},
+  "@bScanSavedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "bScanTextDetected": "Text detected",
   "bScanAdjustCrop": "Adjust crop",
   "bScanRescanOcr": "Re-scan OCR",
@@ -939,7 +1578,13 @@
   "aChatSuggestTodo": "What do I need to do or send?",
   "aChatSuggestDeadlines": "Are there any deadlines?",
   "aChatValueOnPage": "Value (page {page})",
-  "@aChatValueOnPage": {"placeholders": {"page": {"type": "int"}}},
+  "@aChatValueOnPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
   "aChatAiUnsure": "AI was unsure — please double-check",
   "aToolsScanDoc": "Scan Document",
   "aToolsScanDocDesc": "Camera scan with auto edge detection & perspective fix",
@@ -950,7 +1595,13 @@
   "aToolsBadgeAi": "AI",
   "aResultDone": "Done!",
   "aResultFiles": "{count, plural, =1{1 file} other{{count} files}}",
-  "@aResultFiles": {"placeholders": {"count": {"type": "int"}}},
+  "@aResultFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "aHomeAiSettingsTooltip": "AI settings & API key",
   "subErrStore": "Could not connect to the store.",
   "subErrLoadPlans": "Could not load the plans. Check your connection and store account.",
@@ -972,5 +1623,14 @@
   "a11yRemoveFile": "Remove from the list",
   "a11yClearText": "Clear",
   "a11yShareAll": "Share all",
-  "a11yDeleteSignature": "Delete this signature"
+  "a11yDeleteSignature": "Delete this signature",
+  "placingFieldTitle": "Place field",
+  "placingFieldHint": "Tap where the field should go",
+  "moveResize": "Move / Resize",
+  "moreActions": "More actions",
+  "alignTools": "Align",
+  "distributeTools": "Distribute",
+  "fieldNameEmpty": "The field needs a name",
+  "fieldNameDuplicate": "Another field already has this name",
+  "unsavedChangesDot": "Unsaved changes"
 }

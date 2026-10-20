@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/pressable_scale.dart';
 import '../../../core/services/recent_files_service.dart';
@@ -92,19 +93,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 6),
                   Text(l10n.appTagline, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14, height: 1.4)),
                   const SizedBox(height: 20),
-                  SizedBox(
-                    height: 44,
-                    child: ElevatedButton.icon(
-                      onPressed: () => context.push('/tools'),
-                      icon: const Icon(Icons.grid_view_rounded, size: 18),
-                      label: Text(l10n.openTools, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppColors.primary,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      SizedBox(
+                        height: 44,
+                        child: FilledButton.icon(
+                          // The single most important action on this screen:
+                          // open a PDF straight into the editor.
+                          onPressed: () => context.push('/tools/pick-edit'),
+                          icon: const Icon(Icons.file_open_outlined, size: 18),
+                          label: Text(l10n.openPdf, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.primaryDark,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
                       ),
-                    ),
+                      SizedBox(
+                        height: 44,
+                        child: OutlinedButton.icon(
+                          onPressed: () => context.push('/tools'),
+                          icon: const Icon(Icons.grid_view_rounded, size: 18),
+                          label: Text(l10n.openTools, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white.withValues(alpha: 0.45)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ]),
               ),
@@ -182,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ]),
               ),
               SizedBox(
-                height: 120,
+                height: 132,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -190,12 +212,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (_, i) {
                     final f = show[i];
+                    // Useful metadata: what happened to the file and when.
+                    final when = f.at > 0
+                        ? DateFormat.MMMd().add_jm().format(DateTime.fromMillisecondsSinceEpoch(f.at))
+                        : null;
                     return GestureDetector(
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                         builder: (_) => FilePreviewScreen(path: f.path, isPdf: f.isPdf),
                       )),
                       child: Container(
-                        width: 110,
+                        width: 128,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: cs.surface,
@@ -205,17 +231,35 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: (f.isPdf ? AppColors.error : AppColors.primary).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
+                            Row(children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: (f.isPdf ? AppColors.error : AppColors.primary).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image, color: f.isPdf ? AppColors.error : AppColors.primary, size: 20),
                               ),
-                              child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image, color: f.isPdf ? AppColors.error : AppColors.primary, size: 22),
-                            ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  f.action,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant),
+                                ),
+                              ),
+                            ]),
                             const Spacer(),
-                            Text(f.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            if (when != null)
+                              Text(when, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: cs.onSurfaceVariant)),
                           ],
                         ),
                       ),

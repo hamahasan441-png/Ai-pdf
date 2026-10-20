@@ -41,7 +41,19 @@ class _FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-final _pdfBody = utf8.encode('%PDF-1.7\n${'x' * 200}\n%%EOF');
+// A real, parseable one-page PDF (catalog + page tree + trailer). The
+// client validates the server response structurally before adopting it, so
+// the fixture must be a genuine PDF, not just bytes with the magic header.
+final _pdfBody = utf8.encode(
+  '%PDF-1.7\n'
+  '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n'
+  '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n'
+  '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n'
+  'trailer << /Size 4 /Root 1 0 R >>\n'
+  '%%EOF',
+);
+// Magic bytes but no readable structure (no objects, no page tree).
+final _pdfShapedGarbage = utf8.encode('%PDF-1.7\n${'x' * 200}\n%%EOF');
 const _allChecks = 'page_count,text_extraction,annotations,links,form_fields,rendered_fill,hidden_copies';
 
 void main() {
@@ -122,6 +134,17 @@ void main() {
       }));
       expect(result.ok, isFalse);
       expect(result.error, contains('did not return a PDF'));
+    });
+
+    test('a 200 with the PDF magic but no readable structure is a failure', () async {
+      // A truncated or corrupt response must not be adopted as redacted just
+      // because it starts with %PDF-.
+      final result = await run(_FakeAdapter(200, _pdfShapedGarbage, headers: {
+        'x-redaction-verified': [_allChecks],
+      }));
+      expect(result.ok, isFalse);
+      expect(result.error, contains('failed validation'));
+      expect(tmp.listSync().whereType<File>().where((f) => f.path.contains('redacted_')), isEmpty);
     });
 
     test('a refusal shows the server reason', () async {

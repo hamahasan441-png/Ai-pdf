@@ -64,12 +64,24 @@ class ImageAnnotationRenderer {
     canvas.restore();
   }
 
-  /// Dispose all cached images (call on file close).
-  void dispose() {
+  /// Free the cached image of a single annotation (call when it is deleted).
+  void evict(String annotationId) {
+    final img = _cache.remove(annotationId);
+    img?.dispose();
+  }
+
+  /// Dispose all cached images. Called when a different document is opened:
+  /// decoded images belong to that document's annotations and would
+  /// otherwise accumulate over a long editing session.
+  void clear() {
     for (final img in _cache.values) {
       img.dispose();
     }
     _cache.clear();
   }
 
+  /// Dispose all cached images (call on file close).
+  void dispose() {
+    clear();
+  }
 }

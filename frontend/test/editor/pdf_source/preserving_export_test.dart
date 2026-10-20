@@ -183,6 +183,19 @@ void main() {
     });
   });
 
+  test('a writer refuses a second write instead of mixing two runs', () {
+    // The writer accumulates state across write(); a second call would
+    // combine two runs into a corrupt file. It must refuse explicitly.
+    final s = store('rich_classic');
+    final writer = PreservingPdfWriter(s, null);
+    final first = writer.write([for (var i = 0; i < s.pages.length; i++) SourcePageSpec(i)]);
+    expect(first, isNotEmpty);
+    expect(
+      () => writer.write([for (var i = 0; i < s.pages.length; i++) SourcePageSpec(i)]),
+      throwsA(isA<PdfSourceException>()),
+    );
+  });
+
   group('scale', () {
     test('a 600-page document parses and rewrites in bounded time', () async {
       final doc = pw.Document();

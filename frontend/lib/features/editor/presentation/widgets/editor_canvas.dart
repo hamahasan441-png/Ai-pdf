@@ -17,6 +17,7 @@ import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.da
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/edit_text_target.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/form_field_box.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
@@ -52,6 +53,14 @@ class EditorCanvas extends StatelessWidget {
   final Rect Function(EditorAnnotation) boundsOf;
   final ImageAnnotationRenderer imageRenderer;
   final StampAnnotationRenderer stampRenderer;
+
+  /// The explicit Move/Resize state. Selection chrome that draws ON the page
+  /// (bounding box, corner handles, rotate handle) is shown only while this
+  /// is true, so a plain selection never decorates the document.
+  final bool transformMode;
+
+  /// Toggles transform mode from the contextual action bar.
+  final VoidCallback? onToggleTransform;
 
   /// Bumped when an async image decode finishes, forcing a canvas repaint.
   final int canvasRevision;
@@ -133,6 +142,8 @@ class EditorCanvas extends StatelessWidget {
     required this.boundsOf,
     required this.imageRenderer,
     required this.stampRenderer,
+    this.transformMode = false,
+    this.onToggleTransform,
     this.canvasRevision = 0,
     this.formLayer,
     required this.onTapUp,
@@ -273,13 +284,14 @@ class EditorCanvas extends StatelessWidget {
                     },
                   ),
               if (showFields) ...pageFields.map((f) {
+                final palette = EditorPalette.of(context);
                 final isCheckbox = f.type == FieldType.checkbox;
                 final isRadio = f.type == FieldType.radio;
                 final base = isCheckbox
-                    ? Colors.green
+                    ? palette.detectTeal
                     : isRadio
-                        ? Colors.blue
-                        : Colors.amber;
+                        ? palette.detectViolet
+                        : palette.detectIndigo;
                 return Positioned(
                   left: f.rect.left * size.width,
                   top: f.rect.top * size.height,
@@ -293,11 +305,11 @@ class EditorCanvas extends StatelessWidget {
                       height: (f.rect.height * size.height).clamp(18.0, 60.0),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
-                        color: base.withValues(alpha: 0.18),
-                        border: Border.all(color: base.shade700, width: 1.5),
-                        borderRadius: isRadio ? BorderRadius.circular(100) : BorderRadius.circular(4),
+                        color: base.withValues(alpha: 0.16),
+                        border: Border.all(color: base.withValues(alpha: 0.55), width: 1.2),
+                        borderRadius: isRadio ? BorderRadius.circular(100) : BorderRadius.circular(5),
                       ),
-                      child: Icon(resolveTypeIcon(f.type), size: 14, color: base.shade900),
+                      child: Icon(resolveTypeIcon(f.type), size: 14, color: base),
                     ),
                   ),
                 );
@@ -326,6 +338,7 @@ class EditorCanvas extends StatelessWidget {
                   child: IgnorePointer(child: Container(height: 1, color: Colors.pinkAccent)),
                 ),
               ...multi.map((a) {
+                final palette = EditorPalette.of(context);
                 final r = boundsOf(a);
                 return Positioned(
                   left: r.left * size.width,
@@ -335,8 +348,8 @@ class EditorCanvas extends StatelessWidget {
                   child: IgnorePointer(
                     child: Container(
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.blue, width: 1.5),
-                        color: Colors.blue.withValues(alpha: 0.08),
+                        border: Border.all(color: palette.selectionBorder, width: 1),
+                        color: palette.selectionTint,
                       ),
                     ),
                   ),
@@ -351,8 +364,8 @@ class EditorCanvas extends StatelessWidget {
                   child: IgnorePointer(
                     child: Container(
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.blueAccent),
-                        color: Colors.blue.withValues(alpha: 0.12),
+                        border: Border.all(color: EditorPalette.of(context).selectionBorder),
+                        color: EditorPalette.of(context).selectionTint,
                       ),
                     ),
                   ),
@@ -367,11 +380,9 @@ class EditorCanvas extends StatelessWidget {
                     child: GestureDetector(
                       onTap: () {
                         if (t.locked) return;
-                        if (tool == EditTool.pan) {
-                          onSelectText(t);
-                        } else {
-                          onEditText(t);
-                        }
+                        // One handler for both steps: the screen selects on the
+                        // first tap and opens the editor on the second.
+                        onSelectText(t);
                       },
                       onPanStart: _canDragText && !t.locked
                           ? (_) => onMoveTextStart?.call(t)
@@ -381,7 +392,11 @@ class EditorCanvas extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
-                          border: selected == t ? Border.all(color: Colors.blue, width: 2) : null,
+                          // Selection is a light wash, never a border.
+                          color: selected == t
+                              ? EditorPalette.of(context).selectionTint
+                              : null,
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: Transform.rotate(
                           angle: -t.rotation,
@@ -390,7 +405,7 @@ class EditorCanvas extends StatelessWidget {
                       ),
                     ),
                   )),
-              if (selected != null) ...[
+              if (selected != null && transformMode) ...[
                 EditorSelectionBox(size: size, bounds: boundsOf(selected!)),
                 EditorScaleHandle(
                   size: size,
@@ -432,6 +447,8 @@ class EditorCanvas extends StatelessWidget {
                   onEditField: selected is FormFieldAnnotation && onEditField != null
                       ? () => onEditField!(selected! as FormFieldAnnotation)
                       : null,
+                  transformMode: transformMode,
+                  onToggleTransform: onToggleTransform,
                   onCopy: onCopySelected,
                   onDuplicate: onDuplicateSelected,
                   onBringToFront: onBringToFront,

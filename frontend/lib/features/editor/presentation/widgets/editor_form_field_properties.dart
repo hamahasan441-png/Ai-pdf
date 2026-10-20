@@ -125,15 +125,23 @@ FormFieldAnnotation newFormField(FormFieldKind kind, {required String label, dou
 /// Edits [field]'s name, required flag and value or options. Changes apply
 /// to [field] only on Save; returns whether they did.
 ///
+/// [otherNames] are the names of the other placed fields in the document;
+/// a new name that collides with one is rejected with an inline error, so
+/// the exported AcroForm cannot end up with duplicate field identifiers.
+///
 /// Shown as a bottom sheet that rises above the keyboard.
-Future<bool> showFormFieldPropertiesDialog(BuildContext context, FormFieldAnnotation field) async {
+Future<bool> showFormFieldPropertiesDialog(
+  BuildContext context,
+  FormFieldAnnotation field, {
+  Set<String> otherNames = const {},
+}) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-      child: _FieldPropertiesDialog(field: field),
+      child: _FieldPropertiesDialog(field: field, otherNames: otherNames),
     ),
   );
   return saved == true;
@@ -141,8 +149,9 @@ Future<bool> showFormFieldPropertiesDialog(BuildContext context, FormFieldAnnota
 
 class _FieldPropertiesDialog extends StatefulWidget {
   final FormFieldAnnotation field;
+  final Set<String> otherNames;
 
-  const _FieldPropertiesDialog({required this.field});
+  const _FieldPropertiesDialog({required this.field, required this.otherNames});
 
   @override
   State<_FieldPropertiesDialog> createState() => _FieldPropertiesDialogState();
@@ -171,7 +180,10 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
 
   void _save() {
     final field = widget.field;
-    if (_name.text.trim().isNotEmpty) field.label = _name.text.trim();
+    final name = _name.text.trim();
+    if (name.isEmpty) return; // a field must keep a name
+    if (widget.otherNames.contains(name)) return; // duplicate identifier: rejected
+    field.label = name;
     field.required = _required;
     field.checked = _checked;
     field.multiline = _multiline;
@@ -182,6 +194,17 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
       field.value = _multiline ? _value.text : _value.text.replaceAll('\n', ' ');
     }
     Navigator.pop(context, true);
+  }
+
+  /// Why Save is currently unavailable, or null when it is available.
+  String? get _saveBlockedReason {
+    final l10n = AppLocalizations.of(context);
+    final name = _name.text.trim();
+    if (name.isEmpty) return l10n?.fieldNameEmpty ?? 'The field needs a name';
+    if (widget.otherNames.contains(name)) {
+      return l10n?.fieldNameDuplicate ?? 'Another field already has this name';
+    }
+    return null;
   }
 
   @override
@@ -219,7 +242,11 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
             TextField(
               key: const ValueKey('fieldName'),
               controller: _name,
-              decoration: InputDecoration(labelText: l10n?.fieldName ?? 'Field name'),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: l10n?.fieldName ?? 'Field name',
+                errorText: _saveBlockedReason,
+              ),
             ),
             const SizedBox(height: 4),
             SwitchListTile(
@@ -286,7 +313,14 @@ class _FieldPropertiesDialogState extends State<_FieldPropertiesDialog> {
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(child: FilledButton(onPressed: _save, child: Text(l10n?.save ?? 'Save'))),
+              Expanded(
+                child: FilledButton(
+                  // Disabled (and explained above) while the name is empty or
+                  // collides with another field's name.
+                  onPressed: _saveBlockedReason == null ? _save : null,
+                  child: Text(l10n?.save ?? 'Save'),
+                ),
+              ),
             ]),
           ],
         ),

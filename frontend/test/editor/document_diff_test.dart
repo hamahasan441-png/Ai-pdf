@@ -68,5 +68,48 @@ void main() {
       expect(removed.every((s) => s.kind == DiffKind.removed), isTrue);
       expect(removed.length, 2);
     });
+
+    test('a shared prefix and suffix are preserved around the changed middle', () {
+      // The LCS now runs on the trimmed middle only; the result must be the
+      // same reading order as a plain diff would give.
+      final old = ['h1', 'h2', 'old-a', 'old-b', 'f1', 'f2'];
+      final new_ = ['h1', 'h2', 'new-a', 'new-b', 'f1', 'f2'];
+      final segs = svc.diffLines(old.join('\n'), new_.join('\n'));
+      expect(segs, const [
+        DiffSegment(DiffKind.unchanged, 'h1'),
+        DiffSegment(DiffKind.unchanged, 'h2'),
+        DiffSegment(DiffKind.removed, 'old-a'),
+        DiffSegment(DiffKind.removed, 'old-b'),
+        DiffSegment(DiffKind.added, 'new-a'),
+        DiffSegment(DiffKind.added, 'new-b'),
+        DiffSegment(DiffKind.unchanged, 'f1'),
+        DiffSegment(DiffKind.unchanged, 'f2'),
+      ]);
+    });
+
+    test('an oversized diff degrades to paired blocks instead of exploding memory', () {
+      // 2100 x 2100 changed lines = 4.41M cells > the 4M cap, so the service
+      // reports removed-then-added blocks. The output is still complete and
+      // correctly ordered; it just does not claim pairing.
+      final old = [for (var i = 0; i < 2100; i++) 'old $i'];
+      final new_ = [for (var i = 0; i < 2100; i++) 'new $i'];
+      final segs = svc.diffLines(old.join('\n'), new_.join('\n'));
+      final stats = svc.stats(segs);
+      expect(stats.removed, 2100);
+      expect(stats.added, 2100);
+      expect(stats.unchanged, 0);
+      // Every removal comes before every addition.
+      final lastRemoved = segs.lastIndexWhere((s) => s.kind == DiffKind.removed);
+      final firstAdded = segs.indexWhere((s) => s.kind == DiffKind.added);
+      expect(lastRemoved, lessThan(firstAdded));
+    });
+
+    test('identical large documents stay cheap and unchanged', () {
+      // A 2100-line identical document trims to nothing in the middle — the
+      // cap must not turn pure-identical docs into removed/added noise.
+      final text = [for (var i = 0; i < 2100; i++) 'same $i'].join('\n');
+      final segs = svc.diffLines(text, text);
+      expect(svc.stats(segs).identical, isTrue);
+    });
   });
 }

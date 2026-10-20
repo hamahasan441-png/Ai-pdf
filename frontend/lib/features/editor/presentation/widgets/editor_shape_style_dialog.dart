@@ -81,7 +81,7 @@ Future<ShapeStyleResult?> showEditorShapeStyleDialog(
                             color: c,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: localColor == c ? Colors.blueAccent : Colors.grey.shade400,
+                              color: localColor == c ? Theme.of(ctx).colorScheme.primary : Colors.grey.shade400,
                               width: localColor == c ? 3 : 1,
                             ),
                           ),

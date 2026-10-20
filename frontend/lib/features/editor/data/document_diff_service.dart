@@ -112,15 +112,55 @@ class DocumentDiffService {
       .toList();
 
   /// LCS diff over two token lists, emitting segments in reading order.
+  ///
+  /// Memory: the full DP table costs n×m ints. Two measures keep that
+  /// bounded for whole-document inputs:
+  /// 1. The common prefix and suffix are trimmed first — version pairs of
+  ///    the same document typically share both, which shrinks the table to
+  ///    the actually-changed middle.
+  /// 2. If the trimmed table would still exceed [_maxLcsCells] cells, the
+  ///    middle is reported as one removed block plus one added block. That
+  ///    output is honest (nothing is claimed to be paired) and bounded;
+  ///    an OOM on a 5000-line diff is not an acceptable trade for optimal
+  ///    matching.
   List<DiffSegment> _diff(List<String> a, List<String> b) {
-    final n = a.length;
-    final m = b.length;
+    // Trim common prefix.
+    var start = 0;
+    while (start < a.length && start < b.length && a[start] == b[start]) {
+      start++;
+    }
+    // Trim common suffix.
+    var endA = a.length, endB = b.length;
+    while (endA > start && endB > start && a[endA - 1] == b[endB - 1]) {
+      endA--;
+      endB--;
+    }
+    final head = [
+      for (var i = 0; i < start; i++) DiffSegment(DiffKind.unchanged, a[i]),
+    ];
+    final tail = [
+      for (var i = endA; i < a.length; i++) DiffSegment(DiffKind.unchanged, a[i]),
+    ];
 
-    // dp[i][j] = LCS length of a[i:] and b[j:].
+    final midA = a.sublist(start, endA);
+    final midB = b.sublist(start, endB);
+    final n = midA.length;
+    final m = midB.length;
+    if (n == 0 && m == 0) return head;
+    if (_cellsTooBig(n, m)) {
+      return [
+        ...head,
+        for (final line in midA) DiffSegment(DiffKind.removed, line),
+        for (final line in midB) DiffSegment(DiffKind.added, line),
+        ...tail,
+      ];
+    }
+
+    // dp[i][j] = LCS length of midA[i:] and midB[j:].
     final dp = List.generate(n + 1, (_) => List<int>.filled(m + 1, 0));
     for (var i = n - 1; i >= 0; i--) {
       for (var j = m - 1; j >= 0; j--) {
-        if (a[i] == b[j]) {
+        if (midA[i] == midB[j]) {
           dp[i][j] = dp[i + 1][j + 1] + 1;
         } else {
           dp[i][j] = dp[i + 1][j] >= dp[i][j + 1] ? dp[i + 1][j] : dp[i][j + 1];
@@ -131,24 +171,35 @@ class DocumentDiffService {
     final out = <DiffSegment>[];
     var i = 0, j = 0;
     while (i < n && j < m) {
-      if (a[i] == b[j]) {
-        out.add(DiffSegment(DiffKind.unchanged, a[i]));
+      if (midA[i] == midB[j]) {
+        out.add(DiffSegment(DiffKind.unchanged, midA[i]));
         i++;
         j++;
       } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        out.add(DiffSegment(DiffKind.removed, a[i]));
+        out.add(DiffSegment(DiffKind.removed, midA[i]));
         i++;
       } else {
-        out.add(DiffSegment(DiffKind.added, b[j]));
+        out.add(DiffSegment(DiffKind.added, midB[j]));
         j++;
       }
     }
     while (i < n) {
-      out.add(DiffSegment(DiffKind.removed, a[i++]));
+      out.add(DiffSegment(DiffKind.removed, midA[i++]));
     }
     while (j < m) {
-      out.add(DiffSegment(DiffKind.added, b[j++]));
+      out.add(DiffSegment(DiffKind.added, midB[j++]));
     }
-    return out;
+    return [...head, ...out, ...tail];
   }
+
+  static bool _cellsTooBig(int n, int m) {
+    // 4M cells ≈ 32 MB with Dart's default small-int representation on
+    // 64-bit runtimes — large but survivable; above that we degrade
+    // gracefully instead of risking an out-of-memory crash.
+    return n > 0 && m > 0 && n * m > _maxLcsCells;
+  }
+
+  /// Upper bound on LCS table cells before the diff falls back to a
+  /// paired-block report (see [_diff]).
+  static const int _maxLcsCells = 4 * 1024 * 1024;
 }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 
 /// One widget of a form field placed on the shown page (0..1 rect).
 typedef PlacedAcroWidget = ({AcroField field, AcroWidget widget, Rect rect});
@@ -37,10 +38,12 @@ class AcroInlineEditing {
 /// depend on whether the page renderer drew the file's own appearances, and
 /// an edited value never shows on top of the old one.
 ///
-/// The field in focus ([focusName] / [focusObjNum]) gets a dashed outline;
-/// a text field being typed in ([editing]) turns white and takes the
-/// keyboard right there, at the field's size and position, so it zooms and
-/// scrolls with the page.
+/// ### Selection design
+/// Fields never carry a selection border. A fillable field is a quiet paper
+/// surface with a hairline frame that reads as part of the printed form.
+/// The focused field gets nothing but a very light accent tint — no border,
+/// no dashes, no handles — so tapping a field cannot produce a coloured
+/// rectangle. The tiny asterisk marks a still-empty required field.
 class AcroFormLayer extends StatelessWidget {
   final List<PlacedAcroWidget> widgets;
   final Map<String, Object> edits;
@@ -61,10 +64,8 @@ class AcroFormLayer extends StatelessWidget {
     this.editing,
   });
 
-  static const fill = Color(0xFFD9E4FF);
-  static const border = Color(0xFF5B7FD9);
-  static const requiredBorder = Color(0xFFD32F2F);
-  static const checkColor = Color(0xFFC62828);
+  static const checkColor = Color(0xFFB3261E);
+  static const markColor = Color(0xFF39415A);
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +105,7 @@ class AcroFormLayer extends StatelessWidget {
   }
 
   Widget _field(BuildContext context, PlacedAcroWidget p, Size page) {
+    final palette = EditorPalette.of(context);
     final f = p.field;
     final value = fieldValue(f, edits);
     final editable = f.fillable;
@@ -115,7 +117,7 @@ class AcroFormLayer extends StatelessWidget {
     final on = f.kind == AcroFieldKind.checkbox ? value != 'Off' : (round && value == p.widget.onState);
     final Widget content = switch (f.kind) {
       AcroFieldKind.checkbox => _mark(on ? Icons.check : null, color: checkColor),
-      AcroFieldKind.radio => _mark(on ? Icons.circle : null, round: true, color: border),
+      AcroFieldKind.radio => _mark(on ? Icons.circle : null, round: true, color: markColor),
       AcroFieldKind.text || AcroFieldKind.choice => typing ? _input(p, page) : _text(p, value, page),
       _ => const SizedBox.shrink(),
     };
@@ -131,41 +133,51 @@ class AcroFormLayer extends StatelessWidget {
                 ].join(', '),
               _ => '${f.name}: ${fieldDisplayText(f, value)}',
             };
-    final Color borderColor;
+
+    // The surface must stay opaque so an edited value covers the stale
+    // appearance baked into the file. Everything else stays quiet: the
+    // frame is the hairline a printed form would have, the focus cue is a
+    // light tint, and there is no border that could read as a selection.
+    final Color surface;
     if (!editable) {
-      borderColor = Colors.black26;
-    } else if (button && on) {
-      borderColor = f.kind == AcroFieldKind.checkbox ? checkColor : border;
+      surface = palette.readOnlySurface;
+    } else if (typing) {
+      surface = Colors.white;
+    } else if (focused) {
+      surface = palette.focusTint;
+    } else if (button && !on) {
+      // Check boxes keep a faint fill so the empty control is findable.
+      surface = const Color(0xFFFAFBFD);
     } else {
-      borderColor = missing ? requiredBorder : border;
+      surface = palette.fieldSurface;
     }
+    final frame = button || !editable
+        ? Border.all(color: palette.fieldHairline, width: editable ? 1 : 0.75)
+        : Border.all(color: palette.fieldHairline, width: 1);
+
     Widget box = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: !editable ? const Color(0xFFEDEDED) : (typing || (button && !on) ? Colors.white : fill),
-        border: Border.all(color: borderColor, width: missing || (button && on) ? 1.4 : 1),
-        borderRadius: round ? null : BorderRadius.circular(button ? 2 : 1.5),
+        color: surface,
+        border: frame,
+        borderRadius: round ? null : BorderRadius.circular(button ? 2.5 : 2),
         shape: round ? BoxShape.circle : BoxShape.rectangle,
       ),
       child: f.required && editable && !button && !typing
           ? Stack(children: [
               Positioned.fill(child: content),
-              const Positioned(
-                right: 1,
-                top: 0,
-                child: Text('*', style: TextStyle(color: requiredBorder, fontSize: 12, height: 1)),
-              ),
+              // The required marker shows only while the field is still empty,
+              // as a gentle validation cue instead of a coloured frame.
+              if (missing)
+                Positioned(
+                  right: 1,
+                  top: 0,
+                  child: Text('*', style: TextStyle(color: checkColor.withValues(alpha: 0.85), fontSize: 11, height: 1)),
+                ),
             ])
           : content,
     );
-    if (focused) {
-      // The field in focus: a dashed outline just outside it.
-      box = CustomPaint(
-        foregroundPainter: _DashedOutline(round: round),
-        child: box,
-      );
-    }
     return Semantics(
       button: editable,
       enabled: editable,
@@ -174,7 +186,12 @@ class AcroFormLayer extends StatelessWidget {
       excludeSemantics: !typing,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: editable && !typing ? () => onTap(f, p.widget) : null,
+        onTap: editable && !typing
+            ? () {
+                HapticFeedback.selectionClick();
+                onTap(f, p.widget);
+              }
+            : null,
         child: box,
       ),
     );
@@ -272,31 +289,4 @@ class AcroFormLayer extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A dashed outline around a focused field, drawn just outside its box.
-class _DashedOutline extends CustomPainter {
-  final bool round;
-
-  _DashedOutline({required this.round});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF1B2130)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final r = (Offset.zero & size).inflate(2);
-    final path = round ? (Path()..addOval(r)) : (Path()..addRect(r));
-    for (final metric in path.computeMetrics()) {
-      var d = 0.0;
-      while (d < metric.length) {
-        canvas.drawPath(metric.extractPath(d, math.min(d + 3, metric.length)), paint);
-        d += 5;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedOutline old) => old.round != round;
 }

@@ -109,6 +109,7 @@ class PreservingPdfWriter {
 
   PreservingWriteReport? report;
   var _erasedGlyphs = 0;
+  bool _written = false;
 
   /// Fields created on the pages written so far, for the form's /Fields.
   final List<PdfRef> _newFieldRefs = [];
@@ -121,6 +122,13 @@ class PreservingPdfWriter {
   /// only, unknown or on removed pages are left as they are.
   Uint8List write(List<OutputPageSpec> pages, {Map<String, Object> formValues = const {}}) {
     if (pages.isEmpty) throw const PdfSourceException('Nothing to export.');
+    // This writer accumulates per-call state (_out, _removed, _overrides,
+    // _newFieldRefs). A second call would mix the two runs into a corrupt
+    // file, so it is refused explicitly instead of failing silently.
+    if (_written) {
+      throw const PdfSourceException('This writer already produced a file.');
+    }
+    _written = true;
     _next = source.maxObjectNumber + 1;
     final pagesRoot = _alloc();
 

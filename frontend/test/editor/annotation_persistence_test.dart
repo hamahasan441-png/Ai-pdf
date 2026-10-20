@@ -53,6 +53,25 @@ void main() {
     expect(File('${dir.path}/${stableDocumentId(path)}.json.corrupt').existsSync(), isTrue);
   });
 
+  test('a save written by a newer schema is kept, not quarantined', () async {
+    // Regression: a future version used to be quarantined as if corrupt,
+    // destroying the user's marks on every app upgrade.
+    final root = Directory.systemTemp.createTempSync('ann-future');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final service = AnnotationPersistenceService(documentsDirectory: () async => root);
+    const path = '/storage/docs/from-the-future.pdf';
+    final dir = Directory('${root.path}/annotations')..createSync();
+    final savePath = '${dir.path}/${stableDocumentId(path)}.json';
+    File(savePath).writeAsStringSync('{"version": 2, "layers": {}}');
+
+    final loaded = await service.loadChecked(path);
+    expect(loaded.corrupt, isFalse, reason: 'a newer schema is not corruption');
+    expect(loaded.unsupportedVersion, 2);
+    expect(loaded.layers, isEmpty);
+    expect(File(savePath).existsSync(), isTrue, reason: 'the file must survive for a newer app');
+    expect(File('$savePath.corrupt').existsSync(), isFalse);
+  });
+
   test('hidden and locked objects are not hit targets', () {
     final hidden = ShapeAnnotation(
       ShapeType.rect,
