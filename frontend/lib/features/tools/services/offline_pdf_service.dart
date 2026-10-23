@@ -9,6 +9,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/image/image_ops.dart';
 import '../../../core/services/ocr_service.dart';
+import '../../../core/utils/error_text.dart';
 
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
 ///
@@ -29,16 +30,6 @@ class OfflinePdfService {
   static const int _mergeMaxEdge = 1600;
   static const int _compressMaxEdge = 1100;
   static const int _imageMaxEdge = 2000;
-
-  Future<String> _outputPath(String name) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final outDir = Directory('${dir.path}/ai_pdf_output');
-    if (!await outDir.exists()) {
-      await outDir.create(recursive: true);
-    }
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    return '${outDir.path}/${name}_$ts';
-  }
 
   /// Build an output path with the timestamp BEFORE the extension, so the file
   /// keeps a valid extension (e.g. page_1_1699999999.jpg) that the OS/file
@@ -105,7 +96,7 @@ class OfflinePdfService {
         ),
       );
     }
-    final outPath = await _outputPath('images.pdf');
+    final outPath = await _outputFile('images', 'pdf');
     await File(outPath).writeAsBytes(await doc.save());
     return outPath;
   }
@@ -132,7 +123,7 @@ class OfflinePdfService {
         maxWidth: maxWidth,
       ),
     );
-    final outPath = await _outputPath('compressed.jpg');
+    final outPath = await _outputFile('compressed', 'jpg');
     await File(outPath).writeAsBytes(compressed);
 
     return CompressResult(
@@ -171,7 +162,7 @@ class OfflinePdfService {
         await doc.close();
       }
     }
-    final outPath = await _outputPath('merged.pdf');
+    final outPath = await _outputFile('merged', 'pdf');
     await File(outPath).writeAsBytes(await out.save());
     return outPath;
   }
@@ -197,7 +188,7 @@ class OfflinePdfService {
                   pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
             ),
           );
-          final outPath = await _outputPath('page_$i.pdf');
+          final outPath = await _outputFile('page_$i', 'pdf');
           await File(outPath).writeAsBytes(await single.save());
           outputs.add(outPath);
         } finally {
@@ -246,7 +237,7 @@ class OfflinePdfService {
     }
 
     final outBytes = await out.save();
-    final outPath = await _outputPath('compressed.pdf');
+    final outPath = await _outputFile('compressed', 'pdf');
     await File(outPath).writeAsBytes(outBytes);
 
     return CompressResult(
@@ -673,7 +664,8 @@ class OfflinePdfService {
               degrees: degrees,
             ),
           );
-          if (jpg.isEmpty) continue; // undecodable page -> skip
+          // A page that cannot be decoded must not silently go missing.
+          if (jpg.isEmpty) throw UnreadablePageError(i);
           final image = pw.MemoryImage(jpg);
           // Flip page format for 90/270 so the page matches the rotated content.
           final fmt = (angle == 1 || angle == 3)
@@ -722,6 +714,10 @@ class CompressResult {
     required this.compressedSize,
   });
 
+  /// False when "compressing" did not make the file smaller (a text PDF
+  /// turned into page images often grows): the output is not worth keeping.
+  bool get smaller => compressedSize < originalSize;
+
   double get reductionPercent =>
       originalSize == 0 ? 0 : (1 - compressedSize / originalSize) * 100;
 
@@ -733,4 +729,17 @@ class CompressResult {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
+}
+
+/// A page of the input could not be read, so the output would lose it.
+class UnreadablePageError implements Exception, KindedError {
+  final int page;
+
+  UnreadablePageError(this.page);
+
+  @override
+  ErrorKind get errorKind => ErrorKind.badFile;
+
+  @override
+  String toString() => 'Page $page could not be read';
 }

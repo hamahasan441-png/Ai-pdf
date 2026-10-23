@@ -5,6 +5,7 @@ import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Extract Pages — pull a range of pages out of a PDF into a new file. Offline.
 class ExtractPagesScreen extends StatefulWidget {
@@ -84,6 +85,8 @@ class _ExtractPagesScreenState extends State<ExtractPagesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             InkWell(
               onTap: _busy ? null : _pick,
               borderRadius: BorderRadius.circular(16),

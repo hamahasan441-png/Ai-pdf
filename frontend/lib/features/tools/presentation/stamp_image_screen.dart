@@ -6,6 +6,7 @@ import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Stamp Image — overlay a logo, signature, or photo onto a PDF at a chosen
 /// position and size. Fully offline. Great for letterheads, stamps, and marks.
@@ -76,6 +77,8 @@ class _StampImageScreenState extends State<StampImageScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          const RasterNotice(),
+          const SizedBox(height: 16),
           Row(children: [
             Expanded(child: _pickTile(cs, l10n.choosePdf, _pdfPath, Icons.picture_as_pdf, _pickPdf)),
             const SizedBox(width: 12),

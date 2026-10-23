@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Compress - fully offline. Shrinks images or PDFs on-device.
 class CompressScreen extends StatefulWidget {
@@ -59,6 +62,15 @@ class _CompressScreenState extends State<CompressScreen> {
       final result = _isPdf
           ? await svc.compressPdf(_filePath!)
           : await svc.compressImage(_filePath!, quality: _quality.toInt(), maxWidth: 1920);
+      if (!result.smaller) {
+        // Nothing gained: keep the original and drop the bigger copy.
+        final copy = File(result.outputPath);
+        if (await copy.exists()) await copy.delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressNotSmaller)));
+        }
+        return;
+      }
       setState(() => _result = result);
       if (mounted) {
         await showResultSheet(context,
@@ -96,6 +108,7 @@ class _CompressScreenState extends State<CompressScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_isPdf) ...[const RasterNotice(), const SizedBox(height: 16)],
             // File picker card
             InkWell(
               onTap: _busy ? null : _pick,

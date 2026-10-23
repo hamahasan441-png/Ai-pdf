@@ -6,6 +6,7 @@ import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 enum PdfToolMode { merge, split }
 
@@ -99,6 +100,8 @@ class _PdfToolsScreenState extends State<PdfToolsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             // File list
             Expanded(
               child: _files.isEmpty

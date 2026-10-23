@@ -43,7 +43,19 @@ class AppSettings {
 
   // ---- Optional backend base URL (legacy/account flows) ----
   String get apiBaseUrl => _apiBaseUrl;
-  bool get hasCustomServer => _apiBaseUrl != AppConfig.apiBaseUrl;
+  /// A real backend is set, built in (API_BASE_URL) or entered by the user.
+  /// The emulator-only default does not count. (This used to compare against
+  /// the built-in URL, so a release built with a real server said it had
+  /// none.)
+  bool get hasCustomServer => isRealServerUrl(_apiBaseUrl);
+
+  /// True for an http(s) URL with a host other than the emulator's host
+  /// alias or this device itself.
+  static bool isRealServerUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https') || uri.host.isEmpty) return false;
+    return !const {'10.0.2.2', 'localhost', '127.0.0.1'}.contains(uri.host);
+  }
 
   // ---- Provider ----
   String get providerId => _provider;

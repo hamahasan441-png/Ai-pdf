@@ -113,13 +113,15 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
   Future<void> _convert() async {
     if (_path == null) return;
     final l10n = AppLocalizations.of(context)!;
-    if (!await _ensureAccess()) return;
-    if (!mounted) return;
+    // Check the server first: the free trial must not be spent on a
+    // conversion that cannot run.
     if (!ConversionService.instance.serverConfigured) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(l10n.convertNeedsServer)));
       return;
     }
+    if (!await _ensureAccess()) return;
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       final out = await ConversionService.instance.convert(_path!, _format);

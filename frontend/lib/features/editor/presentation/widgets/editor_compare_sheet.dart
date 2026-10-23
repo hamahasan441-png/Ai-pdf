@@ -66,7 +66,7 @@ class EditorCompareSheet extends StatelessWidget {
               const SizedBox(height: 4),
               const Divider(height: 1),
               Expanded(
-                child: _DiffList(state: state),
+                child: _DiffList(state: state, controller: controller),
               ),
             ],
           ),
@@ -87,15 +87,19 @@ class EditorCompareSheet extends StatelessWidget {
 class _DiffList extends StatelessWidget {
   final EditorCompareState state;
 
-  const _DiffList({required this.state});
+  const _DiffList({required this.state, this.controller});
+
+  /// The sheet's scroll controller, so dragging the list drags the sheet.
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) {
-    if (state.lineSegments.isEmpty) {
+    if (!state.lineSegments.any((s) => s.kind != DiffKind.unchanged)) {
       return Center(child: Text(AppLocalizations.of(context)!.compareIdentical));
     }
     final rows = _buildRows(context, state.lineSegments);
     return ListView.builder(
+      controller: controller,
       itemCount: rows.length,
       itemBuilder: (context, index) => rows[index],
     );
@@ -139,12 +143,15 @@ class _DiffList extends StatelessWidget {
       }
       if (unchanged > 0) {
         final runStart = i - unchanged;
-        final head = unchanged < contextShown * 2 ? unchanged : contextShown;
+        // A short run is shown whole; a long one keeps [contextShown] lines
+        // at each end around a "… n more" note.
+        final collapse = unchanged > contextShown * 2;
+        final head = collapse ? contextShown : unchanged;
+        final tail = collapse ? contextShown : 0;
         for (var k = 0; k < head; k++) {
           rows.add(_Line(text: segments[runStart + k].text, style: unchangedStyle));
         }
-        final tail = unchanged - contextShown * 2 > 1 ? contextShown : unchanged - contextShown;
-        if (unchanged > contextShown * 2) {
+        if (collapse) {
           rows.add(Padding(
             padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 16),
             child: Text(

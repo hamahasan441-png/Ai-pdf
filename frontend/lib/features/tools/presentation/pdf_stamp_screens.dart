@@ -5,6 +5,7 @@ import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Small shared helper: a tappable "choose a PDF" drop zone.
 class _PdfPicker extends StatelessWidget {
@@ -110,6 +111,8 @@ class _WatermarkScreenState extends State<WatermarkScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             _PdfPicker(
                 fileName: _path?.split('/').last, busy: _busy, onTap: _pick),
             const SizedBox(height: 24),
@@ -208,6 +211,8 @@ class _PageNumbersScreenState extends State<PageNumbersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             _PdfPicker(
                 fileName: _path?.split('/').last, busy: _busy, onTap: _pick),
             const SizedBox(height: 20),

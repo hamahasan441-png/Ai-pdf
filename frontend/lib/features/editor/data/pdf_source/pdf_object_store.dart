@@ -211,7 +211,11 @@ class PdfObjectStore {
     final wRaw = dict['/W'];
     if (wRaw is! PdfArray) throw const PdfSourceException('Bad /W.');
     final w = [for (final e in wRaw.items) (e is PdfNum ? e.toInt() : -1)];
-    if (w.length != 3 || w.any((v) => v < 0)) throw const PdfSourceException('Bad /W.');
+    // All-zero widths make every row zero bytes long: the row loop below
+    // would then never run out of data and spin /Size times.
+    if (w.length != 3 || w.any((v) => v < 0) || w.every((v) => v == 0)) {
+      throw const PdfSourceException('Bad /W.');
+    }
     final sizeRaw = dict['/Size'];
     final size = sizeRaw is PdfNum ? sizeRaw.toInt() : 0;
     final indexRaw = dict['/Index'];
@@ -367,7 +371,22 @@ class PdfObjectStore {
     return PdfIndirect(num, 0, value, null);
   }
 
+  /// Object streams being loaded: one that is (or leads back to) itself
+  /// would otherwise recurse until the stack overflows.
+  final Set<int> _loadingObjStm = {};
+
   (Uint8List, List<(int, int)>) _loadObjStm(int streamNum) {
+    if (!_loadingObjStm.add(streamNum)) {
+      throw const PdfSourceException('Object stream refers to itself.');
+    }
+    try {
+      return _loadObjStmOnce(streamNum);
+    } finally {
+      _loadingObjStm.remove(streamNum);
+    }
+  }
+
+  (Uint8List, List<(int, int)>) _loadObjStmOnce(int streamNum) {
     final container = object(streamNum);
     final dict = container?.value;
     if (container == null || dict is! PdfDict || container.stream == null) {
