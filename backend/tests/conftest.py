@@ -85,13 +85,16 @@ async def client(session_maker):
 def reset_limiter():
     """Reset the free-tier counter around each test and pin the in-memory
     metering backend so the suite never depends on a live Redis server."""
+    from app.middleware.rate_limit import rate_limiter
     from app.services.ai import usage_limiter
 
     original = settings.AI_METER_BACKEND
     settings.AI_METER_BACKEND = "memory"
     usage_limiter.reset()
+    rate_limiter.reset()  # login / 2FA buckets are per-IP and would leak across tests
     yield
     usage_limiter.reset()
+    rate_limiter.reset()
     settings.AI_METER_BACKEND = original
 
 

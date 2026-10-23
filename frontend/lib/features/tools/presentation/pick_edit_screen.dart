@@ -229,7 +229,16 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   Offset? _shapeEnd;
 
   // --- Selection state ---
-  EditorAnnotation? _selected; // currently selected annotation (for move/resize)
+  EditorAnnotation? _selectedItem;
+
+  /// The selected annotation (for move/resize). Selecting another one (or
+  /// none) leaves Move/Resize mode, so a pasted or newly placed object never
+  /// shows handles left over from the previous selection.
+  EditorAnnotation? get _selected => _selectedItem;
+  set _selected(EditorAnnotation? a) {
+    if (!identical(a, _selectedItem)) _transformMode = false;
+    _selectedItem = a;
+  }
   EditorAnnotation? _clipboard; // copied object, pasteable onto any page
   Offset? _dragOffset; // offset during move
 
@@ -882,6 +891,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       // Restore any previously saved annotations (crash recovery).
       final saved = await _persistence.loadChecked(path);
       if (superseded()) return;
+      _keepNewerMarks = saved.unsupportedVersion != null;
       if (saved.corrupt) {
         _showError(l10n.cEditSavedMarksUnreadable);
       } else if (saved.unsupportedVersion != null) {
@@ -2348,8 +2358,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   /// Save layers to disk (debounced: only the last call in a frame executes).
   bool _persistScheduled = false;
+  /// The open file's saved marks were written by a newer app version.
+  bool _keepNewerMarks = false;
+
   void _schedulePersist() {
-    if (_persistScheduled) return;
+    // Marks saved by a newer app version stay untouched: saving this
+    // session's marks would write over them.
+    if (_persistScheduled || _keepNewerMarks) return;
     _persistScheduled = true;
     // Read the path now: the microtask can run after dispose(), when the
     // controller may no longer be read, and the last edits must still be saved.
@@ -3136,7 +3151,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _editorController.finishExport();
         // Recovery data stays until the new file is actually on disk.
         final srcPath = _editorController.current.filePath;
-        if (clearRecovery && srcPath != null) _persistence.delete(srcPath);
+        if (clearRecovery && srcPath != null && !_keepNewerMarks) _persistence.delete(srcPath);
+        // A full save: nothing is unsaved any more (the dot goes out and
+        // leaving does not ask again). Partial exports and printing leave it.
+        if (clearRecovery && onlyIndices == null && mounted) setState(_editorController.clearDirty);
       }
       return outPath;
     } catch (e) {

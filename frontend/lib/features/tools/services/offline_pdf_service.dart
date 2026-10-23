@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
+import 'package:intl/intl.dart' show Bidi;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColors;
 import 'package:pdf/widgets.dart' as pw;
@@ -9,6 +11,10 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../../../core/image/image_ops.dart';
 import '../../../core/services/ocr_service.dart';
+import '../../../core/utils/error_text.dart';
+import '../../editor/data/document_plain_text.dart';
+import '../../editor/data/pdf_content_text_extractor.dart';
+import '../../editor/data/text_layer_extraction_service.dart';
 
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
 ///
@@ -29,16 +35,6 @@ class OfflinePdfService {
   static const int _mergeMaxEdge = 1600;
   static const int _compressMaxEdge = 1100;
   static const int _imageMaxEdge = 2000;
-
-  Future<String> _outputPath(String name) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final outDir = Directory('${dir.path}/ai_pdf_output');
-    if (!await outDir.exists()) {
-      await outDir.create(recursive: true);
-    }
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    return '${outDir.path}/${name}_$ts';
-  }
 
   /// Build an output path with the timestamp BEFORE the extension, so the file
   /// keeps a valid extension (e.g. page_1_1699999999.jpg) that the OS/file
@@ -105,7 +101,7 @@ class OfflinePdfService {
         ),
       );
     }
-    final outPath = await _outputPath('images.pdf');
+    final outPath = await _outputFile('images', 'pdf');
     await File(outPath).writeAsBytes(await doc.save());
     return outPath;
   }
@@ -132,7 +128,7 @@ class OfflinePdfService {
         maxWidth: maxWidth,
       ),
     );
-    final outPath = await _outputPath('compressed.jpg');
+    final outPath = await _outputFile('compressed', 'jpg');
     await File(outPath).writeAsBytes(compressed);
 
     return CompressResult(
@@ -171,7 +167,7 @@ class OfflinePdfService {
         await doc.close();
       }
     }
-    final outPath = await _outputPath('merged.pdf');
+    final outPath = await _outputFile('merged', 'pdf');
     await File(outPath).writeAsBytes(await out.save());
     return outPath;
   }
@@ -197,7 +193,7 @@ class OfflinePdfService {
                   pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
             ),
           );
-          final outPath = await _outputPath('page_$i.pdf');
+          final outPath = await _outputFile('page_$i', 'pdf');
           await File(outPath).writeAsBytes(await single.save());
           outputs.add(outPath);
         } finally {
@@ -246,7 +242,7 @@ class OfflinePdfService {
     }
 
     final outBytes = await out.save();
-    final outPath = await _outputPath('compressed.pdf');
+    final outPath = await _outputFile('compressed', 'pdf');
     await File(outPath).writeAsBytes(outBytes);
 
     return CompressResult(
@@ -301,6 +297,42 @@ class OfflinePdfService {
   // WATERMARK (offline: overlay diagonal text on every page)
   // ==========================================================
 
+  /// [text] as a PNG drawn at twice its size, with its size in points, for
+  /// placing on a PDF page. Any script and direction.
+  @visibleForTesting
+  Future<({pw.MemoryImage image, double width, double height})> textImage(
+    String text, {
+    required double fontSize,
+    required ui.Color color,
+  }) async {
+    const k = 2.0;
+    final rtl = Bidi.detectRtlDirectionality(text);
+    final builder = ui.ParagraphBuilder(ui.ParagraphStyle(
+      textDirection: rtl ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+      fontSize: fontSize * k,
+      fontWeight: ui.FontWeight.bold,
+      maxLines: 1,
+    ))
+      ..pushStyle(ui.TextStyle(color: color))
+      ..addText(text);
+    final paragraph = builder.build()..layout(const ui.ParagraphConstraints(width: double.infinity));
+    final w = paragraph.maxIntrinsicWidth.ceil() + 4;
+    final h = paragraph.height.ceil() + 4;
+    paragraph.layout(ui.ParagraphConstraints(width: w.toDouble()));
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawParagraph(paragraph, const ui.Offset(2, 2));
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(w, h);
+    try {
+      final png = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (png == null) throw StateError('The watermark text could not be drawn');
+      return (image: pw.MemoryImage(png.buffer.asUint8List()), width: w / k, height: h / k);
+    } finally {
+      img.dispose();
+      picture.dispose();
+    }
+  }
+
   /// Stamp a semi-transparent diagonal [text] watermark across every page.
   Future<String> watermarkPdf(
     String pdfPath,
@@ -309,6 +341,9 @@ class OfflinePdfService {
   }) async {
     final label = text.trim().isEmpty ? 'CONFIDENTIAL' : text.trim();
     final op = opacity.clamp(0.05, 1.0).toDouble();
+    // Drawn by Flutter's own text shaper: the PDF library's built-in font is
+    // Latin-only, so Kurdish, Arabic or Persian text came out blank.
+    final mark = await textImage(label, fontSize: 54, color: const ui.Color(0xFF546E7A));
     final doc = await pdfx.PdfDocument.openFile(pdfPath);
     final out = pw.Document();
     try {
@@ -331,14 +366,7 @@ class OfflinePdfService {
                       angle: 0.6,
                       child: pw.Opacity(
                         opacity: op,
-                        child: pw.Text(
-                          label,
-                          style: pw.TextStyle(
-                            fontSize: 54,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey600,
-                          ),
-                        ),
+                        child: pw.Image(mark.image, width: mark.width, height: mark.height),
                       ),
                     ),
                   ),
@@ -519,13 +547,24 @@ class OfflinePdfService {
   // PDF -> TEXT (offline: OCR each page, combine to a .txt file)
   // ==========================================================
 
-  /// OCR every page and combine the text into a single .txt file, useful
-  /// for copy/pasting or searching the full content of a scanned document.
+  /// The text of every page in a single .txt file, for copying or
+  /// searching. A page's own text layer is used when it has one (exact, any
+  /// script); only pages without text, such as scans, are OCR'd.
   Future<String> pdfToText(String pdfPath) async {
+    // Parsed off the UI thread: a large file would otherwise freeze it.
+    final textLayer = await compute(_extractTextLayer, await File(pdfPath).readAsBytes());
     final doc = await pdfx.PdfDocument.openFile(pdfPath);
     final buf = StringBuffer();
     try {
       for (var i = 1; i <= doc.pagesCount; i++) {
+        final own = plainTextOfPage(textLayer[i - 1] ?? const []);
+        if (own.isNotEmpty) {
+          buf
+            ..writeln('--- Page $i ---')
+            ..writeln(own)
+            ..writeln();
+          continue;
+        }
         final page = await doc.getPage(i);
         try {
           final longEdge = page.width > page.height ? page.width : page.height;
@@ -673,7 +712,8 @@ class OfflinePdfService {
               degrees: degrees,
             ),
           );
-          if (jpg.isEmpty) continue; // undecodable page -> skip
+          // A page that cannot be decoded must not silently go missing.
+          if (jpg.isEmpty) throw UnreadablePageError(i);
           final image = pw.MemoryImage(jpg);
           // Flip page format for 90/270 so the page matches the rotated content.
           final fmt = (angle == 1 || angle == 3)
@@ -722,6 +762,10 @@ class CompressResult {
     required this.compressedSize,
   });
 
+  /// False when "compressing" did not make the file smaller (a text PDF
+  /// turned into page images often grows): the output is not worth keeping.
+  bool get smaller => compressedSize < originalSize;
+
   double get reductionPercent =>
       originalSize == 0 ? 0 : (1 - compressedSize / originalSize) * 100;
 
@@ -734,3 +778,18 @@ class CompressResult {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
 }
+
+/// A page of the input could not be read, so the output would lose it.
+class UnreadablePageError implements Exception, KindedError {
+  final int page;
+
+  UnreadablePageError(this.page);
+
+  @override
+  ErrorKind get errorKind => ErrorKind.badFile;
+
+  @override
+  String toString() => 'Page $page could not be read';
+}
+
+Map<int, List<PdfTextElement>> _extractTextLayer(Uint8List bytes) => const PdfContentTextExtractor().extract(bytes);

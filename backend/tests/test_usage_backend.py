@@ -73,3 +73,58 @@ def test_build_backend_unknown_mode_falls_back(monkeypatch):
 
     monkeypatch.setattr(settings, "AI_METER_BACKEND", "nonsense")
     assert isinstance(build_backend(), InMemoryUsageBackend)
+
+
+class _FakeRedis:
+    """Minimal Redis stand-in; ``before_incr`` simulates a concurrent request."""
+
+    def __init__(self, start=0, before_incr=None):
+        self.value = start
+        self.before_incr = before_incr
+
+    def get(self, key):
+        return self.value
+
+    def incr(self, key):
+        if self.before_incr:
+            hook, self.before_incr = self.before_incr, None
+            hook(self)
+        self.value += 1
+        return self.value
+
+    def decr(self, key):
+        self.value -= 1
+        return self.value
+
+    def expire(self, key, ttl):
+        return True
+
+
+def _redis_backend(fake):
+    from app.services.ai.usage_backend import InMemoryUsageBackend, RedisUsageBackend
+
+    b = RedisUsageBackend.__new__(RedisUsageBackend)
+    b._client = fake
+    b._fallback = InMemoryUsageBackend()
+    return b
+
+
+def test_redis_backend_caps_and_does_not_increment_past_limit():
+    fake = _FakeRedis()
+    b = _redis_backend(fake)
+    assert b.check_and_increment("u1", 2, DAY) == (True, 1)
+    assert b.check_and_increment("u1", 2, DAY) == (True, 2)
+    assert b.check_and_increment("u1", 2, DAY) == (False, 2)
+    assert fake.value == 2
+
+
+def test_redis_backend_concurrent_increment_cannot_overshoot():
+    """A concurrent INCR between check and increment must not let both pass."""
+    def concurrent(fake):
+        fake.value += 1  # another instance consumed the last slot
+
+    fake = _FakeRedis(start=2, before_incr=concurrent)
+    b = _redis_backend(fake)
+    allowed, count = b.check_and_increment("u1", 3, DAY)
+    assert allowed is False
+    assert fake.value == 3

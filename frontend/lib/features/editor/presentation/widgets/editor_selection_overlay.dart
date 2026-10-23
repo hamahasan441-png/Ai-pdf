@@ -408,7 +408,7 @@ class _OverflowMenu extends StatelessWidget {
             child: Row(children: [
               Icon(it.icon, size: 19, color: palette.barForeground.withValues(alpha: 0.9)),
               const SizedBox(width: 12),
-              Flexible(child: Text(it.label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+              Flexible(child: Text(it.label, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: palette.barForeground))),
             ]),
           ),
       ],
@@ -485,12 +485,12 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 onSelected: (_) {},
                 itemBuilder: (ctx) => [
-                  _alignItem('left', Icons.align_horizontal_left, l10n.alignLeft, onAlignLeft),
-                  _alignItem('center', Icons.align_horizontal_center, l10n.alignCenter, onAlignCenter),
-                  _alignItem('right', Icons.align_horizontal_right, l10n.alignRight, onAlignRight),
-                  _alignItem('top', Icons.align_vertical_top, l10n.alignTop, onAlignTop),
-                  _alignItem('middle', Icons.align_vertical_center, l10n.alignMiddle, onAlignMiddle),
-                  _alignItem('bottom', Icons.align_vertical_bottom, l10n.alignBottom, onAlignBottom),
+                  _alignItem(palette.barForeground, 'left', Icons.align_horizontal_left, l10n.alignLeft, onAlignLeft),
+                  _alignItem(palette.barForeground, 'center', Icons.align_horizontal_center, l10n.alignCenter, onAlignCenter),
+                  _alignItem(palette.barForeground, 'right', Icons.align_horizontal_right, l10n.alignRight, onAlignRight),
+                  _alignItem(palette.barForeground, 'top', Icons.align_vertical_top, l10n.alignTop, onAlignTop),
+                  _alignItem(palette.barForeground, 'middle', Icons.align_vertical_center, l10n.alignMiddle, onAlignMiddle),
+                  _alignItem(palette.barForeground, 'bottom', Icons.align_vertical_bottom, l10n.alignBottom, onAlignBottom),
                 ],
               ),
               _divider(),
@@ -506,8 +506,8 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 onSelected: (_) {},
                 itemBuilder: (ctx) => [
-                  _alignItem('dh', Icons.horizontal_distribute, l10n.distributeH, onDistributeH),
-                  _alignItem('dv', Icons.vertical_distribute, l10n.distributeV, onDistributeV),
+                  _alignItem(palette.barForeground, 'dh', Icons.horizontal_distribute, l10n.distributeH, onDistributeH),
+                  _alignItem(palette.barForeground, 'dv', Icons.vertical_distribute, l10n.distributeV, onDistributeV),
                 ],
               ),
               _divider(),
@@ -524,15 +524,17 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
     );
   }
 
-  PopupMenuItem<String> _alignItem(String value, IconData icon, String label, VoidCallback onTap) {
+  /// [fg] is the bar's text colour: the menu sits on the bar's dark surface
+  /// in both themes, so the theme's default text colour would vanish.
+  PopupMenuItem<String> _alignItem(Color fg, String value, IconData icon, String label, VoidCallback onTap) {
     return PopupMenuItem<String>(
       value: value,
       height: 44,
       onTap: onTap,
       child: Row(children: [
-        Icon(icon, size: 19),
+        Icon(icon, size: 19, color: fg),
         const SizedBox(width: 12),
-        Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: fg))),
       ]),
     );
   }

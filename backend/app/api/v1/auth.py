@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,19 +149,30 @@ async def login_2fa(
         return _issue_tokens(user)
 
     # 2FA enabled — need code
-    if not request.totp_code and not request.recovery_code:
+    _verify_second_factor(user, request.totp_code, request.recovery_code)
+    return _issue_tokens(user)
+
+
+def _verify_second_factor(
+    user: User, totp_code: Optional[str], recovery_code: Optional[str]
+) -> None:
+    """Check a TOTP or recovery code for ``user`` (raises 401 when invalid).
+
+    A valid recovery code is consumed.
+    """
+    if not totp_code and not recovery_code:
         raise AuthenticationError("2FA code required")
 
-    if request.totp_code:
+    if totp_code:
         if not user.totp_secret_encrypted:
             raise AuthenticationError("2FA not properly configured")
         try:
             secret = decrypt_data(user.totp_secret_encrypted)
         except Exception:
             raise AuthenticationError("2FA decryption failed")
-        if not verify_totp(secret, request.totp_code):
+        if not verify_totp(secret, totp_code):
             raise AuthenticationError("Invalid 2FA code")
-    elif request.recovery_code:
+    elif recovery_code:
         if not user.totp_recovery_codes_encrypted:
             raise AuthenticationError("No recovery codes configured")
         try:
@@ -170,15 +181,13 @@ async def login_2fa(
         except Exception:
             raise AuthenticationError("Recovery code decryption failed")
         # Normalize code (strip + uppercase)
-        provided = request.recovery_code.strip().upper()
+        provided = recovery_code.strip().upper()
         if provided not in codes:
             raise AuthenticationError("Invalid recovery code")
         # Consume recovery code
         codes = [c for c in codes if c != provided]
         user.totp_recovery_codes_encrypted = encrypt_data(recovery_codes_hash_list(codes))
         # If no codes left, keep 2FA enabled but log warning (client should generate new)
-
-    return _issue_tokens(user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -275,17 +284,15 @@ async def setup_2fa(
     """Start 2FA setup — generate secret + otpauth URL (E5.2).
 
     The secret is stored encrypted but NOT marked enabled until verify.
-    If a secret already exists and 2FA is already enabled, returns existing
-    URL (does not rotate) unless forced.
+    When 2FA is already enabled this returns 409: the live secret is never
+    re-disclosed (a stolen access token must not yield the second factor).
+    Disable 2FA first (password + code) to enrol a new authenticator.
     """
-    if user.totp_enabled and user.totp_secret_encrypted:
-        # Already enabled — return existing URL
-        try:
-            secret = decrypt_data(user.totp_secret_encrypted)
-            url = get_otpauth_url(secret, user.email)
-            return Setup2FAResponse(secret=secret, otpauth_url=url, qr_text=url)
-        except Exception:
-            pass  # fall through to regen
+    if user.totp_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="2FA is already enabled. Disable it first to set up a new authenticator.",
+        )
 
     secret = generate_secret()
     user.totp_secret_encrypted = encrypt_data(secret)
@@ -346,12 +353,24 @@ async def status_2fa(
     )
 
 
+class Disable2FARequest(BaseModel):
+    password: str
+    totp_code: Optional[str] = None
+    recovery_code: Optional[str] = None
+
+
 @router.post("/2fa/disable", status_code=status.HTTP_204_NO_CONTENT)
 async def disable_2fa(
+    request: Disable2FARequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Disable 2FA (E5.2)."""
+    """Disable 2FA (E5.2) — requires the current password AND a valid TOTP
+    or recovery code, so an access token alone cannot strip the second factor."""
+    if not verify_password(request.password, user.hashed_password):
+        raise AuthenticationError("Current password is incorrect")
+    if user.totp_enabled:
+        _verify_second_factor(user, request.totp_code, request.recovery_code)
     user.totp_enabled = False
     user.totp_secret_encrypted = None
     user.totp_recovery_codes_encrypted = None

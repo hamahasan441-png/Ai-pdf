@@ -36,6 +36,10 @@ class RateLimiter:
     def __init__(self):
         self._buckets: dict[str, dict] = defaultdict(lambda: {"tokens": 0, "last_refill": 0.0})
 
+    def reset(self) -> None:
+        """Forget all buckets (tests / admin)."""
+        self._buckets.clear()
+
     def _get_key(self, request: Request, endpoint_type: str) -> str:
         """Generate rate limit key from user or IP."""
         # Try to get user ID from auth header (set by auth middleware)
@@ -97,6 +101,8 @@ LIMITS = {
     "ai": {"max_requests": 20, "window_seconds": 60},
     "upload": {"max_requests": 10, "window_seconds": 3600},
     "analyze": {"max_requests": 5, "window_seconds": 3600},
+    # Login / 2FA brute-force protection: configured via settings
+    # (AUTH_RATE_LIMIT_MAX_REQUESTS / AUTH_RATE_LIMIT_WINDOW_SECONDS) in main.py.
 }
 
 # Singleton

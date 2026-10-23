@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "AI Document Assistant"
     APP_ENV: str = "development"
-    DEBUG: bool = True
+    # Off by default: DEBUG exposes the OpenAPI docs and echoes every SQL
+    # statement (including bound secrets) to the log. Never allowed in
+    # production (see validate_production_secrets).
+    DEBUG: bool = False
     SECRET_KEY: str = "change-me-to-a-random-secret-key"
 
     # Database
@@ -77,6 +80,9 @@ class Settings(BaseSettings):
     AI_FREE_DAILY_LIMIT: int = 15
     # Basic tier (intermediate plan between free and Pro). Pro remains unlimited.
     AI_BASIC_DAILY_LIMIT: int = 100
+    # Upper bound a team owner/admin may set for a team's shared daily AI pool
+    # (teams.ai_daily_quota). Also applied when reading stored quotas.
+    AI_TEAM_DAILY_QUOTA_MAX: int = 1000
     # Metering backend for the free-tier counter:
     #   "auto"   -> Redis when REDIS_URL is reachable, else in-memory (default)
     #   "memory" -> always in-memory (single instance / dev / tests)
@@ -100,6 +106,29 @@ class Settings(BaseSettings):
     PRODUCT_YEARLY: str = "pro_yearly"
     PRODUCT_LIFETIME: str = "pro_lifetime"
 
+    # Play RTDN (Pub/Sub push) authentication. The push subscription must be
+    # configured with an OIDC token; we verify Google's signature, that the
+    # audience equals RTDN_PUSH_AUDIENCE and that the token was minted for
+    # RTDN_PUSH_SERVICE_ACCOUNT. If either is blank, /billing/rtdn rejects
+    # every request (fail closed).
+    RTDN_PUSH_AUDIENCE: str = ""
+    RTDN_PUSH_SERVICE_ACCOUNT: str = ""
+
+    # SSO (ID-token sign-in). A provider is disabled (503) until its client
+    # id(s) are configured; tokens must be signed by the provider's JWKS and
+    # carry one of these values as ``aud``.
+    GOOGLE_OAUTH_CLIENT_IDS: List[str] = []
+    APPLE_CLIENT_IDS: List[str] = []
+    # Generic OIDC: the single trusted issuer, its JWKS URI and client id(s).
+    OIDC_ISSUER: str = ""
+    OIDC_JWKS_URI: str = ""
+    OIDC_CLIENT_IDS: List[str] = []
+
+    # Brute-force protection for login / 2FA routes (per client IP).
+    # Set AUTH_RATE_LIMIT_MAX_REQUESTS to 0 to disable.
+    AUTH_RATE_LIMIT_MAX_REQUESTS: int = 10
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
+
     # -- Runtime helpers ---------------------------------------------------
 
     def is_production(self) -> bool:
@@ -117,9 +146,14 @@ class Settings(BaseSettings):
     def validate_production_secrets(self) -> None:
         """Refuse to run in production with placeholder secrets.
 
-        No-op in development so local setup stays friction-free.
+        No-op in development so local setup stays friction-free. In production
+        DEBUG must be off: it publishes the API docs and logs SQL with secrets.
         """
         if self.is_production():
+            if self.DEBUG:
+                raise RuntimeError(
+                    "Refusing to start in production with DEBUG enabled. Set DEBUG=false."
+                )
             insecure = self.insecure_defaults()
             if insecure:
                 raise RuntimeError(

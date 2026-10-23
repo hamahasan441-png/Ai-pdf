@@ -114,9 +114,11 @@ async def test_2fa_setup_and_verify_flow(client: AsyncClient):
     )
     assert status3.json()["remaining_recovery_codes"] == 7
 
-    # Disable 2FA
+    # Disable 2FA (requires password + a current code)
     dis = await client.post(
-        "/api/v1/auth/2fa/disable", headers={"Authorization": f"Bearer {new_access}"}
+        "/api/v1/auth/2fa/disable",
+        headers={"Authorization": f"Bearer {new_access}"},
+        json={"password": password, "totp_code": generate_totp(secret)},
     )
     assert dis.status_code == 204
 
@@ -162,3 +164,72 @@ async def test_login_2fa_without_setup_works(client: AsyncClient):
         json={"email": email, "password": password},
     )
     assert resp.status_code == 200
+
+
+# --- Security regressions: setup must not leak a live secret; disable needs re-auth
+
+
+async def _enabled_2fa_user(client: AsyncClient, email: str, password: str = "password123"):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "full_name": "2FA Sec"},
+    )
+    access = resp.json()["access_token"]
+    hdr = {"Authorization": f"Bearer {access}"}
+    secret = (await client.post("/api/v1/auth/2fa/setup", headers=hdr)).json()["secret"]
+    verify = await client.post("/api/v1/auth/2fa/verify", headers=hdr, json={"totp_code": generate_totp(secret)})
+    assert verify.status_code == 200
+    return hdr, secret, verify.json()["recovery_codes"]
+
+
+@pytest.mark.asyncio
+async def test_2fa_setup_refuses_when_already_enabled(client: AsyncClient):
+    hdr, secret, _ = await _enabled_2fa_user(client, "2fa_sec1@example.com")
+    again = await client.post("/api/v1/auth/2fa/setup", headers=hdr)
+    assert again.status_code == 409
+    assert secret not in again.text
+    # Still enabled with the original secret.
+    status_resp = await client.get("/api/v1/auth/2fa/status", headers=hdr)
+    assert status_resp.json()["enabled"] is True
+    login = await client.post(
+        "/api/v1/auth/login/2fa",
+        json={"email": "2fa_sec1@example.com", "password": "password123", "totp_code": generate_totp(secret)},
+    )
+    assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_2fa_disable_requires_password_and_code(client: AsyncClient):
+    hdr, secret, _ = await _enabled_2fa_user(client, "2fa_sec2@example.com")
+
+    no_body = await client.post("/api/v1/auth/2fa/disable", headers=hdr)
+    assert no_body.status_code == 422
+
+    password_only = await client.post("/api/v1/auth/2fa/disable", headers=hdr, json={"password": "password123"})
+    assert password_only.status_code == 401
+
+    wrong_pw = await client.post(
+        "/api/v1/auth/2fa/disable",
+        headers=hdr,
+        json={"password": "wrong-password", "totp_code": generate_totp(secret)},
+    )
+    assert wrong_pw.status_code == 401
+
+    wrong_code = await client.post(
+        "/api/v1/auth/2fa/disable", headers=hdr, json={"password": "password123", "totp_code": "000000"}
+    )
+    assert wrong_code.status_code == 401
+
+    status_resp = await client.get("/api/v1/auth/2fa/status", headers=hdr)
+    assert status_resp.json()["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_2fa_disable_with_recovery_code(client: AsyncClient):
+    hdr, _, codes = await _enabled_2fa_user(client, "2fa_sec3@example.com")
+    dis = await client.post(
+        "/api/v1/auth/2fa/disable", headers=hdr, json={"password": "password123", "recovery_code": codes[0]}
+    )
+    assert dis.status_code == 204
+    status_resp = await client.get("/api/v1/auth/2fa/status", headers=hdr)
+    assert status_resp.json()["enabled"] is False

@@ -3,14 +3,16 @@
 Enterprise SSO: Google, Apple, generic OIDC.
 
 Design:
-- POST /auth/sso/google — accepts Google ID token (from Google Sign-In SDK), verifies email,
-  creates/links user, returns JWT pair. In production, verify signature via Google certs;
-  for dev/test we decode without verification but still validate email existence and token
-  structure (aud = client_id or email present). This keeps tests hermetic (no network).
+- POST /auth/sso/google — accepts a Google ID token (from Google Sign-In SDK).
+- POST /auth/sso/apple — Apple ID token (sub = Apple user ID).
+- POST /auth/sso/oidc — generic OIDC for the single configured issuer.
 
-- POST /auth/sso/apple — similar for Apple ID token (sub = Apple user ID, email may be hidden).
-
-- POST /auth/sso/oidc — generic OIDC: accepts id_token + issuer, validates iss claim.
+Every ID token is verified with ``app.services.auth.id_token``: signature
+against the provider's JWKS, ``aud`` against the configured client id(s),
+``iss`` against the provider's issuer, and expiry. The account email is taken
+only from the verified token (never from the request body) and must be marked
+verified by the provider. A provider whose client id / issuer is not
+configured returns 503 — it never accepts tokens (fail closed).
 
 All SSO users are marked is_verified=True and have a random hashed password (not usable for
 password login) — they must use SSO.
@@ -20,14 +22,11 @@ that members must have logged in via SSO at least once? For V1 we just record ss
 in User model via custom field? Simpler: we store last_sso_provider in User (nullable) and
 expose via /auth/me. Team enforcement is checked in teams add-member: if team.sso_required
 and target user has never used SSO, reject.
-
-This is additive and testable without network.
 """
 
 import secrets
 from typing import Optional
 
-import jwt as pyjwt  # PyJWT (not python-jose) already in deps
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -38,6 +37,15 @@ from app.core.security import create_access_token, create_refresh_token, hash_pa
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.auth import TokenResponse
+from app.services.auth.id_token import (
+    APPLE_ISSUERS,
+    APPLE_JWKS_URL,
+    GOOGLE_ISSUERS,
+    GOOGLE_JWKS_URL,
+    IdTokenKeysUnavailable,
+    InvalidIdToken,
+    verify_id_token,
+)
 
 router = APIRouter(prefix="/auth/sso", tags=["SSO"])
 
@@ -50,7 +58,7 @@ class GoogleSSORequest(BaseModel):
 
 class AppleSSORequest(BaseModel):
     id_token: str = Field(..., description="Apple ID token")
-    # Apple may hide email; client can provide it from first login
+    # Ignored: the email is only ever taken from the verified ID token.
     email: Optional[str] = None
     full_name: Optional[str] = None
 
@@ -70,20 +78,32 @@ def _issue_tokens(user: User) -> TokenResponse:
     )
 
 
-def _decode_id_token_unsafe(id_token: str) -> dict:
-    """Decode ID token without signature verification (for dev/test and to extract email).
+async def _verify_id_token(
+    id_token: str, *, provider: str, jwks_url: str, audiences: list[str], issuers: list[str]
+) -> dict:
+    """Verify an ID token, mapping failures to HTTP errors.
 
-    In production, this should verify signature via Google/Apple JWKS.
-    For hermetic tests we allow unsafe decode, but check that token has email and sub.
+    503 when the provider is not configured or its keys cannot be fetched;
+    401 for any token that fails signature / aud / iss / expiry checks.
     """
+    if not [a for a in audiences if a] or not [i for i in issuers if i] or not jwks_url:
+        raise HTTPException(status_code=503, detail=f"{provider} sign-in is not configured on the server")
     try:
-        # Try unsafe decode (no verification) — PyJWT decode with options
-        payload = pyjwt.decode(
-            id_token, options={"verify_signature": False, "verify_aud": False, "verify_iss": False}
-        )
-        return payload
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid ID token: {e}")
+        return await verify_id_token(id_token, jwks_url=jwks_url, audiences=audiences, issuers=issuers)
+    except IdTokenKeysUnavailable:
+        raise HTTPException(status_code=503, detail=f"{provider} signing keys are unavailable")
+    except InvalidIdToken:
+        raise HTTPException(status_code=401, detail="Invalid ID token")
+
+
+def _verified_email(payload: dict) -> Optional[str]:
+    """The token's email, only when the provider says it is verified."""
+    email = payload.get("email")
+    if not email:
+        return None
+    if payload.get("email_verified") not in (True, "true"):
+        raise HTTPException(status_code=403, detail="ID token email is not verified by the provider")
+    return email
 
 
 async def _get_or_create_sso_user(
@@ -131,20 +151,20 @@ async def _get_or_create_sso_user(
 @router.post("/google", response_model=TokenResponse)
 async def google_sso(request: GoogleSSORequest, db: AsyncSession = Depends(get_db)):
     """Google SSO — verify ID token and issue our JWT pair (E5.3)."""
-    payload = _decode_id_token_unsafe(request.id_token)
+    payload = await _verify_id_token(
+        request.id_token,
+        provider="Google",
+        jwks_url=GOOGLE_JWKS_URL,
+        audiences=settings.GOOGLE_OAUTH_CLIENT_IDS,
+        issuers=GOOGLE_ISSUERS,
+    )
 
-    email = payload.get("email")
+    email = _verified_email(payload)
     if not email:
         raise HTTPException(status_code=422, detail="Google ID token missing email")
-    if not payload.get("email_verified", True):
-        # Google may not verify email for some accounts — we allow but log
-        pass
 
     sub = payload.get("sub", "")
     full_name = payload.get("name") or payload.get("given_name") or email
-
-    # Optional: check aud matches configured Google client ID if provided
-    # For now we don't enforce.
 
     user = await _get_or_create_sso_user(db, email=email, full_name=full_name, sso_provider="google", sso_sub=sub)
     return _issue_tokens(user)
@@ -153,14 +173,21 @@ async def google_sso(request: GoogleSSORequest, db: AsyncSession = Depends(get_d
 @router.post("/apple", response_model=TokenResponse)
 async def apple_sso(request: AppleSSORequest, db: AsyncSession = Depends(get_db)):
     """Apple SSO — verify ID token (E5.3)."""
-    payload = _decode_id_token_unsafe(request.id_token)
+    payload = await _verify_id_token(
+        request.id_token,
+        provider="Apple",
+        jwks_url=APPLE_JWKS_URL,
+        audiences=settings.APPLE_CLIENT_IDS,
+        issuers=APPLE_ISSUERS,
+    )
 
     # Apple sub is unique user ID
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=422, detail="Apple ID token missing sub")
 
-    email = payload.get("email") or request.email
+    # Only the signed token is trusted — a body-supplied email is ignored.
+    email = _verified_email(payload)
     if not email:
         # Apple may hide email — we synthesize one from sub for account linking
         # In real app, you must store sub and allow email-less accounts. For V1, require email.
@@ -174,30 +201,37 @@ async def apple_sso(request: AppleSSORequest, db: AsyncSession = Depends(get_db)
 
 @router.post("/oidc", response_model=TokenResponse)
 async def generic_oidc_sso(request: GenericOIDCRequest, db: AsyncSession = Depends(get_db)):
-    """Generic OIDC SSO — validates issuer claim (E5.3)."""
-    payload = _decode_id_token_unsafe(request.id_token)
+    """Generic OIDC SSO for the configured issuer (E5.3)."""
+    issuer = settings.OIDC_ISSUER
+    if issuer and request.issuer != issuer:
+        raise HTTPException(status_code=422, detail="Issuer is not the configured OIDC issuer")
+    payload = await _verify_id_token(
+        request.id_token,
+        provider="OIDC",
+        jwks_url=settings.OIDC_JWKS_URI,
+        audiences=settings.OIDC_CLIENT_IDS,
+        issuers=[issuer],
+    )
 
-    iss = payload.get("iss")
-    if iss != request.issuer:
-        raise HTTPException(status_code=422, detail=f"Issuer mismatch: expected {request.issuer}, got {iss}")
-
-    email = payload.get("email")
+    email = _verified_email(payload)
     if not email:
         raise HTTPException(status_code=422, detail="OIDC ID token missing email")
 
     sub = payload.get("sub", "")
     full_name = payload.get("name") or email
 
-    user = await _get_or_create_sso_user(db, email=email, full_name=full_name, sso_provider=request.issuer, sso_sub=sub)
+    user = await _get_or_create_sso_user(db, email=email, full_name=full_name, sso_provider=issuer, sso_sub=sub)
     return _issue_tokens(user)
 
 
 @router.get("/providers")
 async def list_sso_providers():
     """List configured SSO providers (public)."""
-    # In future, read from settings (GOOGLE_CLIENT_ID, APPLE_CLIENT_ID, OIDC_ISSUERS)
     return {
         "providers": ["google", "apple", "oidc"],
-        "google_configured": bool(settings.GOOGLE_PLAY_PACKAGE_NAME),  # placeholder check
-        "note": "V1 scaffold — ID token verification is unsafe decode for hermetic tests. Production must verify via JWKS.",
+        "google_configured": bool(settings.GOOGLE_OAUTH_CLIENT_IDS),
+        "apple_configured": bool(settings.APPLE_CLIENT_IDS),
+        "oidc_configured": bool(
+            settings.OIDC_ISSUER and settings.OIDC_JWKS_URI and settings.OIDC_CLIENT_IDS
+        ),
     }

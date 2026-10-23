@@ -5,6 +5,7 @@ import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Rotate PDF — turns every page by 90, 180, or 270 degrees. Fully offline.
 class RotatePdfScreen extends StatefulWidget {
@@ -61,6 +62,8 @@ class _RotatePdfScreenState extends State<RotatePdfScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             InkWell(
               onTap: _busy ? null : _pick,
               borderRadius: BorderRadius.circular(16),

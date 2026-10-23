@@ -56,3 +56,24 @@ def test_production_with_secure_secrets_ok():
     )
     # No raise when all secrets are overridden.
     s.validate_production_secrets()
+
+
+def test_debug_defaults_off():
+    assert _settings().DEBUG is False
+
+
+def test_production_rejects_debug():
+    s = _settings(
+        APP_ENV="production",
+        DEBUG=True,
+        SECRET_KEY="x" * 32,
+        JWT_SECRET_KEY="y" * 32,
+        ENCRYPTION_KEY="z" * 32,
+    )
+    with pytest.raises(RuntimeError) as exc:
+        s.validate_production_secrets()
+    assert "DEBUG" in str(exc.value)
+
+
+def test_development_allows_debug():
+    _settings(APP_ENV="development", DEBUG=True).validate_production_secrets()

@@ -29,16 +29,33 @@ class LibraryRepository {
 
   Future<List<LibraryItem>> loadItems() async {
     final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString(_itemsKey);
+    return _readList(prefs, _itemsKey, LibraryItem.fromJson);
+  }
+
+  /// Reads the list stored under [key], keeping every entry that parses. A
+  /// damaged catalogue is copied to `<key>.damaged` first, so the next save
+  /// cannot destroy what could not be read.
+  Future<List<T>> _readList<T>(
+      SharedPreferences prefs, String key, T Function(Map<String, dynamic>) parse) async {
+    final json = prefs.getString(key);
     if (json == null || json.isEmpty) return [];
+    final out = <T>[];
+    var damaged = false;
     try {
-      final list = jsonDecode(json) as List;
-      return [
-        for (final j in list) LibraryItem.fromJson(j as Map<String, dynamic>),
-      ];
-    } catch (_) {
-      return [];
+      final decoded = jsonDecode(json);
+      if (decoded is! List) throw const FormatException('not a list');
+      for (final j in decoded) {
+        try {
+          out.add(parse(Map<String, dynamic>.from(j as Map)));
+        } catch (_) {
+          damaged = true; // this entry only
+        }
+      }
+    } on FormatException {
+      damaged = true;
     }
+    if (damaged) await prefs.setString('$key.damaged', json);
+    return out;
   }
 
   Future<void> saveItems(List<LibraryItem> items) async {
@@ -51,17 +68,7 @@ class LibraryRepository {
 
   Future<List<LibraryFolder>> loadFolders() async {
     final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString(_foldersKey);
-    if (json == null || json.isEmpty) return [];
-    try {
-      final list = jsonDecode(json) as List;
-      return [
-        for (final j in list)
-          LibraryFolder.fromJson(j as Map<String, dynamic>),
-      ];
-    } catch (_) {
-      return [];
-    }
+    return _readList(prefs, _foldersKey, LibraryFolder.fromJson);
   }
 
   Future<void> saveFolders(List<LibraryFolder> folders) async {

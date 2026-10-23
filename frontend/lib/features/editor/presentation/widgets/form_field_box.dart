@@ -7,6 +7,10 @@ import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dar
 /// a drop-down arrow, and a red mark when it is required. Taps go through to
 /// the canvas, which selects, moves and resizes it like any other mark.
 class FormFieldBox extends StatelessWidget {
+  /// Label text of an empty field: readable on the white page whatever the
+  /// (often very light) frame colour is.
+  static const _placeholder = Color(0xFF6B7488);
+
   final FormFieldAnnotation field;
   final Size page;
 
@@ -25,15 +29,15 @@ class FormFieldBox extends StatelessWidget {
         content = f.checked ? Icon(Icons.check, size: h * 0.9, color: Colors.black) : const SizedBox.shrink();
       case FormFieldKind.signature:
         content = Row(children: [
-          Icon(Icons.draw_outlined, size: (h * 0.5).clamp(8.0, 20.0), color: f.borderColor),
+          Icon(Icons.draw_outlined, size: (h * 0.5).clamp(8.0, 20.0), color: _placeholder),
           const SizedBox(width: 4),
-          Flexible(child: _label(f.label, fontSize, f.borderColor.withValues(alpha: 0.8))),
+          Flexible(child: _label(f.label, fontSize, _placeholder)),
         ]);
       default:
         content = Row(children: [
           Expanded(
             child: empty
-                ? _label(f.label, fontSize, f.borderColor.withValues(alpha: 0.7))
+                ? _label(f.label, fontSize, _placeholder)
                 : Text(
                     f.value,
                     maxLines: f.multiline ? null : 1,

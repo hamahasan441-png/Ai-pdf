@@ -13,6 +13,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart' as pdfx;
 
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// A single page in the organizer: its rendered image + rotation.
 class _OrgPage {
@@ -195,6 +196,10 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
               children: [
                 if (_busy && _status.isNotEmpty)
                   LinearProgressIndicator(minHeight: 3, backgroundColor: cs.surfaceContainerHighest),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: RasterNotice(),
+                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(children: [

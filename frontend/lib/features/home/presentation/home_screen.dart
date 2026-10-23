@@ -212,9 +212,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (_, i) {
                     final f = show[i];
+                    // Month names and AM/PM in the app's language; Kurdish
+                    // has no date data, so it falls back to the default.
+                    final tag = Localizations.localeOf(context).toLanguageTag();
+                    final dateLocale = DateFormat.localeExists(tag) ? tag : null;
                     // Useful metadata: what happened to the file and when.
                     final when = f.at > 0
-                        ? DateFormat.MMMd().add_jm().format(DateTime.fromMillisecondsSinceEpoch(f.at))
+                        ? DateFormat.MMMd(dateLocale).add_jm().format(DateTime.fromMillisecondsSinceEpoch(f.at))
                         : null;
                     return GestureDetector(
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -242,7 +246,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image, color: f.isPdf ? AppColors.error : AppColors.primary, size: 20),
                               ),
                               const Spacer(),
-                              Container(
+                              // A long action ("Page numbers added") shrinks
+                              // with an ellipsis instead of overflowing.
+                              Flexible(
+                                flex: 3,
+                                child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: cs.surfaceContainerHighest,
@@ -254,6 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant),
                                 ),
+                              ),
                               ),
                             ]),
                             const Spacer(),

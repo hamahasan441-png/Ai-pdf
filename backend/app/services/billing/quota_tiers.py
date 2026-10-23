@@ -10,9 +10,11 @@ tiered quota system where each subscription plan gets its own daily AI limit:
 - **lifetime** → unlimited
 
 E8.1 — Per-team quota: a team can define ``ai_daily_quota`` which is shared
-among its members when they act in team context (X-Team-Id header). The
-quota resolution order is:
-1. If team_id provided and team has ai_daily_quota -> that limit
+among its members when they act in team context (X-Team-Id header). Only an
+authenticated member of that team may draw on its pool; an explicit header
+from anyone else is rejected with 403. The stored quota is capped at
+``AI_TEAM_DAILY_QUOTA_MAX``. The quota resolution order is:
+1. If team_id provided (caller is a member) and team has ai_daily_quota -> that limit
 2. Else entitlement tier quota (free/basic/unlimited)
 
 The ``quota_for`` function resolves the entitlement tier to a concrete daily
@@ -33,10 +35,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.exceptions import AuthorizationError
 from app.models.entitlement import Entitlement
 
 # Tiers that get unlimited AI access (no daily cap).
 _UNLIMITED_TIERS = frozenset({"monthly", "yearly", "lifetime"})
+# Paid plans — may use the advanced (more expensive) model.
+PAID_TIERS = frozenset({"basic"}) | _UNLIMITED_TIERS
 
 
 def quota_for_tier(tier: str) -> Optional[int]:
@@ -88,22 +93,47 @@ async def get_team_quota(db: AsyncSession, team_id: Optional[uuid.UUID]) -> Opti
 
         team = (await db.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
         if team and team.ai_daily_quota is not None:
-            return team.ai_daily_quota
+            return min(team.ai_daily_quota, settings.AI_TEAM_DAILY_QUOTA_MAX)
         return None
     except Exception:  # noqa: BLE001
         return None
+
+
+def parse_team_header(value: Optional[str]) -> Optional[uuid.UUID]:
+    """Parse an ``X-Team-Id`` header; None when absent or malformed."""
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+async def require_team_member(
+    db: AsyncSession, team_id: uuid.UUID, user_id: Optional[uuid.UUID]
+) -> None:
+    """403 unless ``user_id`` is an authenticated member of ``team_id``."""
+    from app.services.team.team_service import get_membership  # avoid cycle
+
+    if user_id is None or await get_membership(db, team_id, user_id) is None:
+        raise AuthorizationError("Not a member of this team")
 
 
 async def get_quota_with_team(
     db: AsyncSession,
     token: Optional[str],
     team_id: Optional[uuid.UUID] = None,
+    user_id: Optional[uuid.UUID] = None,
 ) -> tuple[str, Optional[int], str]:
     """Combined quota resolution: team quota overrides user tier when present.
+
+    The team pool is only available to a member of the team (``user_id``);
+    anyone else gets 403.
 
     Returns (tier, limit, source) where source is "team", "entitlement", or "free".
     """
     if team_id:
+        await require_team_member(db, team_id, user_id)
         team_limit = await get_team_quota(db, team_id)
         if team_limit is not None:
             return "team", team_limit, "team"

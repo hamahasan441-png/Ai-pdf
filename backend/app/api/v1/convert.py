@@ -20,6 +20,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.services.convert import converter
+from app.utils.filenames import content_disposition
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ def _download(data: bytes, filename: str, media_type: str) -> Response:
     return Response(
         content=data,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 

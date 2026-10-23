@@ -47,16 +47,12 @@ class OutputActions {
       );
 
       // Also keep a copy in the browsable Pdoczy folder.
-      final mirrored = await mirrorToPublicFolder(path);
+      await mirrorToPublicFolder(path);
 
       if (context.mounted) {
-        if (saved != null) {
-          _snack(context, l10n?.savedToDevice ?? 'Saved to device');
-        } else if (mirrored != null) {
-          _snack(context, l10n?.savedToAppFolder ?? 'Saved to the Pdoczy folder');
-        } else {
-          _snack(context, l10n?.saveCancelled ?? 'Save cancelled');
-        }
+        // Cancelling the dialog is a cancel, whatever the background copy
+        // did: that folder is not one the user can browse on Android 11+.
+        _snack(context, saved != null ? (l10n?.savedToDevice ?? 'Saved to device') : (l10n?.saveCancelled ?? 'Save cancelled'));
       }
     } catch (e) {
       if (context.mounted) _snack(context, l10n?.saveFailed(describeError(e, l10n)) ?? 'Could not save');

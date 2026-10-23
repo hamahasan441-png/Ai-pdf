@@ -5,16 +5,19 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps.auth import get_current_user, get_optional_user
+from app.api.v1.document_ai import _meter as _meter_ai
 from app.core.config import settings
-from app.core.exceptions import FileSizeLimitError, NotFoundError
+from app.core.exceptions import DocumentProcessingError, FileSizeLimitError, NotFoundError
 from app.db.database import get_db
 from app.models.document import Document, DocumentStatus, DocumentType
 from app.models.user import User
+from app.utils.filenames import safe_filename
 from app.schemas.document import (
     DocumentAnalysisRequest,
     DocumentListResponse,
@@ -34,14 +37,19 @@ MIME_TYPE_MAP = {
 }
 
 
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
-async def upload_document(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Upload a document for processing."""
-    # Validate file size
+async def _store_upload(
+    db: AsyncSession,
+    file: UploadFile,
+    owner_id: Optional[uuid.UUID],
+    upload_dir: Path,
+) -> Document:
+    """Validate an upload, create its DB row, then write it to disk.
+
+    The file is written only after the row was flushed successfully, and is
+    removed again if writing fails, so a failed upload leaves no orphan file.
+    The on-disk name is sanitised (no path components, ASCII only); the
+    original name is kept for display only.
+    """
     content = await file.read()
     file_size = len(content)
     if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
@@ -54,19 +62,16 @@ async def upload_document(
         from app.core.exceptions import ValidationError
         raise ValidationError(f"Unsupported file type: {mime_type}")
 
-    # Save file to disk
     file_id = uuid.uuid4()
-    upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / f"{file_id}_{file.filename}"
-    file_path.write_bytes(content)
+    original = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1][:500] or "upload"
+    stored_name = f"{file_id}_{safe_filename(file.filename, default='upload')}"
+    file_path = upload_dir / stored_name
 
-    # Create database record
     document = Document(
         id=file_id,
-        owner_id=current_user.id,
-        filename=f"{file_id}_{file.filename}",
-        original_filename=file.filename,
+        owner_id=owner_id,
+        filename=stored_name,
+        original_filename=original,
         file_path=str(file_path),
         file_size=file_size,
         mime_type=mime_type,
@@ -76,7 +81,26 @@ async def upload_document(
     db.add(document)
     await db.flush()
 
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(content)
+    except OSError:
+        logger.exception("Failed to store upload %s", file_id)
+        file_path.unlink(missing_ok=True)
+        raise DocumentProcessingError("Failed to store the uploaded file")
+
     return document
+
+
+@router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a document for processing."""
+    upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
+    return await _store_upload(db, file, current_user.id, upload_dir)
 
 
 @router.get("/", response_model=DocumentListResponse)
@@ -119,7 +143,9 @@ async def get_document(
 ):
     """Get document details including form fields."""
     result = await db.execute(
-        select(Document).where(
+        select(Document)
+        .options(selectinload(Document.form_fields))
+        .where(
             Document.id == document_id,
             Document.owner_id == current_user.id,
         )
@@ -312,6 +338,21 @@ async def delete_document(
 # ============================================================
 # GUEST ENDPOINTS - Work without authentication
 # ============================================================
+#
+# Guest documents are anonymous uploads (owner_id IS NULL). The guest read /
+# analyze / ask routes serve ONLY those, so a registered user's document is
+# never reachable without that user's token. The unguessable document id is
+# the guest's capability. AI calls are metered like every other AI route.
+
+
+async def _get_guest_document(db: AsyncSession, document_id: uuid.UUID, *, with_fields: bool = False) -> Document:
+    query = select(Document).where(Document.id == document_id, Document.owner_id.is_(None))
+    if with_fields:
+        query = query.options(selectinload(Document.form_fields))
+    document = (await db.execute(query)).scalar_one_or_none()
+    if not document:
+        raise NotFoundError("Document")
+    return document
 
 @router.post("/guest/upload", response_model=DocumentUploadResponse, status_code=201)
 async def guest_upload_document(
@@ -324,60 +365,27 @@ async def guest_upload_document(
     Guest uploads are stored temporarily and processed the same way
     as authenticated uploads. Guest documents are deleted after 24h.
 
-    If user is logged in, document is linked to their account.
+    If user is logged in, document is linked to their account (and is then
+    served by the authenticated routes, not the guest ones).
     """
-    content = await file.read()
-    file_size = len(content)
-    if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise FileSizeLimitError(settings.MAX_UPLOAD_SIZE_MB)
-
-    mime_type = file.content_type or "application/octet-stream"
-    doc_type = MIME_TYPE_MAP.get(mime_type)
-    if doc_type is None:
-        from app.core.exceptions import ValidationError
-        raise ValidationError(f"Unsupported file type: {mime_type}")
-
-    file_id = uuid.uuid4()
-    owner_id = current_user.id if current_user else uuid.uuid4()
-    upload_dir = Path(settings.UPLOAD_DIR) / "guest" / str(owner_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / f"{file_id}_{file.filename}"
-    file_path.write_bytes(content)
-
-    document = Document(
-        id=file_id,
-        owner_id=owner_id,
-        filename=f"{file_id}_{file.filename}",
-        original_filename=file.filename,
-        file_path=str(file_path),
-        file_size=file_size,
-        mime_type=mime_type,
-        document_type=doc_type,
-        status=DocumentStatus.UPLOADED,
-        is_guest=True,
-    )
-    db.add(document)
-    await db.flush()
-
-    return document
+    owner_id = current_user.id if current_user else None
+    upload_dir = Path(settings.UPLOAD_DIR) / "guest" / (str(owner_id) if owner_id else "anonymous")
+    return await _store_upload(db, file, owner_id, upload_dir)
 
 
 @router.post("/guest/{document_id}/analyze")
 async def guest_analyze_document(
     document_id: uuid.UUID,
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Analyze a guest document using the full AI pipeline.
 
-    No login required. Same AI power as authenticated users.
-    Guest limit: 3 analyses per hour per IP.
+    No login required. Metered against the caller's daily AI quota.
     """
-    result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
-    document = result.scalar_one_or_none()
-    if not document:
-        raise NotFoundError("Document")
+    document = await _get_guest_document(db, document_id)
+    await _meter_ai(request, current_user, db)
 
     document.status = DocumentStatus.PROCESSING
     await db.flush()
@@ -429,39 +437,31 @@ async def guest_analyze_document(
     }
 
 
-@router.get("/guest/{document_id}")
+@router.get("/guest/{document_id}", response_model=DocumentResponse)
 async def guest_get_document(
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a guest document's details and analysis results."""
-    result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
-    document = result.scalar_one_or_none()
-    if not document:
-        raise NotFoundError("Document")
-
-    return document
+    return await _get_guest_document(db, document_id, with_fields=True)
 
 
 @router.post("/guest/{document_id}/ask")
 async def guest_ask_document(
     document_id: uuid.UUID,
+    request: Request,
     question: str = "",
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Ask a question about a guest document."""
-    result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
-    document = result.scalar_one_or_none()
-    if not document:
-        raise NotFoundError("Document")
+    """Ask a question about a guest document (metered like other AI routes)."""
+    document = await _get_guest_document(db, document_id)
 
     if not question:
         from app.core.exceptions import ValidationError
         raise ValidationError("Please provide a question")
+
+    await _meter_ai(request, current_user, db)
 
     from app.services.ai.understanding import understanding_service
 

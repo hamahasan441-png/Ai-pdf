@@ -161,18 +161,29 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Publish a GitHub Release with the APK via the GitHub CLI (pre-installed,
-      # uses the built-in token — more reliable than third-party actions).
-      # This gives a permanent, no-login download link:
-      #   https://github.com/<owner>/<repo>/releases/latest/download/AI-PDF.apk
+  # Publish a GitHub Release with the APK via the GitHub CLI (pre-installed,
+  # uses the built-in token — more reliable than third-party actions).
+  # This gives a permanent, no-login download link:
+  #   https://github.com/<owner>/<repo>/releases/latest/download/AI-PDF.apk
+  # The build above still runs on its own, so a test hiccup never hides the
+  # artifact; but a public release only goes out when the tests passed too.
+  publish:
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: AI-PDF-Release
+          path: apk
+
       - name: Publish APK release
-        if: github.ref == 'refs/heads/main'
-        working-directory: frontend
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v1.0.${{ github.run_number }}" \
-            "build/app/outputs/flutter-apk/AI-PDF.apk" \
+            "apk/AI-PDF.apk" \
             --repo "${{ github.repository }}" \
             --title "AI PDF (build ${{ github.run_number }})" \
             --notes "Install AI-PDF.apk on your Android phone. If asked, allow installing from unknown sources. Uninstall any older AI PDF first." \

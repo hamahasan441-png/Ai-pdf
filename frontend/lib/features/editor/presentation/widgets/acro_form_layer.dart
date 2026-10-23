@@ -144,7 +144,8 @@ class AcroFormLayer extends StatelessWidget {
     } else if (typing) {
       surface = Colors.white;
     } else if (focused) {
-      surface = palette.focusTint;
+      // The tint is translucent: lay it on the field colour so it stays opaque.
+      surface = Color.alphaBlend(palette.focusTint, palette.fieldSurface);
     } else if (button && !on) {
       // Check boxes keep a faint fill so the empty control is findable.
       surface = const Color(0xFFFAFBFD);

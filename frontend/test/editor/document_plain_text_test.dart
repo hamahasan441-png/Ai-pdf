@@ -58,4 +58,13 @@ void main() {
     });
     expect(text, 'x 2\nNext');
   });
+
+  test('a right-to-left line reads from right to left', () {
+    // "یەک" is rightmost on the page, so it is read first.
+    final text = plainTextFromTextLayer({
+      0: [word('سێ', 0.1), word('دوو', 0.3), word('یەک', 0.5)],
+    });
+    expect(text, 'یەک دوو سێ');
+    expect(plainTextOfPage([word('Left', 0.1), word('right', 0.3)]), 'Left right');
+  });
 }

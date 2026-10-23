@@ -21,6 +21,20 @@ String plainTextFromTextLayer(Map<int, List<PdfTextElement>> pages) {
   return out.join('\n\n');
 }
 
+/// The plain text of one page's text layer, in reading order.
+String plainTextOfPage(List<PdfTextElement> elements) => _pageText(elements);
+
+/// Arabic-script and Hebrew letters: a line made mostly of them reads from
+/// right to left.
+final _rtlLetter = RegExp(r'[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]');
+final _anyLetter = RegExp(r'[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]');
+
+bool _rightToLeft(List<PdfTextElement> line) {
+  final text = line.map((e) => e.text).join();
+  final letters = _anyLetter.allMatches(text).length;
+  return letters > 0 && _rtlLetter.allMatches(text).length * 2 > letters;
+}
+
 String _pageText(List<PdfTextElement> elements) {
   final words = elements.where((e) => e.text.trim().isNotEmpty).toList()
     ..sort((a, b) {
@@ -55,7 +69,9 @@ String _pageText(List<PdfTextElement> elements) {
 
   final buffer = StringBuffer();
   for (final line in lines) {
-    line.sort((a, b) => a.rect.center.dx.compareTo(b.rect.center.dx));
+    // Kurdish, Arabic and Persian lines read from right to left.
+    final rtl = _rightToLeft(line);
+    line.sort((a, b) => rtl ? b.rect.center.dx.compareTo(a.rect.center.dx) : a.rect.center.dx.compareTo(b.rect.center.dx));
     buffer.writeln(line.map((e) => e.text.trim()).join(' '));
   }
   return buffer.toString().trimRight();

@@ -519,7 +519,6 @@
   "fileMissing": "Die Datei existiert nicht mehr",
   "saveToDevice": "Auf dem Gerät speichern",
   "savedToDevice": "Auf dem Gerät gespeichert",
-  "savedToAppFolder": "Im Pdoczy-Ordner gespeichert",
   "saveCancelled": "Speichern abgebrochen",
   "couldNotShare": "Teilen nicht möglich: {error}",
   "noFilesToShare": "Keine Dateien zum Teilen",
@@ -873,5 +872,7 @@
   "distributeTools": "Verteilen",
   "fieldNameEmpty": "Das Feld braucht einen Namen",
   "fieldNameDuplicate": "Ein anderes Feld hat diesen Namen bereits",
-  "unsavedChangesDot": "Ungespeicherte Änderungen"
+  "unsavedChangesDot": "Ungespeicherte Änderungen",
+  "toolRasterNotice": "Dieses Werkzeug speichert jede Seite als Bild. Die Seiten sehen gleich aus, aber ihr Text lässt sich nicht mehr markieren, durchsuchen oder kopieren, und Links, Formularfelder und Lesezeichen gehen verloren. Um sie zu behalten, verwenden Sie den Editor.",
+  "compressNotSmaller": "Dieses PDF ist bereits kompakt: Komprimieren würde es größer machen, daher bleibt Ihre Datei unverändert."
 }

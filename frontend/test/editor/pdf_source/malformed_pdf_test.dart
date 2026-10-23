@@ -65,6 +65,35 @@ void main() {
     );
   });
 
+  /// Parses [bytes]; a damaged file may be repaired or rejected with a
+  /// PdfSourceException, but anything else (a stack overflow, a hang) fails.
+  void parsesOrRejects(Uint8List bytes) {
+    try {
+      PdfObjectStore.parse(bytes);
+    } on PdfSourceException {
+      // Rejected cleanly.
+    }
+  }
+
+  test('an object stream said to live inside itself does not recurse forever', () {
+    parsesOrRejects(_objStmFixture('/First 4', selfReferencing: true));
+  });
+
+  test('an xref stream with all-zero /W widths does not loop over a huge /Size', () {
+    const base = '%PDF-1.7\n'
+        '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n'
+        '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n'
+        '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 9 9] >> endobj\n';
+    const startxrefOffset = base.length;
+    const body = '$base'
+        '4 0 obj << /Type /XRef /W [0 0 0] /Size 50000000 /Length 1 >> stream\nx\nendstream endobj\n'
+        'startxref\n$startxrefOffset\n'
+        '%%EOF';
+    final watch = Stopwatch()..start();
+    parsesOrRejects(pdf(body));
+    expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: 'it used to take ~30 s and 50M entries');
+  });
+
   test('a malformed /Index in a readable xref stream never escapes as TypeError', () {
     const base = '%PDF-1.7\n'
         '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n'
@@ -86,7 +115,7 @@ void main() {
 /// the xref stream (object 5) routes it there with a type-2 entry.
 ///
 /// [objStmDictExtra] controls the ObjStm dict so a test can corrupt /First.
-Uint8List _objStmFixture(String objStmDictExtra) {
+Uint8List _objStmFixture(String objStmDictExtra, {bool selfReferencing = false}) {
   final out = BytesBuilder();
   var pos = 0;
   void add(String s) {
@@ -117,7 +146,12 @@ Uint8List _objStmFixture(String objStmDictExtra) {
 
   row(1, off1, 0); // 1 catalog
   row(1, off2, 0); // 2 pages
-  row(1, off3, 0); // 3 objstm
+  // 3 objstm, or (broken) said to live inside itself.
+  if (selfReferencing) {
+    row(2, 3, 0);
+  } else {
+    row(1, off3, 0);
+  }
   row(2, 3, 0);    // 4 -> inside object stream 3, index 0
   row(1, off5, 0); // 5 the xref stream itself
   final xrefData = rows.toBytes();

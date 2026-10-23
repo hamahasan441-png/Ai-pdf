@@ -519,7 +519,6 @@
   "fileMissing": "El archivo ya no existe",
   "saveToDevice": "Guardar en el dispositivo",
   "savedToDevice": "Guardado en el dispositivo",
-  "savedToAppFolder": "Guardado en la carpeta Pdoczy",
   "saveCancelled": "Guardado cancelado",
   "couldNotShare": "No se pudo compartir: {error}",
   "noFilesToShare": "No hay archivos para compartir",
@@ -873,5 +872,7 @@
   "distributeTools": "Distribuir",
   "fieldNameEmpty": "El campo necesita un nombre",
   "fieldNameDuplicate": "Otro campo ya tiene este nombre",
-  "unsavedChangesDot": "Cambios sin guardar"
+  "unsavedChangesDot": "Cambios sin guardar",
+  "toolRasterNotice": "Esta herramienta guarda cada página como una imagen. Las páginas se ven igual, pero su texto ya no se puede seleccionar, buscar ni copiar, y no se conservan enlaces, campos de formulario ni marcadores. Para conservarlos, usa el editor.",
+  "compressNotSmaller": "Este PDF ya es compacto: comprimirlo lo haría más grande, así que tu archivo se dejó como estaba."
 }

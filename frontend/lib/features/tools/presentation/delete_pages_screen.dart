@@ -5,6 +5,7 @@ import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
+import 'package:ai_pdf/features/tools/widgets/raster_notice.dart';
 
 /// Delete Pages — remove a range of pages from a PDF, keep the rest. Offline.
 class DeletePagesScreen extends StatefulWidget {
@@ -91,6 +92,8 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const RasterNotice(),
+            const SizedBox(height: 16),
             InkWell(
               onTap: _busy ? null : _pick,
               borderRadius: BorderRadius.circular(16),
