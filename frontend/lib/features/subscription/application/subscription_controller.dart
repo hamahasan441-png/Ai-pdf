@@ -126,6 +126,21 @@ class SubscriptionController extends StateNotifier<SubscriptionState> {
 
     if (available) {
       await loadProducts();
+      await _refreshOwned();
+    }
+  }
+
+  /// Asks the store, quietly, for what this account owns. Android does not
+  /// push subscription renewals into the purchase stream, so without this a
+  /// paying subscriber lost Pro once the local 31/366-day expiry passed. An
+  /// active subscription comes back through the stream and is granted
+  /// again; a cancelled one does not, and lapses at its expiry.
+  Future<void> _refreshOwned() async {
+    try {
+      await _purchases.restore();
+    } catch (_) {
+      // Offline or the store is busy: the cached entitlement stands until
+      // the next launch tries again. Nothing for the user to act on.
     }
   }
 
