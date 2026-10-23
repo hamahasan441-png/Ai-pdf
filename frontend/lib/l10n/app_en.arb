@@ -1633,5 +1633,14 @@
   "fieldNameDuplicate": "Another field already has this name",
   "unsavedChangesDot": "Unsaved changes",
   "toolRasterNotice": "This tool saves each page as a picture. The pages look the same, but their text can no longer be selected, searched or copied, and links, form fields and bookmarks are not kept. To keep them, use the editor.",
-  "compressNotSmaller": "This PDF is already compact: compressing it would make it bigger, so your file was left as it is."
+  "compressNotSmaller": "This PDF is already compact: compressing it would make it bigger, so your file was left as it is.",
+  "modeView": "View",
+  "modeAnnotate": "Annotate",
+  "modeText": "Text",
+  "modeSign": "Fill & Sign",
+  "modePages": "Pages",
+  "toolStyle": "Colour and size",
+  "toolThickness": "Thickness",
+  "toolTextSize": "Text size",
+  "modeTextHint": "Tap a paragraph to change it, or add new text"
 }

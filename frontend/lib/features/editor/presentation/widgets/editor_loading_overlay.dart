@@ -32,36 +32,40 @@ class EditorLoadingOverlay extends StatelessWidget {
           opacity: active ? 1 : 0,
           duration: Motion.of(context, Motion.medium),
           curve: Motion.enter,
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: 0.35),
-            child: Center(
-              child: Semantics(
-                liveRegion: true,
-                label: label,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-                  margin: const EdgeInsets.symmetric(horizontal: 40),
-                  decoration: BoxDecoration(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [BoxShadow(color: Color(0x331B2130), blurRadius: 24, offset: Offset(0, 8))],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
-                      ),
-                      const SizedBox(width: 16),
-                      Flexible(
-                        child: Text(
-                          label,
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: cs.onSurface),
+          // The hidden spinner must not keep asking for frames.
+          child: TickerMode(
+            enabled: active,
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.35),
+              child: Center(
+                child: Semantics(
+                  liveRegion: true,
+                  label: label,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+                    margin: const EdgeInsets.symmetric(horizontal: 40),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [BoxShadow(color: Color(0x331B2130), blurRadius: 24, offset: Offset(0, 8))],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 16),
+                        Flexible(
+                          child: Text(
+                            label,
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: cs.onSurface),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

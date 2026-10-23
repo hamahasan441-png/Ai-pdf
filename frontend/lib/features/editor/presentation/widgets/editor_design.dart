@@ -56,7 +56,7 @@ class EditorPalette {
   /// Move/Resize handles; only visible in transform mode.
   final Color handleColor;
 
-  /// Floating contextual bars over the page.
+  /// Floating contextual bars over the page (and the editor's own bars).
   final Color barSurface;
   final Color barForeground;
 
@@ -64,6 +64,22 @@ class EditorPalette {
   final Color detectIndigo;
   final Color detectTeal;
   final Color detectViolet;
+
+  /// Bar ink for secondary content: inactive tools and labels.
+  Color get barMuted => barForeground.withValues(alpha: brightness == Brightness.dark ? 0.62 : 0.66);
+
+  /// Hairlines between the bars and the page.
+  Color get hairline => brightness == Brightness.dark ? const Color(0x1FFFFFFF) : const Color(0xFFE6E8EB);
+
+  /// The quiet pill behind the active tool or mode.
+  Color get activePill => brightness == Brightness.dark ? const Color(0x1FFFFFFF) : const Color(0xFFEFF1F4);
+
+  /// The one accent: the active tool's icon and the primary action.
+  Color get accent => brightness == Brightness.dark ? AppColors.primaryLight : AppColors.primary;
+
+  /// Text on the accent: white on the deep light-theme blue, near-black on
+  /// the paler dark-theme one (white there is under 3:1).
+  Color get onAccent => brightness == Brightness.dark ? const Color(0xFF111827) : Colors.white;
 
   static EditorPalette of(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
@@ -88,10 +104,11 @@ class EditorPalette {
     detectViolet: AppColors.toolViolet,
   );
 
-  /// Light editor chrome: cool paper tones that keep the page the focus.
+  /// Light editor chrome: a quiet neutral around the page and white bars
+  /// with dark ink, so the document is the only thing that draws the eye.
   static final EditorPalette lightPalette = EditorPalette._(
     brightness: Brightness.light,
-    canvasBackground: const Color(0xFFE4E7EF),
+    canvasBackground: const Color(0xFFEEF0F3),
     fieldSurface: Colors.white,
     fieldHairline: Colors.black.withValues(alpha: 0.10),
     readOnlySurface: const Color(0xFFF1F2F5),
@@ -99,8 +116,8 @@ class EditorPalette {
     selectionTint: AppColors.primary.withValues(alpha: 0.08),
     selectionBorder: AppColors.primary.withValues(alpha: 0.75),
     handleColor: AppColors.primaryDark,
-    barSurface: const Color(0xF0182033),
-    barForeground: Colors.white,
+    barSurface: Colors.white,
+    barForeground: const Color(0xFF1F2328),
     detectIndigo: const Color(0xFF4C63D2),
     detectTeal: AppColors.accent,
     detectViolet: AppColors.toolViolet,

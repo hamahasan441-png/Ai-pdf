@@ -1,29 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
+import 'package:ai_pdf/features/editor/domain/entities/editor_mode.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
+/// An entry of the top bar's menu.
+class EditorMenuAction {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const EditorMenuAction(this.icon, this.label, this.onTap);
+}
+
+/// The editor's top bar: back, the document (or workspace) name, and only
+/// the actions the current workspace needs. Reading shows search, share and
+/// a menu; the editing workspaces show undo, redo and Done.
+class EditorTopBar extends StatelessWidget {
+  static const double height = 56;
+
+  final EditorMode mode;
   final String title;
-  final int currentPage;
-  final int pageCount;
+
+  /// A quiet second line: the page, the file or what to do.
+  final String? subtitle;
   final bool hasDocument;
   final bool canUndo;
   final bool canRedo;
   final bool canPaste;
   final bool loading;
-  final bool unsavedChanges;
 
-  /// Notifies when the document is not saved yet; shown as a quiet dot so
-  /// the user always knows whether their work is safe.
+  /// Shows a quiet dot so the user always knows whether the work is saved.
+  final bool unsavedChanges;
   final VoidCallback? onUndo;
   final VoidCallback? onRedo;
   final VoidCallback? onPaste;
   final VoidCallback? onExport;
+  final VoidCallback? onSearch;
+
+  /// Leaves an editing workspace (back to reading).
+  final VoidCallback? onDone;
+  final List<EditorMenuAction> menu;
 
   const EditorTopBar({
     super.key,
+    required this.mode,
     required this.title,
-    required this.currentPage,
-    required this.pageCount,
+    this.subtitle,
     required this.hasDocument,
     required this.canUndo,
     required this.canRedo,
@@ -34,85 +57,141 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
     this.onRedo,
     this.onPaste,
     this.onExport,
+    this.onSearch,
+    this.onDone,
+    this.menu = const [],
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
-
-  @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
-    return AppBar(
-      titleSpacing: 16,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 15),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+    final palette = EditorPalette.of(context);
+    final reading = mode == EditorMode.view;
+    final fg = palette.barForeground;
+    return Material(
+      color: palette.barSurface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: palette.hairline))),
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: height,
+            child: IconTheme(
+              data: IconThemeData(color: fg, size: 22),
+              child: Row(
+                children: [
+                  BackButton(color: fg),
+                  Expanded(child: _title(context, palette)),
+                  if (hasDocument) ...[
+                    if (canPaste)
+                      IconButton(
+                        icon: const Icon(Icons.content_paste_outlined),
+                        tooltip: l10n.shortcutPaste,
+                        onPressed: onPaste,
+                      ),
+                    if (reading) ...[
+                      if (onSearch != null)
+                        IconButton(icon: const Icon(Icons.search), tooltip: l10n.toolFind, onPressed: onSearch),
+                      if (canUndo) IconButton(icon: const Icon(Icons.undo), tooltip: l10n.undo, onPressed: onUndo),
+                      IconButton(
+                        icon: const Icon(Icons.ios_share),
+                        tooltip: l10n.export,
+                        onPressed: loading ? null : onExport,
+                      ),
+                      if (menu.isNotEmpty) _menu(l10n, palette),
+                    ] else ...[
+                      IconButton(
+                        icon: const Icon(Icons.undo),
+                        tooltip: l10n.undo,
+                        onPressed: canUndo ? onUndo : null,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.redo),
+                        tooltip: l10n.redo,
+                        onPressed: canRedo ? onRedo : null,
+                      ),
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(start: 4, end: 8),
+                        child: FilledButton(
+                          onPressed: onDone,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: palette.accent,
+                            foregroundColor: palette.onAccent,
+                            minimumSize: const Size(0, 36),
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                          ),
+                          child: Text(l10n.done),
+                        ),
+                      ),
+                    ],
+                  ],
+                ],
               ),
-              if (unsavedChanges) ...[
-                const SizedBox(width: 6),
-                Tooltip(
-                  message: l10n.unsavedChangesDot,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: AppColorsDot.of(context),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (pageCount > 0)
-            Text(
-              l10n.pageOfPages(currentPage + 1, pageCount),
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
             ),
-        ],
+          ),
+        ),
       ),
-      actions: [
-        if (hasDocument) ...[
-          IconButton(
-            icon: const Icon(Icons.undo),
-            tooltip: l10n.undo,
-            onPressed: canUndo ? onUndo : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.redo),
-            tooltip: l10n.redo,
-            onPressed: canRedo ? onRedo : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.content_paste),
-            tooltip: l10n.shortcutPaste,
-            onPressed: canPaste ? onPaste : null,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: loading ? null : onExport,
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+    );
+  }
+
+  Widget _title(BuildContext context, EditorPalette palette) {
+    final l10n = AppLocalizations.of(context)!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: palette.barForeground),
               ),
-              icon: const Icon(Icons.ios_share, size: 17),
-              label: Text(l10n.export),
             ),
+            if (unsavedChanges) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: l10n.unsavedChangesDot,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: AppColorsDot.of(context), shape: BoxShape.circle),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (subtitle != null)
+          Text(
+            subtitle!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11.5, color: palette.barMuted),
           ),
-        ],
+      ],
+    );
+  }
+
+  Widget _menu(AppLocalizations l10n, EditorPalette palette) {
+    return PopupMenuButton<int>(
+      tooltip: l10n.moreActions,
+      icon: Icon(Icons.more_vert, color: palette.barForeground),
+      onSelected: (i) => menu[i].onTap(),
+      itemBuilder: (_) => [
+        for (var i = 0; i < menu.length; i++)
+          PopupMenuItem<int>(
+            value: i,
+            child: Row(children: [
+              Icon(menu[i].icon, size: 20),
+              const SizedBox(width: 12),
+              Expanded(child: Text(menu[i].label)),
+            ]),
+          ),
       ],
     );
   }
@@ -121,7 +200,5 @@ class EditorTopBar extends StatelessWidget implements PreferredSizeWidget {
 /// The unsaved-changes dot colour: the calm accent in both themes.
 class AppColorsDot {
   static Color of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF63CFC2)
-          : const Color(0xFF2BB5A6);
+      Theme.of(context).brightness == Brightness.dark ? const Color(0xFF63CFC2) : const Color(0xFF2BB5A6);
 }

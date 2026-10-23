@@ -83,6 +83,8 @@ import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
+import 'package:ai_pdf/features/editor/domain/entities/editor_mode.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_bar.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/services/annotation_bounds_service.dart';
 import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
@@ -181,11 +183,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   /// The view before filling moved it to show a field; Done puts it back.
   Matrix4? _fillSavedView;
-  late final AnimationController _viewAnim = AnimationController(vsync: this, duration: Motion.medium)
-    ..addListener(() {
-      final t = _viewTween;
-      if (t != null) _viewTransform.value = t.value;
-    });
+  // Made in initState: created lazily, a screen closed before it ever
+  // animated would build it inside dispose(), where it cannot get a ticker.
+  late final AnimationController _viewAnim;
   Animation<Matrix4>? _viewTween;
   Timer? _revealTimer;
   double _lastInset = 0;
@@ -217,7 +217,17 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   bool get _hasUnsavedChanges => _editorController.current.hasUnsavedChanges;
   set _hasUnsavedChanges(bool value) => _editorController.setUnsavedChanges(value);
 
-  EditTool _tool = EditTool.draw;
+  EditTool _tool = EditTool.pan;
+
+  /// The workspace shown: reading, or one job's tools.
+  EditorMode _mode = EditorMode.view;
+
+  /// Full-screen reading: the bars are folded away and the system bars hidden.
+  bool _chromeHidden = false;
+
+  /// The page number flashed over the page while the bars are hidden.
+  bool _showPagePill = false;
+  Timer? _pillTimer;
   Color _color = Colors.red;
   double _stroke = 3;
   // Normalized to page height: about 12 pt on an A4 or Letter page.
@@ -335,6 +345,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   @override
   void initState() {
     super.initState();
+    _viewAnim = AnimationController(vsync: this, duration: Motion.medium)
+      ..addListener(() {
+        final t = _viewTween;
+        if (t != null) _viewTransform.value = t.value;
+      });
     _viewTransform.addListener(_onViewTransform);
     loadEditorReadingMode().then((m) {
       if (mounted && m != _readingMode) setState(() => _readingMode = m);
@@ -361,6 +376,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   @override
   void dispose() {
     _revealTimer?.cancel();
+    _pillTimer?.cancel();
+    if (_chromeHidden) _restoreSystemBars();
     _viewAnim.dispose();
     _fillText.dispose();
     _fillFocus.dispose();
@@ -714,6 +731,102 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     return KeyEventResult.handled;
   }
 
+  /// Switches the workspace. Each one starts with its natural tool, and
+  /// what was half done in the old one (a selection, a field being placed,
+  /// the boxes of Edit text) is put away.
+  void _setMode(EditorMode mode) {
+    if (mode == _mode) return;
+    // Text being typed and a form value being filled are kept, not dropped.
+    _commitInlineEdit();
+    if (_fill != null) _endFill();
+    final startEditText = mode == EditorMode.text && !_editTextMode && !_showEditLines;
+    setState(() {
+      _leaveMode(mode);
+      _tool = mode == EditorMode.annotate ? EditTool.select : EditTool.pan;
+      _selected = null;
+      _multi.clear();
+    });
+    _setChromeHidden(false);
+    // Edit text: the page's paragraphs become tappable boxes right away.
+    if (startEditText && _pageCache[_current] != null) _scanForEdit();
+  }
+
+  /// Picks a tool from the tool row; the workspace follows the tool.
+  void _selectTool(EditTool tool) {
+    setState(() {
+      final enteringHighlight = tool == EditTool.highlight && _tool != EditTool.highlight;
+      if (tool != EditTool.pan) _leaveMode(EditorMode.forTool(tool));
+      _tool = tool;
+      if (enteringHighlight && _color == Colors.red) {
+        _color = const Color(0xFFFFEB3B);
+      }
+    });
+  }
+
+  /// Ends the current tool's unfinished work, and Edit text when leaving
+  /// the text workspace. Call inside setState.
+  void _leaveMode(EditorMode next) {
+    if (_mode == EditorMode.text && next != EditorMode.text) {
+      _editTextMode = false;
+      _showEditLines = false;
+    }
+    _mode = next;
+    _transformMode = false;
+    _endPlacementNoRebuild();
+    _markupPreview = const [];
+    _wordSelection = null;
+    _shapeStart = null;
+    _shapeEnd = null;
+  }
+
+  /// Full-screen reading: folds the bars away and hides the system bars
+  /// (a swipe from the screen edge shows those for a moment).
+  void _setChromeHidden(bool hidden) {
+    if (hidden == _chromeHidden) return;
+    setState(() {
+      _chromeHidden = hidden;
+      if (!hidden) _showPagePill = false;
+    });
+    if (hidden) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      _flashPagePill();
+    } else {
+      _pillTimer?.cancel();
+      _restoreSystemBars();
+    }
+  }
+
+  void _restoreSystemBars() =>
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+
+  /// Shows the page number over the page for a moment.
+  void _flashPagePill() {
+    _pillTimer?.cancel();
+    setState(() => _showPagePill = true);
+    _pillTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _showPagePill = false);
+    });
+  }
+
+  /// A sideways fling turns the page.
+  void _swipePage(int delta) {
+    final target = _current + delta;
+    if (target >= 0 && target < _pageCount) _goToPage(target);
+  }
+
+  /// The menu behind ⋮ in the reading bar: the panels and views that are
+  /// not a workspace of their own.
+  List<EditorMenuAction> _topBarMenu(AppLocalizations l10n) => [
+        EditorMenuAction(Icons.toc, l10n.toolOutline, _toggleOutline),
+        EditorMenuAction(Icons.layers_outlined, l10n.toolLayers, _toggleLayers),
+        EditorMenuAction(Icons.auto_awesome_outlined, l10n.toolChat, _toggleChat),
+        EditorMenuAction(Icons.view_agenda_outlined, l10n.toolReadView, _openReadingView),
+        EditorMenuAction(Icons.contrast, l10n.toolReadingMode, _chooseReadingMode),
+        EditorMenuAction(Icons.compare_outlined, l10n.toolCompare, _compareWith),
+        EditorMenuAction(Icons.hide_source_outlined, l10n.toolRedact, _toggleRedaction),
+        EditorMenuAction(Icons.folder_open_outlined, l10n.toolOpen, _pick),
+      ];
+
   /// All pages in one scroll for reading (More → Read). Its bitmaps are
   /// kept apart from the editor's and dropped when the view closes.
   bool _readingView = false;
@@ -825,6 +938,14 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _wordSelection = null;
       _layers.clear();
       _fields.clear();
+      // The text boxes belong to the previous document's pages.
+      _editLines.clear();
+      _nativeBlocks.clear();
+      _showEditLines = false;
+      _editTextMode = false;
+      // A document opens for reading.
+      _mode = EditorMode.view;
+      _tool = EditTool.pan;
       _multi.clear();
       _selected = null;
       _outlineController.clear();
@@ -1410,6 +1531,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (index < 0 || index >= _pageCount) return;
     _leaveFill();
     _endPlacementNoRebuild();
+    if (_chromeHidden) _flashPagePill();
     final ticket = ++_navTicket;
     _editorController.beginPageChange();
     final hadPreview = _pageCache.containsKey(index);
@@ -2115,6 +2237,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         return;
       }
       final hit = _hitTest(n);
+      // Reading: a tap on the page shows or hides the bars.
+      if (_mode == EditorMode.view && hit == null && _selected == null) {
+        _setChromeHidden(!_chromeHidden);
+        return;
+      }
       if (hit != null && identical(hit, _selected)) {
         // Second tap on the same object: open its editor. Selection itself
         // stays a quiet tint; no outline is drawn for this step.
@@ -3574,7 +3701,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     const barHeight = 64.0;
     const top = 8.0;
-    final bottom = viewerBox.globalToLocal(Offset(0, screen.height - inset - barHeight)).dy - 8;
+    // The free part ends at the keyboard's bar, or at the page area's own
+    // bottom edge (the tool bars sit below it) when the keyboard is closed.
+    final barTop = viewerBox.globalToLocal(Offset(0, screen.height - inset - barHeight)).dy;
+    final bottom = (barTop < viewerBox.size.height ? barTop : viewerBox.size.height) - 8;
     if (bottom - top < 40) return;
     final scale = _viewTransform.value.getMaxScaleOnAxis();
     // A field shown smaller than a finger-friendly height is zoomed to it.
@@ -3609,10 +3739,14 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_readingView,
+      canPop: !_hasUnsavedChanges && !_readingView && !_chromeHidden,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        // Back leaves the reading view first.
+        // Back brings the bars back first, then leaves the reading view.
+        if (_chromeHidden) {
+          _setChromeHidden(false);
+          return;
+        }
         if (_readingView) {
           _closeReadingView();
           return;
@@ -3645,27 +3779,41 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       // The inline text editor uses Positioned overlays that handle their own
       // layout, so resizing the body causes the PDF viewport to collapse.
       resizeToAvoidBottomInset: false,
-      appBar: EditorTopBar(
-        title: _fileName ?? l10n.toolEditor,
-        currentPage: _current,
-        pageCount: _pageCount,
-        hasDocument: bytes != null,
-        canUndo: _editorController.canUndo,
-        canRedo: _editorController.canRedo,
-        canPaste: _clipboard != null,
-        loading: _loading,
-        unsavedChanges: _hasUnsavedChanges,
-        onUndo: _undo,
-        onRedo: _redoAction,
-        onPaste: _pasteClipboard,
-        onExport: _export,
-      ),
       body: EditorScreenBody(
         bytes: bytes,
         loading: _loading,
         detecting: _detecting,
         detectingLabel: l10n.readingTheForm,
         onPick: _pick,
+        topBar: EditorTopBar(
+          mode: _mode,
+          title: _mode == EditorMode.view || bytes == null
+              ? _fileName ?? l10n.toolEditor
+              : EditorModeBar.labelOf(_mode, l10n),
+          subtitle: bytes == null
+              ? null
+              : switch (_mode) {
+                  EditorMode.view => _pageCount > 0 ? l10n.pageOfPages(_current + 1, _pageCount) : null,
+                  EditorMode.text => l10n.modeTextHint,
+                  _ => _fileName,
+                },
+          hasDocument: bytes != null,
+          canUndo: _editorController.canUndo,
+          canRedo: _editorController.canRedo,
+          canPaste: _clipboard != null,
+          loading: _loading,
+          unsavedChanges: _hasUnsavedChanges,
+          onUndo: _undo,
+          onRedo: _redoAction,
+          onPaste: _pasteClipboard,
+          onExport: _export,
+          onSearch: _toggleSearch,
+          onDone: () => _setMode(EditorMode.view),
+          menu: _topBarMenu(l10n),
+        ),
+        chromeHidden: _chromeHidden,
+        pageLabel: _pageCount > 0 ? '${_current + 1} / $_pageCount' : null,
+        showPageLabel: _showPagePill,
         formFillBar: _fill == null
             ? null
             : FormFillBar(
@@ -3686,17 +3834,6 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 hint: l10n.placingFieldHint,
                 doneLabel: l10n.cancel,
                 onDone: _endPlacement,
-              )
-            : _editTextMode && _inlineEditing == null
-            ? EditorModeBanner(
-                icon: Icons.edit_note,
-                title: l10n.editText,
-                hint: l10n.editTextModeHint,
-                doneLabel: l10n.done,
-                onDone: () => setState(() {
-                  _editTextMode = false;
-                  _showEditLines = false;
-                }),
               )
             : null,
         searchBar: _searchController.current.active
@@ -3748,7 +3885,6 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             : null,
         inlineOverlay: _inlineEditing != null
             ? Positioned.fill(
-                bottom: 96,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final editing = _inlineEditing!;
@@ -3817,6 +3953,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           transformationController: _viewTransform,
           viewerKey: _viewerKey,
           viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
+          onSwipePage: _tool == EditTool.pan && _placingField == null ? _swipePage : null,
+          onBackgroundTap: _mode == EditorMode.view ? () => _setChromeHidden(!_chromeHidden) : null,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
             tool: _tool,
@@ -3931,40 +4069,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onClose: () => setState(() => _pageOpsController.hide()),
               )
             : null,
-        thumbnailStrip: _pageCount > 1
-            ? EditorPageThumbnailStrip(
-                pageCount: _pageCount,
-                currentPage: _current,
-                pageCache: _pageCache,
-                onPageTap: _goToPage,
-                onPageAction: _onPageAction,
-              )
-            : null,
         toolbar: EditorToolbar(
+          mode: _mode,
+          onModeChanged: _setMode,
           tool: _tool,
           detecting: _detecting,
+          editingText: _editTextMode || _showEditLines,
           showFields: _showFields,
-          showEditLines: _showEditLines,
           hasPageFields: _pageFields.isNotEmpty,
           isShape: _isShape,
           color: _color,
           stroke: _stroke,
           textSize: _textSize,
           bold: _bold,
-          onToolChanged: (tool) => setState(() {
-            final enteringHighlight =
-                tool == EditTool.highlight && _tool != EditTool.highlight;
-            _tool = tool;
-            _transformMode = false;
-            _endPlacementNoRebuild();
-            _markupPreview = const [];
-            _wordSelection = null;
-            _shapeStart = null;
-            _shapeEnd = null;
-            if (enteringHighlight && _color == Colors.red) {
-              _color = const Color(0xFFFFEB3B);
-            }
-          }),
+          onToolChanged: _selectTool,
           onAutoFill: _autoFill,
           onAiFill: _smartFillPage,
           onEditTextTool: _scanForEdit,
@@ -3976,16 +4094,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onAddStamp: _addStamp,
           onAddImage: _addImage,
           onRotatePage: _rotatePage,
-          onOpen: _pick,
           onSearch: _toggleSearch,
           onRedact: _toggleRedaction,
           onOutline: _toggleOutline,
-          onChat: _toggleChat,
-          onLayers: _toggleLayers,
           onPageOps: _showPageOps,
-          onReadingMode: _chooseReadingMode,
-          onReadingView: _openReadingView,
-          onCompare: _compareWith,
           onColorChanged: (c) => setState(() => _color = c),
           recentColors: RecentColors.current,
           onPickColor: () async {
@@ -3995,11 +4107,19 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onStrokeChanged: (v) => setState(() => _stroke = v),
           onTextSizeChanged: (v) => setState(() => _textSize = v),
           onToggleBold: () => setState(() => _bold = !_bold),
+          pageStrip: _pageCount > 1
+              ? EditorPageThumbnailStrip(
+                  pageCount: _pageCount,
+                  currentPage: _current,
+                  pageCache: _pageCache,
+                  onPageTap: _goToPage,
+                  onPageAction: _onPageAction,
+                )
+              : null,
         ),
       ),
-      // No permanent floating navigation: the thumbnail strip, the outline
-      // and the page-ops sheet already cover page travel, and a pair of
-      // always-on FABs covered the document and fought the contextual bars.
+      // No permanent floating navigation: a sideways swipe, the page strip
+      // of the Pages workspace and the outline cover page travel.
     ),
       ),
     );

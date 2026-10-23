@@ -186,6 +186,12 @@ class EditorCanvas extends StatelessWidget {
 
   bool get _canDragText => tool == EditTool.pan || tool == EditTool.text;
 
+  /// The page takes a one-finger drag only when it has a use for it: the
+  /// tool draws or selects, a selected object moves, or an area is being
+  /// redacted. Otherwise the drag is left to the viewport, which pans a
+  /// zoomed page or turns the page.
+  bool get _takesDrag => tool != EditTool.pan || selected != null || securePreview;
+
   /// A text box laid out like the export lays it out (AnnotationTextLayout).
   static Widget _boxText(TextAnnotation t, Size size) {
     final box = AnnotationTextLayout.of(t, size);
@@ -208,9 +214,9 @@ class EditorCanvas extends StatelessWidget {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         return GestureDetector(
           onTapUp: (d) => onTapUp(d.localPosition, size),
-          onPanStart: (d) => onPanStart(d.localPosition, size),
-          onPanUpdate: (d) => onPanUpdate(d.localPosition, size),
-          onPanEnd: (_) => onPanEnd(),
+          onPanStart: _takesDrag ? (d) => onPanStart(d.localPosition, size) : null,
+          onPanUpdate: _takesDrag ? (d) => onPanUpdate(d.localPosition, size) : null,
+          onPanEnd: _takesDrag ? (_) => onPanEnd() : null,
           child: Stack(
             fit: StackFit.expand,
             children: [

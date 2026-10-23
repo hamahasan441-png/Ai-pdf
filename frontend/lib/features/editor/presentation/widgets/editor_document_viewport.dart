@@ -30,6 +30,13 @@ class EditorDocumentViewport extends StatefulWidget {
 
   /// Changes only how the page looks on screen (reading mode).
   final ColorFilter? viewFilter;
+
+  /// A horizontal fling on the unzoomed page: 1 for the next page, -1 for
+  /// the previous one. Null turns page swiping off.
+  final ValueChanged<int>? onSwipePage;
+
+  /// A tap beside the page (not on it).
+  final VoidCallback? onBackgroundTap;
   final Widget child;
 
   const EditorDocumentViewport({
@@ -40,6 +47,8 @@ class EditorDocumentViewport extends StatefulWidget {
     this.transformationController,
     this.viewerKey,
     this.viewFilter,
+    this.onSwipePage,
+    this.onBackgroundTap,
     required this.child,
   });
 
@@ -103,10 +112,20 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
     _zoomAnim.forward(from: 0);
   }
 
+  /// Turns the page on a quick sideways fling, only while the whole page is
+  /// shown (zoomed in, a drag pans the page instead).
+  void _onInteractionEnd(ScaleEndDetails d) {
+    final swipe = widget.onSwipePage;
+    if (swipe == null || d.pointerCount > 1) return;
+    if (_controller.value.getMaxScaleOnAxis() > 1.02) return;
+    final v = d.velocity.pixelsPerSecond;
+    if (v.dx.abs() < 600 || v.dx.abs() < v.dy.abs() * 1.5) return;
+    swipe(v.dx < 0 ? 1 : -1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      bottom: 96,
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Compute a concrete page size from finite parent constraints.
@@ -126,6 +145,7 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
             maxScale: 5,
             panEnabled: widget.panEnabled,
             scaleEnabled: widget.scaleEnabled,
+            onInteractionEnd: _onInteractionEnd,
             child: Center(
               child: SizedBox(
                 width: fitted.width,
@@ -140,8 +160,14 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
           );
           // Only while panning: a double-tap recognizer delays every single
           // tap, which would make drawing and placing text feel slow.
-          if (!widget.panEnabled || !widget.scaleEnabled) return viewer;
+          // A tap on the page itself is the canvas's (its recognizer is
+          // deeper, so it wins); only taps beside the page reach this one.
+          if (!widget.panEnabled || !widget.scaleEnabled) {
+            if (widget.onBackgroundTap == null) return viewer;
+            return GestureDetector(onTap: widget.onBackgroundTap, child: viewer);
+          }
           return GestureDetector(
+            onTap: widget.onBackgroundTap,
             onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
             onDoubleTap: _onDoubleTap,
             child: viewer,
