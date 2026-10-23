@@ -339,3 +339,31 @@ async def test_understand_form_malformed_ai_response(client, monkeypatch, mock_a
     # All input labels should appear as unknown fallbacks.
     assert len(body["fields"]) == 1
     assert body["fields"][0]["semantic_type"] == "unknown"
+
+
+# --- Chat request limits (security regressions) ----------------------------
+
+
+async def test_document_chat_limits_history_and_context(client, mock_ai):
+    url = "/api/v1/document-ai/chat"
+    base = {"document_text": "doc", "question": "q"}
+
+    ok = await client.post(
+        url,
+        json={**base, "history": [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}],
+              "context_pages": ["p1"]},
+    )
+    assert ok.status_code == 200, ok.text
+
+    too_much_history = [{"role": "user", "content": "a"}] * 21
+    assert (await client.post(url, json={**base, "history": too_much_history})).status_code == 422
+
+    long_turn = [{"role": "user", "content": "a" * 4001}]
+    assert (await client.post(url, json={**base, "history": long_turn})).status_code == 422
+
+    # A "system" turn would override the grounding prompt; malformed turns must not 500.
+    assert (await client.post(url, json={**base, "history": [{"role": "system", "content": "x"}]})).status_code == 422
+    assert (await client.post(url, json={**base, "history": [{"foo": "bar"}]})).status_code == 422
+
+    assert (await client.post(url, json={**base, "context_pages": ["p"] * 11})).status_code == 422
+    assert (await client.post(url, json={**base, "context_pages": ["p" * 8001]})).status_code == 422

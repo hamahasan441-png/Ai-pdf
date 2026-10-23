@@ -6,7 +6,7 @@ Uses the server-side MultiDocBm25Index for retrieval + the AI provider for
 synthesis.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -27,18 +27,29 @@ from app.services.billing.quota_tiers import get_quota
 
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
 
-# Per-session in-memory indexes (keyed by a client-provided session_id).
+# Per-session in-memory indexes. The key combines the caller's identity (user
+# id, or client IP for guests) with the client-provided session_id, so one
+# caller can never read, extend or delete another caller's session.
 # In production this would be backed by Redis with TTL; for now in-memory is
 # fine (stateless between server restarts, private by design).
 _sessions: dict[str, MultiDocBm25Index] = {}
 _MAX_SESSIONS = 100
+_MAX_DOCS_PER_SESSION = 20
+_MAX_PAGES_PER_DOC = 500
+_MAX_PAGE_CHARS = 20_000
+
+
+def _session_key(session_id: str, user: Optional[User], request: Request) -> str:
+    return f"{identity_for(user, request)}:{session_id}"
 
 
 class IndexDocumentRequest(BaseModel):
     session_id: str = Field(..., max_length=64)
     doc_id: str = Field(..., max_length=128)
     doc_name: str = Field(..., max_length=256)
-    pages: dict[int, str] = Field(..., description="Page number → extracted text")
+    pages: dict[int, Annotated[str, Field(max_length=_MAX_PAGE_CHARS)]] = Field(
+        ..., max_length=_MAX_PAGES_PER_DOC, description="Page number → extracted text"
+    )
 
 
 class IndexDocumentResponse(BaseModel):
@@ -61,14 +72,23 @@ class MultiDocChatResponse(BaseModel):
 
 
 @router.post("/multi-doc/index", response_model=IndexDocumentResponse)
-async def index_document(req: IndexDocumentRequest):
+async def index_document(
+    req: IndexDocumentRequest,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+):
     """Add a document to the multi-doc index for a session."""
-    if len(_sessions) >= _MAX_SESSIONS and req.session_id not in _sessions:
+    key = _session_key(req.session_id, user, request)
+    if len(_sessions) >= _MAX_SESSIONS and key not in _sessions:
         # Evict oldest session (simple LRU — first key)
         oldest = next(iter(_sessions))
         del _sessions[oldest]
 
-    idx = _sessions.setdefault(req.session_id, MultiDocBm25Index())
+    idx = _sessions.setdefault(key, MultiDocBm25Index())
+    if req.doc_id not in idx.doc_ids and len(idx.doc_ids) >= _MAX_DOCS_PER_SESSION:
+        raise HTTPException(
+            status_code=422, detail=f"At most {_MAX_DOCS_PER_SESSION} documents per session"
+        )
     added = idx.add_document(
         doc_id=req.doc_id,
         doc_name=req.doc_name,
@@ -92,7 +112,7 @@ async def multi_doc_chat(
     if not settings.AI_API_KEY:
         raise HTTPException(status_code=503, detail="AI not configured")
 
-    idx = _sessions.get(req.session_id)
+    idx = _sessions.get(_session_key(req.session_id, user, request))
     if idx is None or idx.chunk_count == 0:
         raise HTTPException(status_code=404, detail="No documents indexed for this session")
 
@@ -145,9 +165,14 @@ async def multi_doc_chat(
 
 
 @router.delete("/multi-doc/session/{session_id}")
-async def clear_session(session_id: str):
-    """Clear an indexed session (free memory)."""
-    if session_id in _sessions:
-        _sessions[session_id].clear()
-        del _sessions[session_id]
+async def clear_session(
+    session_id: str,
+    request: Request,
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Clear the caller's own indexed session (free memory)."""
+    key = _session_key(session_id, user, request)
+    if key in _sessions:
+        _sessions[key].clear()
+        del _sessions[key]
     return {"status": "cleared"}

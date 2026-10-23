@@ -93,13 +93,16 @@ class RedisUsageBackend:
     def check_and_increment(self, key: str, limit: int, day: str) -> tuple[bool, int]:
         rkey = self._redis_key(key, day)
         try:
-            current = int(self._client.get(rkey) or 0)
-            if current >= limit:
-                return False, current
+            # INCR first and decide on its (atomic) result: a separate GET then
+            # INCR lets concurrent requests all pass the check and overshoot.
             count = int(self._client.incr(rkey))
             if count == 1:
                 # First hit of the day for this key: set the daily expiry.
                 self._client.expire(rkey, self._TTL_SECONDS)
+            if count > limit:
+                # Over the cap: undo our increment so the count stays at the cap.
+                self._client.decr(rkey)
+                return False, count - 1
             return True, count
         except Exception as exc:  # noqa: BLE001 - never let cache break AI
             logger.warning("Redis metering failed (%s); using in-memory fallback", exc)
