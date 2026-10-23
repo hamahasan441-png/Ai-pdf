@@ -7,13 +7,19 @@ import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/data/image_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/data/stamp_annotation_renderer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/detected_field.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas_painter.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/edit_text_target.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/form_field_box.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_selection_overlay.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/sticky_note_widget.dart';
 
 class EditorCanvas extends StatelessWidget {
   final Uint8List bytes;
@@ -26,6 +32,12 @@ class EditorCanvas extends StatelessWidget {
   final Color color;
   final double stroke;
   final bool highlightPreview;
+  final bool securePreview;
+  final List<Rect> markupPreview;
+  final TextMarkupKind? markupKind;
+  final List<Rect> findRects;
+  final int activeFind;
+  final List<Rect> wordSelection;
   final bool showFields;
   final List<DetectedField> pageFields;
   final bool showEditLines;
@@ -43,6 +55,9 @@ class EditorCanvas extends StatelessWidget {
 
   /// Bumped when an async image decode finishes, forcing a canvas repaint.
   final int canvasRevision;
+
+  /// The PDF's own form fields, drawn above the page and below the marks.
+  final Widget? formLayer;
   final void Function(Offset localPosition, Size canvasSize) onTapUp;
   final void Function(Offset localPosition, Size canvasSize) onPanStart;
   final void Function(Offset localPosition, Size canvasSize) onPanUpdate;
@@ -79,6 +94,11 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDuplicateMulti;
   final VoidCallback onDeleteMulti;
   final VoidCallback onDeselectMulti;
+  final void Function(StickyNoteAnnotation note)? onNoteTap;
+  final void Function(StickyNoteAnnotation note)? onNoteDelete;
+
+  /// Opens the properties of a selected form field the user added.
+  final void Function(FormFieldAnnotation field)? onEditField;
   final IconData Function(FieldType type) resolveTypeIcon;
 
   const EditorCanvas({
@@ -93,6 +113,12 @@ class EditorCanvas extends StatelessWidget {
     required this.color,
     required this.stroke,
     required this.highlightPreview,
+    this.securePreview = false,
+    this.markupPreview = const [],
+    this.markupKind,
+    this.findRects = const [],
+    this.activeFind = -1,
+    this.wordSelection = const [],
     required this.showFields,
     required this.pageFields,
     required this.showEditLines,
@@ -108,6 +134,7 @@ class EditorCanvas extends StatelessWidget {
     required this.imageRenderer,
     required this.stampRenderer,
     this.canvasRevision = 0,
+    this.formLayer,
     required this.onTapUp,
     required this.onPanStart,
     required this.onPanUpdate,
@@ -140,10 +167,28 @@ class EditorCanvas extends StatelessWidget {
     required this.onDuplicateMulti,
     required this.onDeleteMulti,
     required this.onDeselectMulti,
+    this.onNoteTap,
+    this.onNoteDelete,
+    this.onEditField,
     required this.resolveTypeIcon,
   });
 
   bool get _canDragText => tool == EditTool.pan || tool == EditTool.text;
+
+  /// A text box laid out like the export lays it out (AnnotationTextLayout).
+  static Widget _boxText(TextAnnotation t, Size size) {
+    final box = AnnotationTextLayout.of(t, size);
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
+      child: Text.rich(
+        buildAnnotationTextSpan(t, box.style),
+        textAlign: box.align,
+        textDirection: box.direction,
+        // Page text is sized to the page, not to the system font scale.
+        textScaler: TextScaler.noScaling,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,32 +203,75 @@ class EditorCanvas extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.memory(
-                bytes,
-                fit: BoxFit.fill,
-                gaplessPlayback: true,
-                // Smoother resampling when the InteractiveViewer scales the
-                // page bitmap up on zoom (zero extra memory vs. the default).
-                filterQuality: FilterQuality.medium,
-              ),
-              CustomPaint(
-                painter: EditorCanvasPainter(
-                  layer.strokes,
-                  layer.shapes,
-                  layer.images,
-                  layer.stamps,
-                  imageRenderer,
-                  stampRenderer,
-                  drawing,
-                  shapeStart,
-                  shapeEnd,
-                  previewShapeType,
-                  color,
-                  stroke,
-                  highlightPreview,
-                  revision: canvasRevision,
+              RepaintBoundary(
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.fill,
+                  gaplessPlayback: true,
+                  // Decode for the screen, plus headroom for a 2× pinch,
+                  // instead of the full 2400px bitmap on every frame.
+                  cacheWidth: (constraints.maxWidth *
+                          MediaQuery.devicePixelRatioOf(context) *
+                          2)
+                      .round()
+                      .clamp(64, 4096)
+                      .toInt(),
+                  filterQuality: FilterQuality.medium,
                 ),
               ),
+              if (formLayer != null) Positioned.fill(child: formLayer!),
+              // The marks only paint. Without IgnorePointer a painter with no
+              // hitTest counts as hit everywhere and would hide the form
+              // fields from taps; the canvas gestures still arrive through
+              // the page image.
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: EditorCanvasPainter(
+                    layer.strokes,
+                    layer.shapes,
+                    layer.images,
+                    layer.stamps,
+                    imageRenderer,
+                    stampRenderer,
+                    drawing,
+                    shapeStart,
+                    shapeEnd,
+                    previewShapeType,
+                    color,
+                    stroke,
+                    highlightPreview,
+                    securePreview: securePreview,
+                    markups: layer.markups,
+                    markupPreview: markupPreview,
+                    markupKind: markupKind,
+                    findRects: findRects,
+                    activeFind: activeFind,
+                    wordSelection: wordSelection,
+                    revision: canvasRevision,
+                  ),
+                ),
+              ),
+              for (final f in layer.fields.where((f) => f.visible))
+                Positioned(
+                  left: f.pos.dx * size.width,
+                  top: f.pos.dy * size.height,
+                  child: FormFieldBox(field: f, page: size),
+                ),
+              ...layer.notes.where((n) => n.visible).map(
+                    (note) {
+                      final maxX = size.width > 28 ? size.width - 28 : 0.0;
+                      final maxY = size.height > 28 ? size.height - 28 : 0.0;
+                      return Positioned(
+                        left: (note.pos.dx * size.width).clamp(0.0, maxX).toDouble(),
+                        top: (note.pos.dy * size.height).clamp(0.0, maxY).toDouble(),
+                        child: StickyNoteWidget(
+                          note: note,
+                          onTap: () => onNoteTap?.call(note),
+                          onDelete: onNoteDelete == null ? null : () => onNoteDelete!(note),
+                        ),
+                      );
+                    },
+                  ),
               if (showFields) ...pageFields.map((f) {
                 final isCheckbox = f.type == FieldType.checkbox;
                 final isRadio = f.type == FieldType.radio;
@@ -205,7 +293,7 @@ class EditorCanvas extends StatelessWidget {
                       height: (f.rect.height * size.height).clamp(18.0, 60.0),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
-                        color: base.withOpacity(0.18),
+                        color: base.withValues(alpha: 0.18),
                         border: Border.all(color: base.shade700, width: 1.5),
                         borderRadius: isRadio ? BorderRadius.circular(100) : BorderRadius.circular(4),
                       ),
@@ -215,21 +303,13 @@ class EditorCanvas extends StatelessWidget {
                 );
               }),
               if (showEditLines)
+                // A little room around the text, so the box does not touch it.
                 ...editLines.map((line) => Positioned(
-                      left: line.x * size.width,
-                      top: line.y * size.height,
-                      width: (line.w * size.width).clamp(10.0, size.width),
-                      height: (line.h * size.height).clamp(12.0, 80.0),
-                      child: GestureDetector(
-                        onTap: () => onEditLineTap(line),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.14),
-                            border: Border.all(color: Colors.blueAccent, width: 1),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      ),
+                      left: line.x * size.width - 3,
+                      top: line.y * size.height - 2,
+                      width: (line.w * size.width + 6).clamp(12.0, size.width),
+                      height: (line.h * size.height + 4).clamp(14.0, size.height),
+                      child: EditTextTarget(label: line.text, onTap: () => onEditLineTap(line)),
                     )),
               if (guideX != null)
                 Positioned(
@@ -256,7 +336,7 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blue, width: 1.5),
-                        color: Colors.blue.withOpacity(0.08),
+                        color: Colors.blue.withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -272,27 +352,32 @@ class EditorCanvas extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blueAccent),
-                        color: Colors.blue.withOpacity(0.12),
+                        color: Colors.blue.withValues(alpha: 0.12),
                       ),
                     ),
                   ),
                 ),
-              ...layer.texts.map((t) => Positioned(
-                    left: t.pos.dx * size.width,
-                    top: t.pos.dy * size.height,
+              // Hidden text is not drawn (export leaves it out too); locked
+              // text stays visible but cannot be selected, edited or dragged.
+              ...layer.texts.where((t) => t.visible).map((t) => Positioned(
+                    // The 3 px padding below is the tap and selection margin;
+                    // the text itself sits exactly at pos, as in the export.
+                    left: t.pos.dx * size.width - 3,
+                    top: t.pos.dy * size.height - 3,
                     child: GestureDetector(
                       onTap: () {
+                        if (t.locked) return;
                         if (tool == EditTool.pan) {
                           onSelectText(t);
                         } else {
                           onEditText(t);
                         }
                       },
-                      onPanStart: _canDragText
+                      onPanStart: _canDragText && !t.locked
                           ? (_) => onMoveTextStart?.call(t)
                           : null,
-                      onPanUpdate: _canDragText ? (d) => onMoveText(t, d, size) : null,
-                      onPanEnd: _canDragText ? (_) => onMoveTextEnd?.call() : null,
+                      onPanUpdate: _canDragText && !t.locked ? (d) => onMoveText(t, d, size) : null,
+                      onPanEnd: _canDragText && !t.locked ? (_) => onMoveTextEnd?.call() : null,
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
@@ -300,21 +385,7 @@ class EditorCanvas extends StatelessWidget {
                         ),
                         child: Transform.rotate(
                           angle: -t.rotation,
-                          child: Text.rich(
-                            buildAnnotationTextSpan(
-                              t,
-                              TextStyle(
-                                color: t.color,
-                                fontSize: t.size * size.height,
-                                fontWeight: t.bold ? FontWeight.w700 : FontWeight.w400,
-                                fontStyle: t.italic ? FontStyle.italic : FontStyle.normal,
-                                decoration:
-                                    t.underline ? TextDecoration.underline : TextDecoration.none,
-                                decorationColor: t.color,
-                                fontFamily: t.fontFamily,
-                              ),
-                            ),
-                          ),
+                          child: _boxText(t, size),
                         ),
                       ),
                     ),
@@ -358,6 +429,9 @@ class EditorCanvas extends StatelessWidget {
                   onTextIncrease: selected is TextAnnotation ? onTextIncrease : null,
                   onPickTextColor: selected is TextAnnotation ? onPickTextColor : null,
                   onEditShapeStyle: selected is ShapeAnnotation ? onEditShapeStyle : null,
+                  onEditField: selected is FormFieldAnnotation && onEditField != null
+                      ? () => onEditField!(selected! as FormFieldAnnotation)
+                      : null,
                   onCopy: onCopySelected,
                   onDuplicate: onDuplicateSelected,
                   onBringToFront: onBringToFront,

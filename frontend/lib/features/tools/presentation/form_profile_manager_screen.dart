@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -58,7 +60,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = describeError(e, AppLocalizations.of(context));
         _loading = false;
       });
     }
@@ -68,11 +70,11 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete profile?'),
-        content: Text('Delete profile for "${p.formType}"? This cannot be undone.'),
+        title: Text(AppLocalizations.of(ctx)!.aProfileDeleteTitle),
+        content: Text(AppLocalizations.of(ctx)!.aProfileDeleteBody(p.formType)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLocalizations.of(ctx)!.delete)),
         ],
       ),
     );
@@ -80,7 +82,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
     await _service.deleteProfile(p.formType);
     await _load();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted ${p.formType}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.aProfileDeleted(p.formType))));
     }
   }
 
@@ -95,17 +97,17 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('Copied to clipboard'),
-              subtitle: Text('${p.fieldValues.length} fields'),
+              title: Text(AppLocalizations.of(ctx)!.copiedToClipboard),
+              subtitle: Text(AppLocalizations.of(ctx)!.aProfileFieldCount(p.fieldValues.length)),
             ),
             ListTile(
               leading: const Icon(Icons.share),
-              title: const Text('Share JSON'),
+              title: Text(AppLocalizations.of(ctx)!.aProfileShareJson),
               onTap: () => Navigator.pop(ctx, 'share'),
             ),
             ListTile(
               leading: const Icon(Icons.close),
-              title: const Text('Close'),
+              title: Text(AppLocalizations.of(ctx)!.aProfileClose),
               onTap: () => Navigator.pop(ctx, 'close'),
             ),
           ],
@@ -113,9 +115,11 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
       ),
     );
     if (action == 'share') {
+      if (!mounted) return;
+      final shareText = AppLocalizations.of(context)!.aProfileShareText(p.formType);
       final tmp = await _writeTempFile('${p.formType}.json', jsonStr);
       if (tmp != null) {
-        await Share.shareXFiles([XFile(tmp)], text: 'Form profile: ${p.formType}');
+        await Share.shareXFiles([XFile(tmp)], text: shareText);
       }
     }
   }
@@ -136,7 +140,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Import profile JSON'),
+        title: Text(AppLocalizations.of(ctx)!.aProfileImportTitle),
         content: TextField(
           controller: controller,
           maxLines: 8,
@@ -146,8 +150,8 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Import')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(ctx)!.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: Text(AppLocalizations.of(ctx)!.aProfileImport)),
         ],
       ),
     );
@@ -161,11 +165,11 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
       await _service.saveProfile(formType: profile.formType, fieldValues: profile.fieldValues);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported ${profile.formType}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.aProfileImported(profile.formType))));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.errImport(describeError(e, AppLocalizations.of(context))))));
       }
     }
   }
@@ -173,18 +177,19 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Form Profiles'),
+        title: Text(l10n.aProfileTitle),
         actions: [
-          IconButton(icon: const Icon(Icons.download), tooltip: 'Import JSON', onPressed: _import),
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: _load),
+          IconButton(icon: const Icon(Icons.download), tooltip: l10n.aProfileImportJson, onPressed: _import),
+          IconButton(icon: const Icon(Icons.refresh), tooltip: l10n.aProfileRefresh, onPressed: _load),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text('Error: $_error'))
+              ? Center(child: Text(l10n.aProfileError(_error!)))
               : _profiles.isEmpty
                   ? Center(
                       child: Padding(
@@ -194,11 +199,10 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
                           children: [
                             Icon(Icons.folder_off, size: 64, color: cs.outline),
                             const SizedBox(height: 16),
-                            const Text('No saved form profiles', style: TextStyle(fontSize: 18)),
+                            Text(l10n.aProfileEmptyTitle, style: const TextStyle(fontSize: 18)),
                             const SizedBox(height: 8),
-                            const Text(
-                              'When you fill a form and place values, they are saved as a reusable profile for that form type. '
-                              'Next time the same form appears, values are auto-suggested.',
+                            Text(
+                              l10n.aProfileEmptyBody,
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -214,7 +218,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
                         return Card(
                           child: ExpansionTile(
                             title: Text(p.formType, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text('${p.fieldValues.length} fields • Saved ${p.savedAt.toLocal()}'),
+                            subtitle: Text(l10n.aProfileSubtitle(p.fieldValues.length, '${p.savedAt.toLocal()}')),
                             children: [
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -247,13 +251,13 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
                                         TextButton.icon(
                                           onPressed: () => _export(p),
                                           icon: const Icon(Icons.ios_share),
-                                          label: const Text('Export'),
+                                          label: Text(l10n.export),
                                         ),
                                         const SizedBox(width: 8),
                                         TextButton.icon(
                                           onPressed: () => _delete(p),
-                                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                          label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                          icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                                          label: Text(l10n.delete, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                                         ),
                                       ],
                                     ),
@@ -270,7 +274,7 @@ class _FormProfileManagerScreenState extends State<FormProfileManagerScreen> {
           : FloatingActionButton.extended(
               onPressed: _import,
               icon: const Icon(Icons.upload_file),
-              label: const Text('Import'),
+              label: Text(l10n.aProfileImport),
             ),
     );
   }

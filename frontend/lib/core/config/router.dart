@@ -26,6 +26,7 @@ import '../../features/library/presentation/library_screen.dart';
 import '../../features/recent/presentation/recent_files_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/ai/presentation/chat_history_screen.dart';
+import '../../features/security/presentation/pdf_protect_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
 import '../../features/settings/presentation/ai_settings_screen.dart';
 import '../../features/tools/presentation/form_profile_manager_screen.dart';
@@ -57,9 +58,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/tools/split', builder: (_, __) => const PdfToolsScreen(mode: PdfToolMode.split)),
       GoRoute(path: '/tools/scan', builder: (_, __) => const ScannerScreen()),
       GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
-      GoRoute(path: '/tools/pick-edit', builder: (_, __) => const PickEditScreen()),
+      // `extra` may name a file to open straight away (from the library).
+      GoRoute(
+        path: '/tools/pick-edit',
+        builder: (_, state) => PickEditScreen(initialPath: state.extra is String ? state.extra as String : null),
+      ),
       GoRoute(path: '/tools/smart-fill', builder: (_, __) => const SmartFillScreen()),
       GoRoute(path: '/tools/organize', builder: (_, __) => const OrganizePagesScreen()),
+      GoRoute(path: '/tools/protect', builder: (_, __) => const PdfProtectScreen()),
       GoRoute(path: '/tools/ocr', builder: (_, __) => const OcrScreen()),
       GoRoute(path: '/tools/pdf-to-images', builder: (_, __) => const PdfToImagesScreen()),
       GoRoute(path: '/tools/watermark', builder: (_, __) => const WatermarkScreen()),

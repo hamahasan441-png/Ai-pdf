@@ -86,10 +86,60 @@ void main() {
       expect(r.text, 'Hello World\nFoo Bar');
     });
 
-    test('empty input yields the empty selection', () {
-      final r = svc.selectRange(const [], Offset.zero, Offset.zero);
+    test('a slanted line stays one line instead of splitting on a fixed tolerance', () {
+      final slanted = [
+        _el('One', 0.10, 0.100),
+        _el('Two', 0.30, 0.110),
+        _el('Three', 0.50, 0.120),
+      ];
+      final r = svc.selectAll(slanted);
+      expect(r.text, 'One Two Three');
+      expect(r.text.contains('\n'), isFalse);
+    });
+
+    test('Kurdish words on one line copy in reading order, right to left', () {
+      final rtl = [
+        _el('کوردی', 0.10, 0.10),
+        _el('سڵاو', 0.55, 0.10),
+      ];
+      final r = svc.selectAll(rtl);
+      expect(r.text, 'سڵاو کوردی');
+      expect(r.indices, [1, 0]);
+      expect(r.source, TextGeometrySource.native);
+    });
+
+    test('two columns are read down the left column before the right', () {
+      final columns = [
+        _el('A', 0.05, 0.10, w: 0.12),
+        _el('B', 0.62, 0.10, w: 0.12),
+        _el('C', 0.05, 0.22, w: 0.12),
+        _el('D', 0.62, 0.22, w: 0.12),
+      ];
+      expect(svc.selectAll(columns).text, 'A\nC\nB\nD');
+    });
+
+    test('a non-finite point does not throw', () {
+      final r = svc.selectRange(
+        elements,
+        const Offset(double.nan, 0.1),
+        const Offset(0.1, 0.1),
+      );
       expect(r.isEmpty, isTrue);
-      expect(svc.selectAll(const []).isEmpty, isTrue);
+    });
+
+    test('an OCR word lowers the selection confidence', () {
+      final mixed = [
+        const PdfTextElement(
+          text: 'scan',
+          rect: Rect.fromLTWH(0.1, 0.1, 0.2, 0.03),
+          fontSize: 12,
+          source: TextGeometrySource.ocr,
+          confidence: 0.4,
+        ),
+      ];
+      final r = svc.selectAll(mixed);
+      expect(r.source, TextGeometrySource.ocr);
+      expect(r.confidence, 0.4);
     });
   });
 }

@@ -1,12 +1,15 @@
 import 'dart:convert' show base64Decode, base64Encode;
-import 'dart:ui' show Offset, TextAlign, TextDirection;
+import 'dart:ui' show Offset, Rect, TextAlign, TextDirection;
 
 import 'package:flutter/material.dart' show Color, Colors;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/image_annotation.dart';
-import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+import 'package:ai_pdf/features/editor/domain/entities/stamp_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/sticky_note_annotation.dart';
+import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
 
 /// Pure-Dart JSON serialization for the annotation model.
 ///
@@ -50,8 +53,48 @@ Map<String, dynamic> annotationToJson(EditorAnnotation a) {
   if (a is TextAnnotation) return _textToJson(a);
   if (a is ImageAnnotation) return _imageToJson(a);
   if (a is StampAnnotation) return _stampToJson(a);
+  if (a is TextMarkupAnnotation) return _markupToJson(a);
+  if (a is StickyNoteAnnotation) return _noteToJson(a);
+  if (a is FormFieldAnnotation) return _fieldToJson(a);
   return {'type': 'unknown', 'id': a.id};
 }
+
+Map<String, dynamic> _fieldToJson(FormFieldAnnotation f) => {
+      'type': 'field',
+      'id': f.id,
+      'posX': f.pos.dx,
+      'posY': f.pos.dy,
+      'width': f.width,
+      'height': f.height,
+      'kind': f.fieldKind.name,
+      'label': f.label,
+      'value': f.value,
+      'required': f.required,
+      'checked': f.checked,
+      'options': f.options,
+      'multiline': f.multiline,
+      'borderColor': f.borderColor.toARGB32(),
+      'fillColor': f.fillColor.toARGB32(),
+      'fontSize': f.fontSize,
+      ..._baseToJson(f),
+    };
+
+FormFieldAnnotation _fieldFromJson(Map<String, dynamic> j) => FormFieldAnnotation(
+      pos: Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
+      width: (j['width'] as num).toDouble(),
+      height: (j['height'] as num).toDouble(),
+      fieldKind: FormFieldKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => FormFieldKind.text),
+      label: j['label'] as String? ?? '',
+      value: j['value'] as String? ?? '',
+      required: j['required'] as bool? ?? false,
+      checked: j['checked'] as bool? ?? false,
+      options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
+      multiline: j['multiline'] as bool? ?? false,
+      borderColor: Color(j['borderColor'] as int? ?? 0xFF2563EB),
+      fillColor: Color(j['fillColor'] as int? ?? 0x1A2563EB),
+      fontSize: (j['fontSize'] as num?)?.toDouble() ?? 0.018,
+      id: j['id'] as String?,
+    );
 
 Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       'type': 'image',
@@ -66,6 +109,30 @@ Map<String, dynamic> _imageToJson(ImageAnnotation im) => {
       ..._baseToJson(im),
     };
 
+Map<String, dynamic> _markupToJson(TextMarkupAnnotation m) => {
+      'type': 'markup',
+      'id': m.id,
+      'kind': m.kind.name,
+      'color': m.color.toARGB32(),
+      'text': m.text,
+      'rects': [
+        for (final r in m.rects) [r.left, r.top, r.right, r.bottom],
+      ],
+      ..._baseToJson(m),
+    };
+
+Map<String, dynamic> _noteToJson(StickyNoteAnnotation n) => {
+      'type': 'note',
+      'id': n.id,
+      'posX': n.pos.dx,
+      'posY': n.pos.dy,
+      'text': n.text,
+      'color': n.color.name,
+      'author': n.author,
+      'createdAt': n.createdAt,
+      ..._baseToJson(n),
+    };
+
 Map<String, dynamic> _stampToJson(StampAnnotation st) => {
       'type': 'stamp',
       'id': st.id,
@@ -75,7 +142,7 @@ Map<String, dynamic> _stampToJson(StampAnnotation st) => {
       'height': st.height,
       'kind': st.kind.name,
       'customText': st.customText,
-      'color': st.color.value,
+      'color': st.color.toARGB32(),
       'rotation': st.rotation,
       ..._baseToJson(st),
     };
@@ -84,7 +151,8 @@ Map<String, dynamic> _strokeToJson(StrokeAnnotation s) => {
       'type': 'stroke',
       'id': s.id,
       'points': s.points.map((p) => [p.dx, p.dy]).toList(),
-      'color': s.color.value,
+      if (s.breaks.isNotEmpty) 'breaks': s.breaks,
+      'color': s.color.toARGB32(),
       'width': s.width,
       'highlight': s.highlight,
       ..._baseToJson(s),
@@ -98,7 +166,7 @@ Map<String, dynamic> _shapeToJson(ShapeAnnotation s) => {
       'startY': s.start.dy,
       'endX': s.end.dx,
       'endY': s.end.dy,
-      'color': s.color.value,
+      'color': s.color.toARGB32(),
       'width': s.width,
       'filled': s.filled,
       ..._baseToJson(s),
@@ -110,7 +178,7 @@ Map<String, dynamic> _textToJson(TextAnnotation t) => {
       'posX': t.pos.dx,
       'posY': t.pos.dy,
       'text': t.text,
-      'color': t.color.value,
+      'color': t.color.toARGB32(),
       'size': t.size,
       'bold': t.bold,
       'italic': t.italic,
@@ -132,7 +200,7 @@ Map<String, dynamic> _runToJson(TextRun r) => {
       if (r.bold != null) 'bold': r.bold,
       if (r.italic != null) 'italic': r.italic,
       if (r.underline != null) 'underline': r.underline,
-      if (r.color != null) 'color': r.color!.value,
+      if (r.color != null) 'color': r.color!.toARGB32(),
       if (r.fontFamily != null) 'fontFamily': r.fontFamily,
       if (r.sizeScale != null) 'sizeScale': r.sizeScale,
     };
@@ -182,6 +250,15 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
       case 'stamp':
         a = _stampFromJson(j);
         break;
+      case 'markup':
+        a = _markupFromJson(j);
+        break;
+      case 'note':
+        a = _noteFromJson(j);
+        break;
+      case 'field':
+        a = _fieldFromJson(j);
+        break;
       default:
         return null;
     }
@@ -190,6 +267,51 @@ EditorAnnotation? annotationFromJson(Map<String, dynamic> j) {
   } catch (_) {
     return null;
   }
+}
+
+TextMarkupAnnotation _markupFromJson(Map<String, dynamic> j) {
+  final rects = <Rect>[];
+  final raw = j['rects'];
+  if (raw is List) {
+    for (final e in raw) {
+      if (e is List && e.length >= 4) {
+        rects.add(Rect.fromLTRB(
+          (e[0] as num).toDouble(),
+          (e[1] as num).toDouble(),
+          (e[2] as num).toDouble(),
+          (e[3] as num).toDouble(),
+        ));
+      }
+    }
+  }
+  return TextMarkupAnnotation(
+    kind: TextMarkupKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => TextMarkupKind.highlight,
+    ),
+    rects: rects,
+    color: Color(j['color'] as int? ?? 0xFFFFEB3B),
+    text: j['text'] as String? ?? '',
+    id: j['id'] as String?,
+  );
+}
+
+StickyNoteAnnotation _noteFromJson(Map<String, dynamic> j) {
+  final colorName = j['color'] as String? ?? 'yellow';
+  return StickyNoteAnnotation(
+    pos: Offset(
+      (j['posX'] as num?)?.toDouble() ?? 0.1,
+      (j['posY'] as num?)?.toDouble() ?? 0.1,
+    ),
+    text: j['text'] as String? ?? '',
+    color: StickyNoteColor.values.firstWhere(
+      (c) => c.name == colorName,
+      orElse: () => StickyNoteColor.yellow,
+    ),
+    author: j['author'] as String? ?? '',
+    createdAt: j['createdAt'] as String?,
+    id: j['id'] as String?,
+  );
 }
 
 StrokeAnnotation _strokeFromJson(Map<String, dynamic> j) {
@@ -202,6 +324,10 @@ StrokeAnnotation _strokeFromJson(Map<String, dynamic> j) {
     (j['width'] as num).toDouble(),
     j['highlight'] as bool? ?? false,
     id: j['id'] as String?,
+    breaks: [
+      for (final b in (j['breaks'] as List?) ?? const [])
+        if (b is int && b > 0 && b < points.length) b,
+    ],
   );
 }
 
@@ -225,7 +351,7 @@ TextAnnotation _textFromJson(Map<String, dynamic> j) {
   return TextAnnotation(
     Offset((j['posX'] as num).toDouble(), (j['posY'] as num).toDouble()),
     j['text'] as String? ?? '',
-    Color(j['color'] as int? ?? Colors.black.value),
+    Color(j['color'] as int? ?? Colors.black.toARGB32()),
     (j['size'] as num).toDouble(),
     j['bold'] as bool? ?? false,
     italic: j['italic'] as bool? ?? false,
@@ -284,7 +410,22 @@ StampAnnotation _stampFromJson(Map<String, dynamic> j) {
 // ---------------------------------------------------------------------------
 
 /// Serialize all pages' annotations into a JSON-compatible map.
-Map<String, dynamic> layersToJson(Map<int, PageLayer> layers) {
+/// Saved form-field edits: field name → String, or List<String> for a
+/// multiple choice. Unknown value types are skipped.
+Map<String, Object> formValuesFromJson(Object? json) => {
+      if (json is Map)
+        for (final e in json.entries)
+          if (e.key is String && e.value is String)
+            e.key as String: e.value as String
+          else if (e.key is String && e.value is List && (e.value as List).every((v) => v is String))
+            e.key as String: List<String>.from(e.value as List),
+    };
+
+Map<String, dynamic> layersToJson(
+  Map<int, PageLayer> layers, {
+  SavedPageStructure? structure,
+  Map<String, Object> formValues = const {},
+}) {
   final pages = <String, dynamic>{};
   for (final entry in layers.entries) {
     if (entry.value.items.isEmpty) continue;
@@ -294,7 +435,73 @@ Map<String, dynamic> layersToJson(Map<int, PageLayer> layers) {
   return {
     'version': 1,
     'pages': pages,
+    if (structure != null) 'structure': structure.toJson(),
+    if (formValues.isNotEmpty) 'forms': formValues,
   };
+}
+
+/// Page order and rotations the marks were placed on.
+///
+/// Page keys in `pages` are positions in the edited document, not PDF page
+/// numbers. After a page was deleted, inserted or duplicated they only make
+/// sense together with this structure. Files written before it existed have
+/// none and are read as the PDF's own order.
+class SavedPageStructure {
+  /// PDF page (0-based) shown at each position; -1 is an inserted blank page.
+  final List<int> sources;
+
+  /// Clockwise quarter turns per position, 1..3. Positions not listed are 0.
+  final Map<int, int> quarterTurns;
+
+  const SavedPageStructure({required this.sources, this.quarterTurns = const {}});
+
+  Map<String, dynamic> toJson() => {
+        'sources': sources,
+        'turns': {
+          for (final e in quarterTurns.entries)
+            if (e.value % 4 != 0) e.key.toString(): e.value % 4,
+        },
+      };
+
+  /// Null when [json] is missing or malformed.
+  static SavedPageStructure? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final rawSources = json['sources'];
+    if (rawSources is! List || rawSources.isEmpty) return null;
+    final sources = <int>[];
+    for (final v in rawSources) {
+      if (v is! int || v < -1) return null;
+      sources.add(v);
+    }
+    final turns = <int, int>{};
+    final rawTurns = json['turns'];
+    if (rawTurns is Map) {
+      for (final e in rawTurns.entries) {
+        final key = int.tryParse('${e.key}');
+        final value = e.value;
+        if (key == null || key < 0 || key >= sources.length || value is! int) return null;
+        if (value % 4 != 0) turns[key] = value % 4;
+      }
+    } else if (rawTurns != null) {
+      return null;
+    }
+    return SavedPageStructure(sources: sources, quarterTurns: turns);
+  }
+
+  /// Whether this structure can be applied to a PDF with [pdfPageCount]
+  /// pages and still hold every page key in [layers].
+  bool fits(int pdfPageCount, Iterable<int> layerPages) {
+    if (sources.any((s) => s >= pdfPageCount)) return false;
+    return layerPages.every((p) => p >= 0 && p < sources.length);
+  }
+
+  bool get isIdentity {
+    if (quarterTurns.isNotEmpty) return false;
+    for (var i = 0; i < sources.length; i++) {
+      if (sources[i] != i) return false;
+    }
+    return true;
+  }
 }
 
 /// Restore annotation layers from a saved JSON map. Gracefully skips corrupt entries.

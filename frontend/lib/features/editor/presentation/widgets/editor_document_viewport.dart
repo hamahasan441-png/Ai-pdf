@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/editor/domain/services/page_fit.dart';
+
 /// Wraps the editor canvas in a pannable/zoomable viewport.
 ///
 /// ### Why StatefulWidget + TransformationController
@@ -19,12 +21,25 @@ import 'package:flutter/material.dart';
 class EditorDocumentViewport extends StatefulWidget {
   final bool panEnabled;
   final bool scaleEnabled;
+  final double pageAspect;
+  final TransformationController? transformationController;
+
+  /// Put on the InteractiveViewer, so callers can map screen points into the
+  /// space its transformation works in (to bring a spot into view).
+  final GlobalKey? viewerKey;
+
+  /// Changes only how the page looks on screen (reading mode).
+  final ColorFilter? viewFilter;
   final Widget child;
 
   const EditorDocumentViewport({
     super.key,
     required this.panEnabled,
     required this.scaleEnabled,
+    this.pageAspect = PageFit.a4PortraitAspect,
+    this.transformationController,
+    this.viewerKey,
+    this.viewFilter,
     required this.child,
   });
 
@@ -32,13 +47,60 @@ class EditorDocumentViewport extends StatefulWidget {
   State<EditorDocumentViewport> createState() => _EditorDocumentViewportState();
 }
 
-class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
-  final TransformationController _controller = TransformationController();
+class _EditorDocumentViewportState extends State<EditorDocumentViewport>
+    with SingleTickerProviderStateMixin {
+  /// Zoom a double-tap goes to from the fitted page.
+  static const double doubleTapScale = 2.5;
+
+  TransformationController? _owned;
+  late final AnimationController _zoomAnim;
+  Animation<Matrix4>? _zoomTween;
+  Offset? _doubleTapAt;
+
+  TransformationController get _controller =>
+      widget.transformationController ?? _owned!;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoomAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))
+      ..addListener(_onZoomTick);
+    if (widget.transformationController == null) {
+      _owned = TransformationController();
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _zoomAnim.dispose();
+    _owned?.dispose();
     super.dispose();
+  }
+
+  void _onZoomTick() {
+    final t = _zoomTween;
+    if (t != null) _controller.value = t.value;
+  }
+
+  /// Double-tap: zoom in around the tapped point, or back to the whole page
+  /// when already zoomed in.
+  void _onDoubleTap() {
+    final at = _doubleTapAt;
+    if (at == null) return;
+    final current = _controller.value;
+    final Matrix4 target;
+    if (current.getMaxScaleOnAxis() > 1.01) {
+      target = Matrix4.identity();
+    } else {
+      final scene = _controller.toScene(at);
+      const s = doubleTapScale;
+      target = Matrix4.identity()
+        ..translate(-scene.dx * (s - 1), -scene.dy * (s - 1))
+        ..scale(s);
+    }
+    _zoomTween = Matrix4Tween(begin: current, end: target)
+        .animate(CurvedAnimation(parent: _zoomAnim, curve: Curves.easeOutCubic));
+    _zoomAnim.forward(from: 0);
   }
 
   @override
@@ -52,33 +114,37 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport> {
           // (which fills the Stack minus the toolbar). We pass a concrete Size
           // via SizedBox so InteractiveViewer's child has a FINITE intrinsic
           // size. Without this, AspectRatio/Image.memory lay out at 0×0.
-          final maxW = constraints.maxWidth;
-          final maxH = constraints.maxHeight;
-          const aspect = 1 / 1.414; // A4 portrait
+          final fitted = PageFit.box(
+            maxWidth: constraints.maxWidth,
+            maxHeight: constraints.maxHeight,
+            aspect: widget.pageAspect,
+          );
 
-          double pageW, pageH;
-          if (maxW / maxH > aspect) {
-            // Height-limited
-            pageH = maxH;
-            pageW = maxH * aspect;
-          } else {
-            // Width-limited
-            pageW = maxW;
-            pageH = maxW / aspect;
-          }
-
-          return InteractiveViewer(
+          final viewer = InteractiveViewer(
+            key: widget.viewerKey,
             transformationController: _controller,
             maxScale: 5,
             panEnabled: widget.panEnabled,
             scaleEnabled: widget.scaleEnabled,
             child: Center(
               child: SizedBox(
-                width: pageW,
-                height: pageH,
-                child: RepaintBoundary(child: widget.child),
+                width: fitted.width,
+                height: fitted.height,
+                child: RepaintBoundary(
+                  child: widget.viewFilter == null
+                      ? widget.child
+                      : ColorFiltered(colorFilter: widget.viewFilter!, child: widget.child),
+                ),
               ),
             ),
+          );
+          // Only while panning: a double-tap recognizer delays every single
+          // tap, which would make drawing and placing text feel slow.
+          if (!widget.panEnabled || !widget.scaleEnabled) return viewer;
+          return GestureDetector(
+            onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+            onDoubleTap: _onDoubleTap,
+            child: viewer,
           );
         },
       ),

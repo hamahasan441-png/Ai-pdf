@@ -1,6 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import '../../../core/services/tool_handoff.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -65,7 +68,7 @@ class _CompressScreenState extends State<CompressScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressionFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.compressionFailed(describeError(e, l10n)))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -138,7 +141,7 @@ class _CompressScreenState extends State<CompressScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Column(children: [
@@ -166,7 +169,7 @@ class _CompressScreenState extends State<CompressScreen> {
             FilledButton.icon(
               onPressed: (_filePath == null || _busy) ? null : _compress,
               icon: _busy
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const ButtonSpinner()
                   : const Icon(Icons.compress),
               label: Text(_busy ? l10n.compressing : l10n.compress),
             ),

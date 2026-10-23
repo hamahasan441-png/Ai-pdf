@@ -1,6 +1,9 @@
 import 'annotation.dart';
+import 'form_field_annotation.dart';
 import 'image_annotation.dart';
 import 'stamp_annotation.dart';
+import 'sticky_note_annotation.dart';
+import 'text_markup_annotation.dart';
 
 /// Per-page annotation layer with undo + redo history.
 ///
@@ -21,6 +24,12 @@ class PageLayer {
       items.whereType<ImageAnnotation>().toList();
   List<StampAnnotation> get stamps =>
       items.whereType<StampAnnotation>().toList();
+  List<TextMarkupAnnotation> get markups =>
+      items.whereType<TextMarkupAnnotation>().toList();
+  List<FormFieldAnnotation> get fields =>
+      items.whereType<FormFieldAnnotation>().toList();
+  List<StickyNoteAnnotation> get notes =>
+      items.whereType<StickyNoteAnnotation>().toList();
 
   /// Returns the first annotation whose [id] matches, or null.
   EditorAnnotation? findById(String id) {
@@ -31,12 +40,4 @@ class PageLayer {
     }
   }
 
-  /// Removes the annotation with the given [id] from [items].
-  /// Returns true if an item was removed.
-  bool removeById(String id) {
-    final index = items.indexWhere((a) => a.id == id);
-    if (index < 0) return false;
-    redo.add(items.removeAt(index));
-    return true;
-  }
 }

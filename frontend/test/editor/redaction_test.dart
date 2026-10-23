@@ -39,7 +39,7 @@ void main() {
       expect(r.remainingText.length, 1);
     });
 
-    test('redacted text is truly gone (not recoverable)', () {
+    test('covered text is dropped from the in-memory list only', () {
       final elements = [
         _el('password123', const Rect.fromLTWH(0.1, 0.1, 0.3, 0.05)),
       ];
@@ -88,6 +88,27 @@ void main() {
       expect(r.removedCount, 0);
       expect(r.coverRects, isEmpty);
       expect(r.remainingText.length, 1);
+    });
+
+    test('secure redaction fails closed and leaves the secret in the bytes', () {
+      final original = 'BT (password123) Tj ET'.codeUnits.toList();
+      final bytes = List<int>.from(original);
+      final outcome = svc.secureRedact(
+        regions: const [RedactionRegion(Rect.fromLTWH(0.1, 0.1, 0.3, 0.05))],
+        pdfBytes: bytes,
+        secret: 'password123',
+      );
+      expect(outcome.contentRemoved, isFalse);
+      expect(outcome.accepted, isFalse);
+      expect(outcome.reason, contains('password123'));
+      expect(bytes, original);
+      expect(RedactionService.bytesContainAscii(bytes, 'password123'), isTrue);
+
+      final unproven = svc.secureRedact(
+        regions: const [RedactionRegion(Rect.fromLTWH(0.1, 0.1, 0.2, 0.05))],
+      );
+      expect(unproven.accepted, isFalse);
+      expect(unproven.reason, contains('not marked redacted'));
     });
   });
 }

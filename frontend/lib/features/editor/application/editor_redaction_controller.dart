@@ -40,10 +40,6 @@ class EditorRedactionState {
     this.pending = const [],
     this.coveredCount = 0,
   });
-
-  bool get hasPending => pending.isNotEmpty;
-  bool get isDragging => dragStart != null && dragCurrent != null;
-
   /// The rect being dragged (normalised 0..1).
   Rect? get liveRect {
     if (dragStart == null || dragCurrent == null) return null;
@@ -68,17 +64,15 @@ class EditorRedactionState {
   }
 }
 
-/// Controller for the redaction tool (Phase 28).
-///
-/// Manages the drag → region → preview → burn lifecycle. Delegates the actual
-/// text-layer removal to [RedactionService] (Phase 17). The screen wires this
-/// into a gesture detector that only fires in redaction mode.
-final editorRedactionProvider =
-    StateNotifierProvider<EditorRedactionController, EditorRedactionState>(
-        (ref) => EditorRedactionController());
-
 class EditorRedactionController extends StateNotifier<EditorRedactionState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorRedactionState get current => state;
+
   EditorRedactionController() : super(const EditorRedactionState());
+
+  /// Whether redaction mode is on (readable from widgets without [state]).
+  bool get isActive => state.active;
 
   static const _svc = RedactionService();
 
@@ -97,45 +91,6 @@ class EditorRedactionController extends StateNotifier<EditorRedactionState> {
 
   void activate() => state = state.copyWith(active: true);
   void deactivate() => state = const EditorRedactionState();
-
-  /// Called on drag start (normalised 0..1 point).
-  void onDragStart(Offset point) {
-    state = state.copyWith(dragStart: point, dragCurrent: point);
-  }
-
-  /// Called on drag update.
-  void onDragUpdate(Offset point) {
-    state = state.copyWith(dragCurrent: point);
-  }
-
-  /// Called on drag end — commit the region to pending.
-  void onDragEnd() {
-    final rect = state.liveRect;
-    if (rect == null || rect.width < 0.005 || rect.height < 0.005) {
-      // Too small (accidental tap) — discard.
-      state = state.copyWith(clearDrag: true);
-      return;
-    }
-    final pending = [
-      ...state.pending,
-      PendingRedaction(pageIndex: _currentPage, rect: rect),
-    ];
-    state = state.copyWith(pending: pending, clearDrag: true);
-    _refreshCoveredCount();
-  }
-
-  /// Remove the last pending region (undo one region).
-  void undoLastRegion() {
-    if (state.pending.isEmpty) return;
-    final pending = [...state.pending]..removeLast();
-    state = state.copyWith(pending: pending);
-    _refreshCoveredCount();
-  }
-
-  /// Clear all pending regions without burning.
-  void clearAll() {
-    state = state.copyWith(pending: const [], coveredCount: 0);
-  }
 
   /// Burn redactions into the text layer and return the result.
   ///

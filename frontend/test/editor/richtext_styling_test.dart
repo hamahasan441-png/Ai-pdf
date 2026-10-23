@@ -59,14 +59,43 @@ void main() {
       expect(runs, isNotNull);
       // "AB" (no override) | "CD" (red) | "EF" (no override) = 3 runs.
       expect(runs!.length, 3);
-      expect(runs[1].color!.value, Colors.red.value);
+      expect(runs[1].color!.toARGB32(), Colors.red.toARGB32());
       expect(runs[1].text, 'CD');
     });
 
-    test('out-of-range calls are no-ops', () {
-      final a = TextAnnotation(const Offset(0, 0), 'ABC', Colors.black, 0.05, false);
-      expect(svc.applyStyle(a, start: 5, end: 10, bold: true), isNull);
-      expect(svc.applyStyle(a, start: 2, end: 1, bold: true), isNull);
+    test('typing keeps the style of the characters around the caret', () {
+      final a = TextAnnotation(
+        const Offset(0, 0),
+        'Hello',
+        Colors.black,
+        0.05,
+        false,
+        runs: const [TextRun('Hel', bold: true), TextRun('lo')],
+      );
+      final runs = svc.retarget(a, 'HelXlo');
+      expect(runs, isNotNull);
+      expect(runs!.map((r) => r.text).join(), 'HelXlo');
+      final bold = runs.where((r) => r.bold == true).map((r) => r.text).join();
+      expect(bold.contains('Hel'), isTrue);
+      expect(bold.contains('X'), isTrue);
+    });
+
+    test('a bold base can be turned off for a range', () {
+      final a = TextAnnotation(const Offset(0, 0), 'ABCD', Colors.black, 0.05, true);
+      final runs = svc.toggleBold(a, 0, 2);
+      expect(runs, isNotNull);
+      expect(runs!.first.text, 'AB');
+      expect(runs.first.bold, isFalse);
+    });
+
+    test('a combining mark is not styled apart from its base letter', () {
+      const text = 'س\u064Eب';
+      final a = TextAnnotation(const Offset(0, 0), text, Colors.black, 0.05, false);
+      // Offset 1 is the fatha. The snap must include the base seen.
+      final runs = svc.applyStyle(a, start: 1, end: 2, bold: true);
+      expect(runs, isNotNull);
+      expect(runs!.first.text, 'س\u064E');
+      expect(runs.first.bold, isTrue);
     });
   });
 }

@@ -1,4 +1,3 @@
-import 'dart:ui' show Offset;
 
 import 'package:flutter/material.dart';
 
@@ -12,11 +11,13 @@ class SignaturePlacementService {
   /// page, preserving aspect ratio. Returns null if the points have no
   /// meaningful extent.
   StrokeAnnotation? signatureStrokeAt(
-    List<Offset> points,
+    List<Offset> padPoints,
     double x,
     double y, {
     double targetW = 0.26,
   }) {
+    final split = StrokeAnnotation.splitStrokes(padPoints);
+    final points = split.points;
     if (points.length < 2) return null;
     double minX = points.first.dx, maxX = minX, minY = points.first.dy, maxY = minY;
     for (final p in points) {
@@ -39,6 +40,6 @@ class SignaturePlacementService {
         (top + ny * targetH).clamp(0.0, 1.0).toDouble(),
       );
     }).toList();
-    return StrokeAnnotation(normalized, Colors.black, 2.5, false);
+    return StrokeAnnotation(normalized, Colors.black, 2.5, false, breaks: split.breaks);
   }
 }

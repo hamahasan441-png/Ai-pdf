@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/offline_pdf_service.dart';
 import '../widgets/result_sheet.dart';
@@ -46,7 +49,7 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.conversionFailed(e.toString()))),
+          SnackBar(content: Text(l10n.conversionFailed(describeError(e, l10n)))),
         );
       }
     } finally {
@@ -130,7 +133,7 @@ class _JpgToPdfScreenState extends State<JpgToPdfScreen> {
                     child: FilledButton.icon(
                       onPressed: (_images.isEmpty || _busy) ? null : _convert,
                       icon: _busy
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          ? const ButtonSpinner()
                           : const Icon(Icons.picture_as_pdf),
                       label: Text(_busy ? l10n.converting : l10n.createPdf),
                     ),

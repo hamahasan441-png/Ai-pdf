@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
-import 'package:ai_pdf/features/scanner/domain/entities/scan_filter.dart';
+import 'package:ai_pdf/features/scanner/presentation/widgets/scan_filter_label.dart';
 import 'package:ai_pdf/features/scanner/domain/entities/scan_page.dart';
 
 /// Reorderable grid of captured pages for the review stage (Phase 51).
@@ -26,6 +27,7 @@ class ScanReviewGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     return ReorderableListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: pages.length,
@@ -68,7 +70,7 @@ class ScanReviewGrid extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text('Page ${i + 1}',
+                          Text(l.pageNumber(i + 1),
                               style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   color: cs.onSurface)),
@@ -79,11 +81,11 @@ class ScanReviewGrid extends StatelessWidget {
                           ],
                         ],
                       ),
-                      Text(page.filter.label,
+                      Text(scanFilterLabel(AppLocalizations.of(context)!, page.filter),
                           style: TextStyle(
                               fontSize: 12, color: cs.onSurfaceVariant)),
                       if (page.hasOcrText)
-                        Text('Text detected',
+                        Text(l.bScanTextDetected,
                             style: TextStyle(
                                 fontSize: 11, color: cs.primary)),
                     ],
@@ -92,17 +94,17 @@ class ScanReviewGrid extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.rotate_right, size: 20),
                   onPressed: () => onRotate(page.id),
-                  tooltip: 'Rotate',
+                  tooltip: l.rotate,
                 ),
                 IconButton(
                   icon: const Icon(Icons.crop, size: 20),
                   onPressed: () => onEdit(page.id),
-                  tooltip: 'Adjust crop',
+                  tooltip: l.bScanAdjustCrop,
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_outline, size: 20, color: cs.error),
                   onPressed: () => onDelete(page.id),
-                  tooltip: 'Delete',
+                  tooltip: l.delete,
                 ),
                 ReorderableDragStartListener(
                   index: i,

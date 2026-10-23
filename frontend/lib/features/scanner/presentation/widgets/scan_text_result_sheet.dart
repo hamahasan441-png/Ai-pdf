@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Bottom sheet that displays OCR-extracted text from scanned pages with
@@ -34,6 +35,7 @@ class ScanTextResultSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.3,
@@ -49,7 +51,7 @@ class ScanTextResultSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: cs.onSurfaceVariant.withOpacity(0.4),
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -63,7 +65,7 @@ class ScanTextResultSheet extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Extracted Text',
+                      l.extractedText,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -74,7 +76,7 @@ class ScanTextResultSheet extends StatelessWidget {
                   if (onRescan != null)
                     IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
-                      tooltip: 'Re-scan OCR',
+                      tooltip: l.bScanRescanOcr,
                       onPressed: () {
                         Navigator.pop(context);
                         onRescan!();
@@ -82,25 +84,25 @@ class ScanTextResultSheet extends StatelessWidget {
                     ),
                   IconButton(
                     icon: const Icon(Icons.copy, size: 20),
-                    tooltip: 'Copy all',
+                    tooltip: l.bScanCopyAll,
                     onPressed: () async {
                       await Clipboard.setData(ClipboardData(text: text));
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Copied to clipboard')),
+                          SnackBar(content: Text(l.copiedToClipboard)),
                         );
                       }
                     },
                   ),
                   IconButton(
                     icon: const Icon(Icons.share, size: 20),
-                    tooltip: 'Share text to another app',
+                    tooltip: l.bScanShareToApp,
                     onPressed: text.isEmpty
                         ? null
                         : () async {
                             await Share.share(
                               text,
-                              subject: 'Scanned Text',
+                              subject: l.bScanSubject,
                             );
                           },
                   ),
@@ -113,7 +115,7 @@ class ScanTextResultSheet extends StatelessWidget {
               child: text.isEmpty
                   ? Center(
                       child: Text(
-                        'No text detected',
+                        l.bScanNoTextDetected,
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                     )

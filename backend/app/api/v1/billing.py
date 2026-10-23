@@ -6,7 +6,7 @@ makes Pro spoof-proof (the on-device entitlement is only a UX cache).
 
 Enhancement-Based Masterplan:
 - E6.1 RTDN: Play Real-time Developer Notifications for renewal/cancel/refund
-  re-verification — keeps entitlement accuracy 99.9% (docs/ENHANCEMENT_BASED_MASTERPLAN.md)
+  re-verification — keeps entitlement accuracy 99.9% (docs/MASTERPLAN.md)
 - E7.2 Webhook DLQ health (see admin.py extension)
 - Tiered quotas via quota_tiers.py (free/basic/monthly/yearly/lifetime)
 """

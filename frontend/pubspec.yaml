@@ -39,7 +39,12 @@ dependencies:
   # pdfx: PDFium-based rendering with EXPLICIT width/height control, so page
   # rasters are capped in size -> bounded memory -> no OutOfMemoryError.
   # It also provides a memory-efficient pinch-zoom viewer (PdfViewPinch).
-  pdfx: ^2.6.0             # Render (capped) + pro pinch viewer
+  # Exact pin. pdfx 2.10+ calls Matrix4.translateByDouble / scaleByDouble,
+  # which need vector_math 2.2. Flutter 3.29 (CI) only ships vector_math
+  # 2.1.4, so a caret on 2.6 floats to 2.11 and assembleRelease fails.
+  # 2.9.2 is the last release that matches the Flutter pin in
+  # .github/workflows/build-apk.yml.
+  pdfx: 2.9.2             # Render (capped) + pro pinch viewer
   pdf: ^3.11.1             # Create output PDFs (JPG to PDF, merge, split)
   image: ^4.3.0            # Image compress/downscale (pure Dart, offline)
 
@@ -64,6 +69,9 @@ dependencies:
 
   # Ads (free tier only; removed for Pro). Includes the UMP consent SDK.
   google_mobile_ads: ^5.1.0
+  pointycastle: ^4.0.0
+  crypto: ^3.0.6
+  printing: ^5.14.3
 
 dev_dependencies:
   flutter_test:
@@ -75,11 +83,34 @@ flutter:
   # Generate AppLocalizations from lib/l10n/*.arb (see l10n.yaml).
   generate: true
 
-  # Bundled font directory. Drop Unicode TTFs here (see assets/fonts/README.md)
-  # to enable SEARCHABLE Arabic/Kurdish/Persian/Hebrew text in exported PDFs.
-  # A whole-directory entry means new .ttf files are picked up automatically on
-  # the next build with no further pubspec/code changes. When the fonts are
-  # absent the editor transparently falls back to rasterized (non-searchable)
-  # RTL text, so this declaration is safe to ship as-is.
+  # Bundled SIL OFL 1.1 fonts (see assets/fonts/README.md). PdfUnicodeFonts
+  # loads them by path for vector text in exported PDFs; the families below
+  # make the on-screen preview use the same faces the export embeds.
+  # Only the faces the app loads; README, SHA256SUMS, the download script
+  # and NotoSans-Bold (used by tests from disk) stay out of the bundle.
   assets:
-    - assets/fonts/
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSansArabic-Regular.ttf
+    - assets/fonts/NotoSansArabic-Bold.ttf
+    - assets/fonts/Vazirmatn-Regular.ttf
+    - assets/fonts/Vazirmatn-Bold.ttf
+    - assets/fonts/NotoSansHebrew-Regular.ttf
+    - assets/fonts/NotoSansHebrew-Bold.ttf
+    - assets/fonts/licenses/
+
+  fonts:
+    - family: NotoSansArabic
+      fonts:
+        - asset: assets/fonts/NotoSansArabic-Regular.ttf
+        - asset: assets/fonts/NotoSansArabic-Bold.ttf
+          weight: 700
+    - family: Vazirmatn
+      fonts:
+        - asset: assets/fonts/Vazirmatn-Regular.ttf
+        - asset: assets/fonts/Vazirmatn-Bold.ttf
+          weight: 700
+    - family: NotoSansHebrew
+      fonts:
+        - asset: assets/fonts/NotoSansHebrew-Regular.ttf
+        - asset: assets/fonts/NotoSansHebrew-Bold.ttf
+          weight: 700

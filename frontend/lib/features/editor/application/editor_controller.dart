@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/widgets.dart' show Axis;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_pdf/features/editor/data/annotation_serialization.dart';
+import 'package:ai_pdf/features/editor/data/editor_hit_test_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/domain/history/editor_command.dart';
@@ -12,17 +15,16 @@ import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 
 import 'editor_state.dart';
 
-final editorControllerProvider =
-    StateNotifierProvider<EditorController, EditorState>((ref) {
-  return EditorController();
-});
-
 /// Editor controller with Command-pattern undo/redo.
 ///
 /// Internally uses [EditorHistory] for unlimited, object-level undo/redo.
 /// The public API is unchanged from the previous flat implementation so
 /// pick_edit_screen.dart requires zero modifications.
 class EditorController extends StateNotifier<EditorState> {
+  /// The current state, for widgets that own this controller directly
+  /// (StateNotifier keeps [state] protected).
+  EditorState get current => state;
+
   EditorController() : super(const EditorState());
 
   /// Per-page history stacks. Keyed by page index.
@@ -35,10 +37,16 @@ class EditorController extends StateNotifier<EditorState> {
   /// Current page's history.
   EditorHistory get _currentHistory => _historyFor(state.currentPage);
 
+  /// The working file. After a server redaction this is the redacted copy.
+  String? get filePath => state.filePath;
+
   /// Whether the current page has an undoable / redoable action. These drive
   /// the toolbar button states and reflect the *real* command history (not a
   /// proxy such as "the layer has items").
   bool get canUndo => _currentHistory.canUndo;
+
+  /// Whether an export is running (readable from widgets without [state]).
+  bool get isExporting => state.exporting;
   bool get canRedo => _currentHistory.canRedo;
   String? get nextUndoLabel => _currentHistory.nextUndoLabel;
   String? get nextRedoLabel => _currentHistory.nextRedoLabel;
@@ -51,15 +59,6 @@ class EditorController extends StateNotifier<EditorState> {
   void setLoading(bool value) {
     state = state.copyWith(loading: value);
   }
-
-  void setExporting(bool value) {
-    state = state.copyWith(exporting: value);
-  }
-
-  void setPage({required int currentPage, required int pageCount}) {
-    state = state.copyWith(currentPage: currentPage, pageCount: pageCount);
-  }
-
   void setCurrentPage(int currentPage) {
     state = state.copyWith(currentPage: currentPage);
   }
@@ -82,6 +81,8 @@ class EditorController extends StateNotifier<EditorState> {
 
   void beginOpenFile({required String fileName, String? filePath}) {
     _histories.clear();
+    // An edit begun on the previous document must not commit into this one.
+    _txn = null;
     state = EditorState(
       loading: true,
       exporting: false,
@@ -169,10 +170,22 @@ class EditorController extends StateNotifier<EditorState> {
     _txn = null;
   }
 
+  /// Copy the before-snapshot back onto the live objects and drop the
+  /// transaction. Used when an edit is abandoned (for example the user cleared
+  /// a text box and the box itself should be deleted in its original form).
+  void revertOpenEdit() {
+    final txn = _txn;
+    _txn = null;
+    if (txn == null) return;
+    for (var i = 0; i < txn.targets.length; i++) {
+      txn.targets[i].restoreFrom(txn.before[i]);
+    }
+  }
+
   /// Commit the open edit transaction. Pushes a [RestoreStateCommand] when the
-  /// state actually changed (bounds differ) or when [force] is set (for style
-  /// edits that don't move the bounding box, e.g. colour / bold). No-op if no
-  /// transaction is open.
+  /// serialized annotation changed, not only when the bounding box moved.
+  /// Style, runs, rotation, and colour are included. [force] still records a
+  /// step even if the snapshot compares equal. No-op if no transaction is open.
   void commitEdit(PageLayer layer, {bool force = false}) {
     final txn = _txn;
     _txn = null;
@@ -181,7 +194,7 @@ class EditorController extends StateNotifier<EditorState> {
     var changed = force;
     if (!changed) {
       for (var i = 0; i < txn.targets.length; i++) {
-        if (txn.before[i].bounds != after[i].bounds) {
+        if (_snapshotChanged(txn.before[i], after[i])) {
           changed = true;
           break;
         }
@@ -195,19 +208,57 @@ class EditorController extends StateNotifier<EditorState> {
     markDirty();
   }
 
-  bool eraseLast(PageLayer layer) {
-    if (layer.items.isEmpty) return false;
-    final removed = layer.items.last;
-    _currentHistory.push(RemoveCommand(removed, layer), layer);
+  bool _snapshotChanged(EditorAnnotation before, EditorAnnotation after) {
+    try {
+      return jsonEncode(annotationToJson(before)) != jsonEncode(annotationToJson(after));
+    } catch (_) {
+      return before.bounds != after.bounds;
+    }
+  }
+
+  /// Remove the ink stroke under [point]. Does not delete text, images, or shapes.
+  bool eraseStrokeAt(PageLayer layer, Offset point) {
+    final stroke = const EditorHitTestService().strokeNear(layer, point);
+    if (stroke == null) return false;
+    _currentHistory.push(RemoveCommand(stroke, layer), layer);
     markDirty();
     return true;
   }
 
+  /// Runs [command] and records it as one undoable step on the current page.
+  void record(EditorCommand command, PageLayer layer) {
+    _currentHistory.push(command, layer);
+    markDirty();
+  }
   // ─── Annotation mutations (all go through history) ──────────────────────
 
-  void pushAnnotation(PageLayer layer, EditorAnnotation annotation) {
-    _currentHistory.push(AddCommand(annotation), layer);
+  /// Add [annotation] to [layer]. [page] is the page that owns [layer]; it
+  /// defaults to the current page. An add recorded on another page's history
+  /// could not be undone there, because undo runs against that page's layer.
+  void pushAnnotation(PageLayer layer, EditorAnnotation annotation, {int? page}) {
+    _historyFor(page ?? state.currentPage).push(AddCommand(annotation), layer);
     markDirty();
+  }
+
+  /// Add [annotations] to [layer] as one undo step. [page] as in
+  /// [pushAnnotation].
+  void pushAnnotations(PageLayer layer, List<EditorAnnotation> annotations, {int? page}) {
+    if (annotations.isEmpty) return;
+    _historyFor(page ?? state.currentPage).push(AddBatchCommand(annotations), layer);
+    markDirty();
+  }
+
+  /// Move per-page histories along with the pages after a delete or insert.
+  ///
+  /// [shift] is the same function the screen applies to its other per-page
+  /// maps (see PageSourceMap.afterDelete / afterInsert). Without this, the
+  /// commands of a deleted page's neighbour would replay on the wrong page,
+  /// and undo could insert an annotation from one page into another.
+  void shiftHistories(Map<int, EditorHistory> Function(Map<int, EditorHistory>) shift) {
+    final next = shift(Map<int, EditorHistory>.of(_histories));
+    _histories
+      ..clear()
+      ..addAll(next);
   }
 
   EditorAnnotation? deleteSelected(PageLayer layer, EditorAnnotation? selected) {
@@ -270,6 +321,7 @@ class EditorController extends StateNotifier<EditorState> {
   }
 
   void moveAnnotation(EditorAnnotation annotation, Offset d, SelectionService selection) {
+    if (annotation.locked || !annotation.visible) return;
     selection.moveAnnotation(annotation, d);
     markDirty();
   }

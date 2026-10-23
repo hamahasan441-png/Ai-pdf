@@ -69,13 +69,6 @@ class FormProfileService {
     ));
   }
 
-  /// Check if a profile exists for a form type.
-  Future<bool> hasProfile(String formType) async {
-    final prefs = await SharedPreferences.getInstance();
-    final profiles = _loadAll(prefs);
-    return profiles.containsKey(_normalize(formType));
-  }
-
   Map<String, FormProfile> _loadAll(SharedPreferences prefs) {
     final raw = prefs.getString(_storageKey);
     if (raw == null) return {};

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_pdf/core/services/onboarding_service.dart';
@@ -70,6 +71,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -96,11 +98,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: Row(
                 children: [
                   if (_page > 0)
-                    TextButton(onPressed: () => _pageCtrl.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut), child: const Text('Back')),
+                    TextButton(onPressed: () => _pageCtrl.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut), child: Text(l.bCommonBack)),
                   const Spacer(),
                   FilledButton(
                     onPressed: _next,
-                    child: Text(_page == _totalPages - 1 ? 'Get Started' : 'Next'),
+                    child: Text(_page == _totalPages - 1 ? l.getStarted : l.bCommonNext),
                   ),
                 ],
               ),
@@ -108,7 +110,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             if (!_loadingVariant)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text('Variant ${_variant.id}: ${_variant.name}',
+                child: Text(l.bOnboardVariant(_variant.id, _variant.name),
                     style: TextStyle(fontSize: 10, color: cs.outline)),
               ),
           ],
@@ -118,78 +120,84 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _welcomePage(ColorScheme cs) {
+    final l = AppLocalizations.of(context)!;
     return _OnboardingPage(
       icon: Icons.privacy_tip_outlined,
-      title: 'Private, Offline, AI-Powered',
-      subtitle: 'Edit, sign, and understand PDFs — with on-device AI that never uploads your files. Your data stays on your phone.',
-      bullets: const [
-        'Offline tools: compress, merge, split, OCR, watermark — no internet needed',
-        'On-device AI: BM25 RAG + ML Kit OCR — page-cited answers, no cloud',
-        'Profile auto-fill: 100+ field types, 12+ languages, encrypted on device',
+      title: l.bOnboardWelcomeTitle,
+      subtitle: l.bOnboardWelcomeSubtitle,
+      bullets: [
+        l.bOnboardWelcomeBullet1,
+        l.bOnboardWelcomeBullet2,
+        l.bOnboardWelcomeBullet3,
       ],
       color: AppColors.primary,
     );
   }
 
   Widget _aiSetupPage(ColorScheme cs) {
+    final l = AppLocalizations.of(context)!;
     return _OnboardingPage(
       icon: Icons.psychology_outlined,
-      title: 'Two Ways to Use AI',
-      subtitle: 'Choose what works for you — both are private by default.',
-      bullets: const [
-        'BYO-Key (free): Paste your OpenRouter key — direct, no server, your quota',
-        'Managed AI (Pro): No key needed, metered via backend, 3-day free trial, unlimited when Pro — server holds provider keys, you get zero-setup AI',
-        'Free tier: all offline tools + 15 managed AI calls/day — genuinely useful',
+      title: l.bOnboardAiTitle,
+      subtitle: l.bOnboardAiSubtitle,
+      bullets: [
+        l.bOnboardAiBullet1,
+        l.bOnboardAiBullet2,
+        l.bOnboardAiBullet3,
       ],
       color: const Color(0xFF6366D8),
       cta: FilledButton.tonalIcon(
         onPressed: () => context.push('/settings'),
         icon: const Icon(Icons.key, size: 18),
-        label: const Text('Set up AI key (optional)'),
+        label: Text(l.bOnboardAiCta),
       ),
     );
   }
 
   Widget _profilePage(ColorScheme cs) {
+    final l = AppLocalizations.of(context)!;
     return _OnboardingPage(
       icon: Icons.badge_outlined,
-      title: 'Set Up Your Profile Once',
-      subtitle: 'Save your personal data encrypted on device — name, address, DOB, ID — and auto-fill any form with one tap.',
-      bullets: const [
-        'Encrypted with Fernet at rest, never leaves device',
-        'Matches 100+ field labels across German, English, French, Spanish, Arabic, Kurdish',
-        'Fill from ID doc: upload passport/certificate/CV, OCR on-device, match + review + place',
+      title: l.bOnboardProfileTitle,
+      subtitle: l.bOnboardProfileSubtitle,
+      bullets: [
+        l.bOnboardProfileBullet1,
+        l.bOnboardProfileBullet2,
+        l.bOnboardProfileBullet3,
       ],
       color: const Color(0xFF2E9E7B),
       cta: FilledButton.icon(
         onPressed: () => context.push('/profile'),
         icon: const Icon(Icons.person_add_outlined),
-        label: const Text('Set up profile'),
+        label: Text(l.bOnboardProfileCta),
       ),
     );
   }
 
   Widget _firstDocPage(ColorScheme cs) {
+    final l = AppLocalizations.of(context)!;
     return _OnboardingPage(
       icon: Icons.folder_open_outlined,
-      title: 'Open Your First Document',
-      subtitle: 'Pick a PDF or image, edit inline, add signatures, and export a searchable PDF.',
-      bullets: const [
-        'Inline text editor with caret + per-run bold/italic/underline',
-        'Snap guides, grouping, layer reorder, revision history, crash recovery',
-        'Export fidelity: Latin + Arabic/Kurdish searchable when font asset present',
+      title: l.bOnboardDocTitle,
+      subtitle: l.bOnboardDocSubtitle,
+      bullets: [
+        l.bOnboardDocBullet1,
+        l.bOnboardDocBullet2,
+        l.bOnboardDocBullet3,
       ],
       color: const Color(0xFF4C63D2),
       cta: FilledButton.icon(
         onPressed: () => context.push('/tools/pick-edit'),
         icon: const Icon(Icons.edit_document),
-        label: const Text('Open editor'),
+        label: Text(l.bOnboardDocCta),
       ),
     );
   }
 
   Widget _paywallABPage(ColorScheme cs) {
     final isA = _variant.id == 'A';
+    final l = AppLocalizations.of(context)!;
+    final bestValue = l.planBestValue.toUpperCase();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -209,11 +217,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(isA ? 'Unlock Pro — Monthly Highlighted' : 'Unlock Pro — Lifetime Best Value',
+                      Text(isA ? l.bOnboardPaywallTitleA : l.bOnboardPaywallTitleB,
                           style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
-                      Text(isA ? 'Variant A: flexible monthly, yearly best value' : 'Variant B: pay once, own forever — experimental',
-                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12)),
+                      Text(isA ? l.bOnboardPaywallSubA : l.bOnboardPaywallSubB,
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12)),
                     ],
                   ),
                 ),
@@ -221,22 +229,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('What you get with Pro:',
+          Text(l.bOnboardWhatYouGet,
               style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
           const SizedBox(height: 12),
           for (final b in [
-            'Unlimited managed AI — no key needed, zero-setup',
-            'No ads — banner only on browse for free, zero for Pro',
-            'PDF→Word/Excel/PowerPoint conversion (server-side)',
-            '3-day free trial — unlocks everything',
-            'Cloud sync opt-in encrypted (E8.2) — annotations across devices',
-            'Per-team AI quotas + SSO for enterprise (E8.1+E5.3)',
+            l.bOnboardProBullet1,
+            l.bOnboardProBullet2,
+            l.bOnboardProBullet3,
+            l.bOnboardProBullet4,
+            l.bOnboardProBullet5,
+            l.bOnboardProBullet6,
           ])
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, color: AppColors.success, size: 18),
+                  const Icon(Icons.check_circle, color: AppColors.success, size: 18),
                   const SizedBox(width: 8),
                   Expanded(child: Text(b, style: const TextStyle(fontSize: 13))),
                 ],
@@ -245,9 +253,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 20),
           // A/B variant cards
           _ABPlanCard(
-            title: 'Yearly',
-            price: '€29.99/year',
-            badge: _variant.isBadge('yearly') ? 'BEST VALUE' : null,
+            title: l.planYearly,
+            price: l.bOnboardPricePerYear('€29.99'),
+            badge: _variant.isBadge('yearly') ? bestValue : null,
             highlighted: _variant.isHighlighted('yearly'),
             onTap: () {
               _abService.trackConversion('yearly');
@@ -256,9 +264,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 12),
           _ABPlanCard(
-            title: 'Monthly',
-            price: '€4.99/month',
-            badge: _variant.isBadge('monthly') ? 'BEST VALUE' : null,
+            title: l.planMonthly,
+            price: l.bOnboardPricePerMonth('€4.99'),
+            badge: _variant.isBadge('monthly') ? bestValue : null,
             highlighted: _variant.isHighlighted('monthly'),
             onTap: () {
               _abService.trackConversion('monthly');
@@ -267,10 +275,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 12),
           _ABPlanCard(
-            title: 'Lifetime',
-            price: '€79.99 once',
-            subtitle: 'Pay once, own forever',
-            badge: _variant.isBadge('lifetime') ? 'BEST VALUE' : null,
+            title: l.planLifetime,
+            price: l.bOnboardPriceOnce('€79.99'),
+            subtitle: l.planLifetimeSubtitle,
+            badge: _variant.isBadge('lifetime') ? bestValue : null,
             highlighted: _variant.isHighlighted('lifetime'),
             onTap: () {
               _abService.trackConversion('lifetime');
@@ -279,7 +287,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           Center(
-            child: Text('Variant ${_variant.id} • A/B test exposure tracked • Conversion measured',
+            child: Text(l.bOnboardVariantFooter(_variant.id),
                 style: TextStyle(fontSize: 10, color: cs.outline)),
           ),
         ],
@@ -316,7 +324,7 @@ class _OnboardingPage extends StatelessWidget {
           Container(
             width: 64,
             height: 64,
-            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, color: color, size: 36),
           ),
           const SizedBox(height: 20),
@@ -372,7 +380,7 @@ class _ABPlanCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: highlighted ? AppColors.primary.withOpacity(0.08) : cs.surface,
+          color: highlighted ? AppColors.primary.withValues(alpha: 0.08) : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: highlighted ? AppColors.primary : cs.outlineVariant, width: highlighted ? 2 : 1),
         ),

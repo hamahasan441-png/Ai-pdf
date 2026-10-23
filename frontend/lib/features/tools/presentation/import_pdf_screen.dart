@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -65,7 +68,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _result = ImportedFile(status: 'failed', reason: e.toString());
+          _result = ImportedFile(status: 'failed', reason: describeError(e, AppLocalizations.of(context)));
         });
       }
     } finally {
@@ -93,9 +96,10 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
         mimeType: r.mimeType ?? 'application/octet-stream',
       );
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
       final msg = res.saved
-          ? 'Saved successfully'
-          : (res.reason != null ? 'Not saved: ${res.reason}' : 'Save cancelled');
+          ? l10n.savedToDevice
+          : (res.reason != null ? l10n.aImportNotSaved(res.reason!) : l10n.saveCancelled);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(msg)));
     } finally {
@@ -112,9 +116,10 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Import File from URL')),
+      appBar: AppBar(title: Text(l10n.aImportTitle)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -125,13 +130,14 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
             TextField(
               controller: _urlController,
               decoration: InputDecoration(
-                labelText: 'File URL',
+                labelText: l10n.aImportUrlLabel,
                 hintText: 'https://example.com/document.pdf',
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixIcon: const Icon(Icons.link),
                 suffixIcon: _urlController.text.isNotEmpty
                     ? IconButton(
+                        tooltip: AppLocalizations.of(context)!.a11yClearText,
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _urlController.clear();
@@ -151,7 +157,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
                 onPressed:
                     _urlController.text.trim().isEmpty ? null : _startImport,
                 icon: const Icon(Icons.download),
-                label: const Text('Grab File'),
+                label: Text(l10n.aImportGrab),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(
@@ -171,7 +177,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
   Widget _header(ColorScheme cs) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF2563EB).withOpacity(0.08),
+          color: const Color(0xFF2563EB).withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -180,7 +186,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFF2563EB).withOpacity(0.15),
+                color: const Color(0xFF2563EB).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(Icons.cloud_download,
@@ -191,11 +197,11 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Fast File Import',
+                  Text(AppLocalizations.of(context)!.aImportHeaderTitle,
                       style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                          const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 3),
-                  Text('Grab any file from a URL, then save it to your device',
+                  Text(AppLocalizations.of(context)!.aImportHeaderBody,
                       style:
                           TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ],
@@ -221,24 +227,25 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
           const SizedBox(height: 12),
           Text(
             _progress != null
-                ? '${(_progress! * 100).toStringAsFixed(0)}% downloaded'
-                : 'Downloading...',
+                ? AppLocalizations.of(context)!.aImportPercentDownloaded((_progress! * 100).toStringAsFixed(0))
+                : AppLocalizations.of(context)!.aImportDownloading,
             style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
           ),
           const SizedBox(height: 12),
           OutlinedButton(
-              onPressed: _cancelImport, child: const Text('Cancel')),
+              onPressed: _cancelImport, child: Text(AppLocalizations.of(context)!.cancel)),
         ],
       );
 
   Widget _buildResult(ColorScheme cs) {
     final r = _result!;
+    final l10n = AppLocalizations.of(context)!;
     if (!r.isSuccess) {
-      final reason = r.reason ?? 'unknown error';
+      final reason = r.reason ?? l10n.errorGeneric;
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cs.errorContainer.withOpacity(0.5),
+          color: cs.errorContainer.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -250,7 +257,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                    r.isUnavailable ? 'File Not Available' : 'Download Failed',
+                    r.isUnavailable ? l10n.aImportUnavailable : l10n.aImportFailed,
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
@@ -269,19 +276,19 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.success.withOpacity(0.08),
+        color: AppColors.success.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.success.withOpacity(0.3)),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(Icons.check_circle, color: AppColors.success, size: 22),
+            const Icon(Icons.check_circle, color: AppColors.success, size: 22),
             const SizedBox(width: 8),
-            const Expanded(
-              child: Text('Downloaded',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Expanded(
+              child: Text(l10n.aImportDownloaded,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ]),
           const SizedBox(height: 14),
@@ -302,19 +309,19 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
             _typeIconRow(cs),
           const SizedBox(height: 14),
 
-          _InfoRow(label: 'Name', value: r.fileName ?? '—'),
-          _InfoRow(label: 'Type', value: r.mimeType ?? '—'),
-          _InfoRow(label: 'Size', value: r.readableSize),
+          _InfoRow(label: l10n.aImportInfoName, value: r.fileName ?? '—'),
+          _InfoRow(label: l10n.aImportInfoType, value: r.mimeType ?? '—'),
+          _InfoRow(label: l10n.sizeLabel, value: r.readableSize),
           if (r.pageCount != null)
-            _InfoRow(label: 'Pages', value: '${r.pageCount}'),
+            _InfoRow(label: l10n.aImportInfoPages, value: '${r.pageCount}'),
           if (r.elapsedMs != null)
-            _InfoRow(label: 'Time', value: '${r.elapsedMs} ms'),
+            _InfoRow(label: l10n.aImportInfoTime, value: '${r.elapsedMs} ms'),
           if (r.readableSpeed != null)
-            _InfoRow(label: 'Speed', value: r.readableSpeed!),
+            _InfoRow(label: l10n.aImportInfoSpeed, value: r.readableSpeed!),
           if ((r.retries ?? 0) > 0)
             _InfoRow(
-                label: 'Recovered',
-                value: '${r.retries} retr${r.retries == 1 ? 'y' : 'ies'}'),
+                label: l10n.aImportInfoRecovered,
+                value: l10n.aImportRetries(r.retries!)),
           const SizedBox(height: 14),
 
           Row(children: [
@@ -327,7 +334,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.save_alt, size: 18),
-                label: Text(_saving ? 'Saving...' : 'Save to device'),
+                label: Text(_saving ? l10n.aImportSaving : l10n.saveToDevice),
               ),
             ),
             const SizedBox(width: 10),
@@ -335,7 +342,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
               child: OutlinedButton.icon(
                 onPressed: _shareFile,
                 icon: const Icon(Icons.share, size: 18),
-                label: const Text('Share'),
+                label: Text(l10n.share),
               ),
             ),
           ]),
@@ -351,7 +358,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: cs.primary.withOpacity(0.1),
+          color: cs.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(_iconForMime(r.mimeType), color: cs.primary, size: 30),
@@ -359,7 +366,7 @@ class _ImportPdfScreenState extends ConsumerState<ImportPdfScreen> {
       const SizedBox(width: 14),
       Expanded(
         child: Text(
-          r.fileName ?? 'file',
+          r.fileName ?? AppLocalizations.of(context)!.aImportFileFallback,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),

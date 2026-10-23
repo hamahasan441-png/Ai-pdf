@@ -29,13 +29,16 @@ class EditorRichTextService {
     String? fontFamily,
     double? sizeScale,
   }) {
-    if (start >= end || start < 0 || end > annotation.text.length) return annotation.runs;
+    final range = _range(annotation.text, start, end);
+    if (range == null) return annotation.runs;
+    final from = range.$1;
+    final to = range.$2;
 
     // Expand the annotation into per-character runs (materialise if runs==null).
     final chars = _expand(annotation);
     
     // Apply the style override to the selected range.
-    for (var i = start; i < end; i++) {
+    for (var i = from; i < to; i++) {
       chars[i] = _CharStyle(
         bold: bold ?? chars[i].bold,
         italic: italic ?? chars[i].italic,
@@ -53,12 +56,13 @@ class EditorRichTextService {
   /// Toggle [bold] for the selection range (if all chars are bold → clear bold,
   /// otherwise → set bold). Same pattern for italic/underline.
   List<TextRun>? toggleBold(TextAnnotation a, int start, int end) {
-    if (start >= end || start < 0 || end > a.text.length) return a.runs;
+    final range = _range(a.text, start, end);
+    if (range == null) return a.runs;
     final chars = _expand(a);
-    final allBold = chars.sublist(start, end).every((c) => c.bold == true);
-    for (var i = start; i < end; i++) {
+    final allOn = chars.sublist(range.$1, range.$2).every((c) => (c.bold ?? a.bold) == true);
+    for (var i = range.$1; i < range.$2; i++) {
       chars[i] = _CharStyle(
-        bold: allBold ? null : true,
+        bold: _toggled(allOn, a.bold),
         italic: chars[i].italic,
         underline: chars[i].underline,
         color: chars[i].color,
@@ -70,13 +74,14 @@ class EditorRichTextService {
   }
 
   List<TextRun>? toggleItalic(TextAnnotation a, int start, int end) {
-    if (start >= end || start < 0 || end > a.text.length) return a.runs;
+    final range = _range(a.text, start, end);
+    if (range == null) return a.runs;
     final chars = _expand(a);
-    final all = chars.sublist(start, end).every((c) => c.italic == true);
-    for (var i = start; i < end; i++) {
+    final allOn = chars.sublist(range.$1, range.$2).every((c) => (c.italic ?? a.italic) == true);
+    for (var i = range.$1; i < range.$2; i++) {
       chars[i] = _CharStyle(
         bold: chars[i].bold,
-        italic: all ? null : true,
+        italic: _toggled(allOn, a.italic),
         underline: chars[i].underline,
         color: chars[i].color,
         fontFamily: chars[i].fontFamily,
@@ -87,14 +92,15 @@ class EditorRichTextService {
   }
 
   List<TextRun>? toggleUnderline(TextAnnotation a, int start, int end) {
-    if (start >= end || start < 0 || end > a.text.length) return a.runs;
+    final range = _range(a.text, start, end);
+    if (range == null) return a.runs;
     final chars = _expand(a);
-    final all = chars.sublist(start, end).every((c) => c.underline == true);
-    for (var i = start; i < end; i++) {
+    final allOn = chars.sublist(range.$1, range.$2).every((c) => (c.underline ?? a.underline) == true);
+    for (var i = range.$1; i < range.$2; i++) {
       chars[i] = _CharStyle(
         bold: chars[i].bold,
         italic: chars[i].italic,
-        underline: all ? null : true,
+        underline: _toggled(allOn, a.underline),
         color: chars[i].color,
         fontFamily: chars[i].fontFamily,
         sizeScale: chars[i].sizeScale,
@@ -103,14 +109,120 @@ class EditorRichTextService {
     return _collapse(a.text, chars);
   }
 
+  /// `null` means "same as the annotation base". An explicit `false` is only
+  /// stored when the base style is on and this range must turn it off.
+  bool? _toggled(bool allOn, bool base) {
+    final next = !allOn;
+    if (next == base) return null;
+    return next;
+  }
+
+  /// Move [annotation]'s runs onto [newText] after an insert, delete, or
+  /// replacement. Inserted characters inherit the style at the edit point.
+  /// Unstyled annotations stay unstyled. Call this before assigning [newText].
+  List<TextRun>? retarget(TextAnnotation annotation, String newText) {
+    final oldText = annotation.text;
+    if (oldText == newText) return annotation.runs;
+    final runs = annotation.runs;
+    if (runs == null || runs.isEmpty || newText.isEmpty) return null;
+
+    final oldStyles = _expand(annotation);
+    var prefix = 0;
+    final maxPrefix = oldText.length < newText.length ? oldText.length : newText.length;
+    while (prefix < maxPrefix && oldText.codeUnitAt(prefix) == newText.codeUnitAt(prefix)) {
+      prefix++;
+    }
+    var suffix = 0;
+    while (suffix < oldText.length - prefix &&
+        suffix < newText.length - prefix &&
+        oldText.codeUnitAt(oldText.length - 1 - suffix) ==
+            newText.codeUnitAt(newText.length - 1 - suffix)) {
+      suffix++;
+    }
+    // Don't split a grapheme cluster at the edit boundary.
+    final prefixSnap = _graphemeStart(oldText, prefix);
+    final newPrefix = _graphemeStart(newText, prefix);
+    final sharedPrefix = prefixSnap < newPrefix ? prefixSnap : newPrefix;
+
+    final next = <_CharStyle>[];
+    for (var i = 0; i < sharedPrefix && i < oldStyles.length; i++) {
+      next.add(oldStyles[i]);
+    }
+    final inserted = newText.length - suffix - sharedPrefix;
+    final removed = oldText.length - suffix - sharedPrefix;
+    // A pure insertion inherits the character before the caret. A replacement
+    // inherits the first character that was replaced.
+    final inheritIndex = inserted > 0 && removed <= 0 && sharedPrefix > 0
+        ? sharedPrefix - 1
+        : sharedPrefix;
+    final inherit = oldStyles.isEmpty
+        ? const _CharStyle()
+        : oldStyles[inheritIndex.clamp(0, oldStyles.length - 1)];
+    final newMid = inserted < 0 ? 0 : inserted;
+    for (var i = 0; i < newMid; i++) {
+      next.add(inherit);
+    }
+    final suffixStart = oldText.length - suffix;
+    for (var i = 0; i < suffix; i++) {
+      final index = suffixStart + i;
+      if (index >= 0 && index < oldStyles.length) next.add(oldStyles[index]);
+    }
+    while (next.length < newText.length) {
+      next.add(inherit);
+    }
+    if (next.length > newText.length) {
+      next.removeRange(newText.length, next.length);
+    }
+    return _collapse(newText, next);
+  }
+
   // ── Internal helpers ────────────────────────────────────────────────────
+
+  (int, int)? _range(String text, int start, int end) {
+    if (start >= end || start < 0 || end > text.length) return null;
+    final snapped = _snapToGraphemes(text, start, end);
+    if (snapped.$1 >= snapped.$2 || snapped.$2 > text.length) return null;
+    return snapped;
+  }
+
+  /// Expand a range that lands inside a grapheme (combining mark or surrogate
+  /// pair) so the cluster is styled together.
+  (int, int) _snapToGraphemes(String text, int start, int end) {
+    return (_graphemeStart(text, start), _graphemeEnd(text, end));
+  }
+
+  int _graphemeStart(String text, int offset) {
+    if (offset <= 0) return 0;
+    if (offset >= text.length) return text.length;
+    var unit = 0;
+    for (final grapheme in text.characters) {
+      final next = unit + grapheme.length;
+      if (offset > unit && offset < next) return unit;
+      if (offset == unit) return unit;
+      unit = next;
+    }
+    return offset;
+  }
+
+  int _graphemeEnd(String text, int offset) {
+    if (offset <= 0) return 0;
+    if (offset >= text.length) return text.length;
+    var unit = 0;
+    for (final grapheme in text.characters) {
+      final next = unit + grapheme.length;
+      if (offset > unit && offset < next) return next;
+      if (offset == next || offset == unit) return offset;
+      unit = next;
+    }
+    return offset;
+  }
 
   /// Expand the annotation's runs (or base style) into a per-character style
   /// list so we can apply/toggle styles at arbitrary offsets.
   List<_CharStyle> _expand(TextAnnotation a) {
     final runs = a.runs;
     if (runs == null || runs.isEmpty) {
-      return List.generate(a.text.length, (_) => _CharStyle());
+      return List.generate(a.text.length, (_) => const _CharStyle());
     }
     final result = <_CharStyle>[];
     for (final r in runs) {
@@ -127,7 +239,7 @@ class EditorRichTextService {
     }
     // Pad or trim if runs text doesn't match annotation text exactly.
     while (result.length < a.text.length) {
-      result.add(_CharStyle());
+      result.add(const _CharStyle());
     }
     return result.sublist(0, a.text.length);
   }
@@ -175,14 +287,6 @@ class _CharStyle {
     this.fontFamily,
     this.sizeScale,
   });
-
-  bool get _isDefault =>
-      bold == null &&
-      italic == null &&
-      underline == null &&
-      color == null &&
-      fontFamily == null &&
-      sizeScale == null;
 
   @override
   bool operator ==(Object other) =>

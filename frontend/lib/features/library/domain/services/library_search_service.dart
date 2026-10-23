@@ -115,10 +115,6 @@ class LibrarySearchService {
     return result;
   }
 
-  /// All unique tags across all items (for the filter chip list).
-  Set<String> allTags(List<LibraryItem> items) =>
-      {for (final i in items) ...i.tags};
-
   int _compare(LibraryItem a, LibraryItem b, LibrarySortField field) {
     switch (field) {
       case LibrarySortField.name:

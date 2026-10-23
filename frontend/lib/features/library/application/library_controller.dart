@@ -14,7 +14,9 @@ class LibraryState {
   final Set<String> selectedIds;
   final bool multiSelectMode;
   final bool loading;
-  final String? error;
+
+  /// Why the last load failed, shown with [describeError].
+  final Object? error;
 
   const LibraryState({
     this.items = const [],
@@ -30,7 +32,6 @@ class LibraryState {
   int get totalCount => items.length;
   int get selectedCount => selectedIds.length;
   bool get hasSelection => selectedIds.isNotEmpty;
-  Set<String> get allTags => const LibrarySearchService().allTags(items);
 
   LibraryState copyWith({
     List<LibraryItem>? items,
@@ -40,7 +41,7 @@ class LibraryState {
     Set<String>? selectedIds,
     bool? multiSelectMode,
     bool? loading,
-    String? error,
+    Object? error,
     bool clearError = false,
   }) =>
       LibraryState(
@@ -58,16 +59,21 @@ class LibraryState {
 /// Controller for the document library feature.
 ///
 /// Manages the full lifecycle: load from disk, CRUD operations on items and
-/// folders, search/filter/sort, multi-select batch operations, favorites,
-/// tagging. All mutations persist immediately via [LibraryRepository].
+/// folders, search/filter/sort, multi-select batch operations, favorites and
+/// pins. All mutations persist immediately via [LibraryRepository].
 final libraryControllerProvider =
     StateNotifierProvider<LibraryController, LibraryState>(
         (ref) => LibraryController());
 
 class LibraryController extends StateNotifier<LibraryState> {
-  LibraryController() : super(const LibraryState());
+  LibraryController({LibraryRepository repository = const LibraryRepository()})
+      : _repo = repository,
+        super(const LibraryState());
 
-  static const _repo = LibraryRepository();
+  final LibraryRepository _repo;
+
+  /// The current state, for callers outside the widget tree.
+  LibraryState get current => state;
   static const _search = LibrarySearchService();
   int _seq = 1;
 
@@ -84,7 +90,7 @@ class LibraryController extends StateNotifier<LibraryState> {
       );
       _refilter();
     } catch (e) {
-      state = state.copyWith(loading: false, error: 'Load failed: $e');
+      state = state.copyWith(loading: false, error: e);
     }
   }
 
@@ -122,7 +128,9 @@ class LibraryController extends StateNotifier<LibraryState> {
     setQuery(state.query.copyWith(sortBy: field, sortOrder: newOrder));
   }
 
-  void clearFilters() => setQuery(const LibraryQuery());
+  /// Drop every filter and the search, keeping the sort.
+  void clearFilters() =>
+      setQuery(LibraryQuery(sortBy: state.query.sortBy, sortOrder: state.query.sortOrder));
 
   // ── Items ─────────────────────────────────────────────────────────────
 
@@ -151,6 +159,24 @@ class LibraryController extends StateNotifier<LibraryState> {
     _refilter();
     await _repo.saveItems(items);
     return item;
+  }
+
+  /// The library type of a file, from its name.
+  static LibraryItemType typeOf(String name) =>
+      name.toLowerCase().endsWith('.pdf') ? LibraryItemType.pdf : LibraryItemType.image;
+
+  /// Copy [sourcePath] into the library's own folder and list it, in the
+  /// folder being shown. The original file is left where it was.
+  Future<LibraryItem> importFile(String sourcePath, String name, {int pageCount = 1}) async {
+    final path = await _repo.importFile(sourcePath);
+    return addItem(
+      name: name,
+      path: path,
+      type: typeOf(name),
+      sizeBytes: await _repo.fileSize(path),
+      pageCount: pageCount,
+      folderId: state.query.folderId,
+    );
   }
 
   Future<void> removeItem(String id) async {
@@ -183,14 +209,6 @@ class LibraryController extends StateNotifier<LibraryState> {
 
   Future<void> moveToFolder(String id, String? folderId) async {
     await _mutateItem(id, (i) => i.copyWith(folderId: folderId, clearFolder: folderId == null));
-  }
-
-  Future<void> addTag(String id, String tag) async {
-    await _mutateItem(id, (i) => i.copyWith(tags: {...i.tags, tag}));
-  }
-
-  Future<void> removeTag(String id, String tag) async {
-    await _mutateItem(id, (i) => i.copyWith(tags: {...i.tags}..remove(tag)));
   }
 
   Future<void> markOpened(String id) async {

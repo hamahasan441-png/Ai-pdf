@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/material.dart';
 

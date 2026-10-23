@@ -491,7 +491,7 @@ class OfflinePdfService {
                         ),
                         child: pw.Text(
                           '$i / $total',
-                          style: pw.TextStyle(
+                          style: const pw.TextStyle(
                             fontSize: 11,
                             color: PdfColors.black,
                           ),

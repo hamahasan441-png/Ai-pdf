@@ -1,5 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/core/widgets/button_spinner.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -126,7 +129,7 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(e.toString()))));
+            .showSnackBar(SnackBar(content: Text(l10n.operationFailed(describeError(e, l10n)))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -149,9 +152,9 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.error.withOpacity(0.08),
+                  color: cs.error.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.error.withOpacity(0.3)),
+                  border: Border.all(color: cs.error.withValues(alpha: 0.3)),
                 ),
                 child: Row(children: [
                   Icon(Icons.cloud_off_outlined, color: cs.error, size: 20),
@@ -193,7 +196,7 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
             FilledButton.icon(
               onPressed: (_path == null || _busy) ? null : _convert,
               icon: _busy
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const ButtonSpinner()
                   : const Icon(Icons.sync_alt),
               label: Text(_busy ? l10n.converting : l10n.convert),
             ),
@@ -211,7 +214,7 @@ class _ConvertScreenState extends ConsumerState<ConvertScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.08) : cs.surface,
+          color: selected ? color.withValues(alpha: 0.08) : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: selected ? color : cs.outlineVariant, width: selected ? 2 : 1),
         ),

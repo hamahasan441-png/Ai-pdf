@@ -265,7 +265,7 @@ async def summarize_document_stream(
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Streaming map-reduce summarization — E2.2 (ENHANCEMENT_BASED_MASTERPLAN).
+    """Streaming map-reduce summarization — E2.2 (docs/MASTERPLAN.md).
 
     Returns Server-Sent Events (SSE) with per-chunk summaries then final:
     - event: chunk -> {"type":"chunk","index":1,"total":5,"summary":"...","page_citation":{}}

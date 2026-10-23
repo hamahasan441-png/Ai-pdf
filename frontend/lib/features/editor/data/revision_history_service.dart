@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'package:ai_pdf/features/editor/data/document_identity.dart';
+
 /// Local revision history — persists edit commands across sessions.
 ///
 /// Every mutation (add, remove, move, edit) is logged as a timestamped entry.
@@ -59,28 +61,13 @@ class RevisionHistoryService {
     }
   }
 
-  /// Get the number of edits made to a document.
-  Future<int> editCount(String filePath) async {
-    final history = await loadHistory(filePath);
-    return history.length;
-  }
-
-  /// Clear revision history for a document (e.g. after export / "flatten").
-  Future<void> clearHistory(String filePath) async {
-    final logPath = await _logPath(filePath);
-    final file = File(logPath);
-    if (file.existsSync()) {
-      await file.delete();
-    }
-  }
-
   Future<String> _logPath(String filePath) async {
     final dir = await getApplicationDocumentsDirectory();
     final logDir = Directory('${dir.path}/revision_history');
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);
     }
-    final hash = filePath.hashCode.toRadixString(36);
+    final hash = stableDocumentId(filePath);
     return '${logDir.path}/$hash.edits.jsonl';
   }
 }

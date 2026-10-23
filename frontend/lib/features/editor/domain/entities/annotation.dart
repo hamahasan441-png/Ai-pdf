@@ -17,6 +17,27 @@ Offset clampOffset01(Offset o, [double max = 1.0]) =>
 /// Shape kinds for the vector shape tools.
 enum ShapeType { line, arrow, rect, oval, whiteout }
 
+/// Legacy metadata key. A true value only means "paint a black cover".
+/// It does not mean PDF content, images, or metadata were deleted.
+const String secureRedactionKey = 'secureRedaction';
+
+/// Black cover burned into the exported page image. The source PDF text
+/// is not removed. This is not secure redaction.
+const String visualCoverKey = 'visualCover';
+
+/// A whiteout over existing PDF text that the user replaced. The export
+/// removes the PDF's own glyphs in this box from the page content (see
+/// PdfTextEraser) instead of covering them, so the old text is gone from
+/// the file and the page keeps its vector content. When that cannot be done
+/// cleanly the page is flattened, as for any whiteout.
+const String eraseTextKey = 'eraseText';
+
+/// The content under this box was removed from the working PDF by the
+/// server's PyMuPDF redaction, and the server's re-check of the output
+/// passed. The editor then swapped in that redacted file. Undoing the box
+/// only hides the black cover; the removed content does not come back.
+const String serverRedactedKey = 'serverRedacted';
+
 /// Base type for anything drawn on a page — the editor's unified Document
 /// Object Model (DOM) node.
 ///
@@ -94,13 +115,40 @@ class StrokeAnnotation extends EditorAnnotation {
   final double width;
   final bool highlight;
 
+  /// Indices into [points] where a new pen stroke starts (the pen was lifted
+  /// before it), so a multi-stroke signature is one item without lines
+  /// joining its strokes. Empty for a single stroke.
+  final List<int> breaks;
+
+  /// Copies [points]: [restoreFrom] rewrites the list in place, which throws
+  /// on a const or fixed-length list (an empty signature was `const []`).
   StrokeAnnotation(
-    this.points,
+    List<Offset> points,
     this.color,
     this.width,
     this.highlight, {
     super.id,
-  });
+    List<int> breaks = const [],
+  })  : points = List.of(points),
+        breaks = List.of(breaks);
+
+  /// Splits pad output, where [Offset.infinite] marks a lifted pen, into the
+  /// finite points and the indices where each later stroke starts.
+  static ({List<Offset> points, List<int> breaks}) splitStrokes(List<Offset> raw) {
+    final points = <Offset>[];
+    final breaks = <int>[];
+    var lifted = false;
+    for (final p in raw) {
+      if (!p.isFinite) {
+        lifted = true;
+        continue;
+      }
+      if (lifted && points.isNotEmpty && (breaks.isEmpty || breaks.last != points.length)) breaks.add(points.length);
+      lifted = false;
+      points.add(p);
+    }
+    return (points: points, breaks: breaks);
+  }
 
   @override
   Rect get bounds {
@@ -144,6 +192,7 @@ class StrokeAnnotation extends EditorAnnotation {
       width,
       highlight,
       id: id,
+      breaks: breaks,
     );
     c.copyBaseFrom(this);
     return c;
@@ -154,6 +203,9 @@ class StrokeAnnotation extends EditorAnnotation {
     points
       ..clear()
       ..addAll(o.points.map((p) => Offset(p.dx, p.dy)));
+    breaks
+      ..clear()
+      ..addAll(o.breaks);
     copyBaseFrom(o);
   }
 }
@@ -166,6 +218,16 @@ class ShapeAnnotation extends EditorAnnotation {
   Color color;
   double width;
   bool filled;
+
+  /// True for the legacy key only. Not proof that content was removed.
+  bool get isSecureRedaction => metadata[secureRedactionKey] == true;
+
+  /// Set only after a verified server redaction. See [serverRedactedKey].
+  bool get isServerRedacted => metadata[serverRedactedKey] == true;
+
+  /// Black rectangle painted into the preview and the exported page image.
+  bool get burnsBlackCover =>
+      isSecureRedaction || isServerRedacted || metadata[visualCoverKey] == true;
 
   ShapeAnnotation(
     this.type,
@@ -263,7 +325,7 @@ class TextRun {
 /// - [textDirection] — set explicitly for RTL scripts; null = auto-detect
 /// - [lineHeight]  — line height multiplier (1.0 = normal, 1.5 = 150 %)
 /// - [charSpacing] — extra spacing between glyphs (PDF Tc operator equivalent)
-/// - [width]       — optional fixed-width bounding box in pt (null = auto)
+/// - [width]       — optional fixed box width, fraction of page width (null = auto)
 /// - [height]      — optional fixed-height bounding box in pt (null = auto)
 /// - [rotation]    — rotation in radians (0 = upright)
 class TextAnnotation extends EditorAnnotation {
@@ -297,7 +359,9 @@ class TextAnnotation extends EditorAnnotation {
   /// Extra inter-character spacing in pt (equivalent to PDF Tc operator).
   double charSpacing;
 
-  /// Bounding box width in pt. null = unconstrained (single-line auto-width).
+  /// Box width as a fraction of the page width (like [pos]). Text wraps
+  /// inside it and aligns to its edges. null = as wide as the text, wrapping
+  /// only at the page edge.
   double? width;
 
   /// Bounding box height in pt. null = auto (grows with content).
@@ -334,9 +398,27 @@ class TextAnnotation extends EditorAnnotation {
   @override
   Rect get bounds {
     // Estimate width: non-Latin (Arabic/Hebrew/CJK) chars are wider than Latin.
+    // Each line is measured on its own; a multi-line box is as wide as its
+    // longest line and as tall as all its lines.
     final avgCharWidth = _hasWideChars(text) ? 0.7 : 0.55;
-    final w = (text.length * size * avgCharWidth).clamp(0.02, 1.0);
-    return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), size * 1.3);
+    final lines = text.split('\n');
+    final lineH = size * 1.3 * (lineHeight > 0 ? lineHeight : 1.0);
+    final fixed = width;
+    if (fixed != null && fixed > 0) {
+      // A fixed-width box: estimate how many lines each paragraph wraps to.
+      var count = 0;
+      for (final line in lines) {
+        final est = line.length * size * avgCharWidth;
+        count += est <= fixed ? 1 : (est / fixed).ceil();
+      }
+      return Rect.fromLTWH(pos.dx, pos.dy, fixed, lineH * count);
+    }
+    var longest = 0;
+    for (final line in lines) {
+      if (line.length > longest) longest = line.length;
+    }
+    final w = (longest * size * avgCharWidth).clamp(0.02, 1.0);
+    return Rect.fromLTWH(pos.dx, pos.dy, w.toDouble(), lineH * lines.length);
   }
 
   static bool _hasWideChars(String text) {
@@ -344,7 +426,9 @@ class TextAnnotation extends EditorAnnotation {
       if ((cp >= 0x0600 && cp <= 0x06FF) || // Arabic
           (cp >= 0x0590 && cp <= 0x05FF) || // Hebrew
           (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK
-          (cp >= 0xFB50 && cp <= 0xFDFF)) return true;
+          (cp >= 0xFB50 && cp <= 0xFDFF)) {
+        return true;
+      }
     }
     return false;
   }
@@ -359,6 +443,12 @@ class TextAnnotation extends EditorAnnotation {
     final old = bounds;
     final oh = old.height.abs() < 1e-6 ? 1e-6 : old.height;
     pos = Offset(next.left.clamp(0.0, 0.98), next.top.clamp(0.0, 0.98));
+    if (width != null) {
+      // A fixed-width box resizes like a text frame: the text keeps its size
+      // and rewraps in the new width.
+      width = next.width.abs().clamp(0.02, 1.0 - pos.dx);
+      return;
+    }
     size = (size * (next.height / oh)).clamp(0.01, 0.2);
   }
 

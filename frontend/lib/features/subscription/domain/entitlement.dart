@@ -1,6 +1,7 @@
 /// Domain model for the app's Pro entitlement and the Play Billing products
 /// that grant it. Pure Dart — no Flutter or plugin imports — so it stays easy
 /// to unit-test.
+library;
 
 /// The Play Console product IDs. These must match exactly the products you
 /// create in the Play Console (Monetize > Products).
@@ -71,7 +72,7 @@ class Entitlement {
   /// SECURITY NOTE: this local expiry is convenience only and is trivially
   /// spoofable on a rooted device. Production MUST verify purchases
   /// server-side (Play Developer API / RTDN) before granting paid features.
-  /// See docs/CTO_REVIEW.md (managed backend) for the follow-up.
+  /// See docs/MASTERPLAN.md (managed backend) for the follow-up.
   final DateTime? expiry;
 
   const Entitlement({required this.tier, this.expiry});

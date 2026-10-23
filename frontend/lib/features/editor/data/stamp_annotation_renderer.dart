@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -13,6 +12,8 @@ class StampAnnotationRenderer {
 
   /// Paint a stamp onto [canvas] at the annotation's normalised position.
   void paint(Canvas canvas, Size size, StampAnnotation stamp) {
+    if (!stamp.visible) return;
+    final color = stamp.color.withValues(alpha: (stamp.color.a * stamp.opacity).clamp(0.0, 1.0));
     final left = stamp.pos.dx * size.width;
     final top = stamp.pos.dy * size.height;
     final w = stamp.width * size.width;
@@ -30,7 +31,7 @@ class StampAnnotationRenderer {
 
     // Border (rounded rect)
     final borderPaint = Paint()
-      ..color = stamp.color
+      ..color = color
       ..strokeWidth = 3.0
       ..style = PaintingStyle.stroke;
     final drawRect = Rect.fromLTWH(0, 0, w, h);
@@ -44,7 +45,7 @@ class StampAnnotationRenderer {
       text: TextSpan(
         text: stamp.displayText,
         style: TextStyle(
-          color: stamp.color,
+          color: color,
           fontSize: (h * 0.4).clamp(8.0, 72.0),
           fontWeight: FontWeight.w900,
           letterSpacing: 2.0,

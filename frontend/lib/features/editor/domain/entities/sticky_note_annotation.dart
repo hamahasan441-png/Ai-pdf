@@ -1,4 +1,4 @@
-import 'dart:ui' show Color, Offset;
+import 'dart:ui' show Color, Offset, Rect;
 
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 
@@ -46,22 +46,48 @@ class StickyNoteAnnotation extends EditorAnnotation {
     this.author = '',
     String? createdAt,
     this.expanded = false,
-    String? id,
-  })  : createdAt = createdAt ?? DateTime.now().toIso8601String(),
-        super(id: id);
+    super.id,
+  })  : createdAt = createdAt ?? DateTime.now().toIso8601String();
+
+  static const double iconSize = 0.05;
 
   @override
-  EditorAnnotation clone() => StickyNoteAnnotation(
-        pos: pos,
-        text: text,
-        color: color,
-        author: author,
-        createdAt: createdAt,
-        id: id,
-      )
-        ..opacity = opacity
-        ..locked = locked
-        ..visible = visible
-        ..zIndex = zIndex
-        ..metadata = Map.from(metadata);
+  Rect get bounds => Rect.fromLTWH(pos.dx, pos.dy, iconSize, iconSize);
+
+  @override
+  void translate(Offset delta) {
+    const max = 1 - iconSize;
+    pos = clampOffset01(pos + delta, max < 0 ? 1 : max);
+  }
+
+  @override
+  void scaleTo(Rect next) {
+    pos = Offset(next.left.clamp(0.0, 1.0), next.top.clamp(0.0, 1.0));
+  }
+
+  @override
+  StickyNoteAnnotation clone({double shift = 0, String? id}) {
+    final c = StickyNoteAnnotation(
+      pos: Offset(pos.dx + shift, pos.dy + shift),
+      text: text,
+      color: color,
+      author: author,
+      createdAt: createdAt,
+      expanded: expanded,
+      id: id,
+    );
+    c.copyBaseFrom(this);
+    return c;
+  }
+
+  @override
+  void restoreFrom(StickyNoteAnnotation o) {
+    pos = o.pos;
+    text = o.text;
+    color = o.color;
+    author = o.author;
+    createdAt = o.createdAt;
+    expanded = o.expanded;
+    copyBaseFrom(o);
+  }
 }

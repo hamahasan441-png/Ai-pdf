@@ -11,7 +11,7 @@ void main() {
   // 2 Methods (p3)
   //   2.1 Data (p4)
   //     2.1.1 Sources (p5)
-  final headings = const [
+  const headings = [
     OutlineHeading(title: 'Introduction', page: 0, level: 1),
     OutlineHeading(title: 'Background', page: 1, level: 2),
     OutlineHeading(title: 'Scope', page: 2, level: 2),

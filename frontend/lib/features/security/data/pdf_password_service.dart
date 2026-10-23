@@ -1,110 +1,65 @@
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:path_provider/path_provider.dart';
 
-/// Offline PDF password protection — encrypts a PDF with a user password
-/// so it requires authentication to open in any PDF reader.
+import 'package:ai_pdf/features/security/data/pdf_encryptor.dart';
+
+/// Offline PDF password protection: AES-256 with the standard security
+/// handler (PDF 2.0, /R 6), which Acrobat, Chrome, iOS, Android and every
+/// current reader open after asking for the password.
 ///
-/// Uses the `pdf` package's built-in AES-256 encryption (standard PDF 2.0
-/// encryption, compatible with all major viewers: Acrobat, Chrome, iOS, etc.).
-///
-/// Heavy crypto work runs in an isolate via [compute] to keep the UI smooth.
+/// Earlier builds returned the input unchanged and reported success, so a
+/// "protected" file opened without a password. Removing a password is not
+/// offered: it needs decryption, which this app does not implement.
 class PdfPasswordService {
   const PdfPasswordService();
 
-  /// Encrypt [pdfBytes] with [password]. Returns the encrypted PDF bytes.
-  ///
-  /// The output is a standard encrypted PDF — any compliant reader will prompt
-  /// for the password before displaying content.
-  ///
-  /// Permissions can be restricted (no print, no copy, etc.) via [permissions].
+  /// Encrypted copy of [pdfBytes]. Restricting [access] without an
+  /// [ownerPassword] uses a random one, so the limits cannot be lifted by
+  /// the person who only knows [password]. Runs off the UI thread.
   Future<Uint8List> protect({
     required Uint8List pdfBytes,
     required String password,
     String? ownerPassword,
-    PdfPermissions permissions = const PdfPermissions(),
-  }) async {
-    return compute(_encryptPdf, _EncryptParams(
-      pdfBytes: pdfBytes,
-      userPassword: password,
-      ownerPassword: ownerPassword ?? password,
-      permissions: permissions,
-    ));
+    PdfAccess access = const PdfAccess(),
+  }) {
+    final restricted = !(access.print && access.copy && access.modify && access.annotate);
+    final owner = ownerPassword ??
+        (restricted ? List.generate(32, (_) => 'abcdefghijkmnpqrstuvwxyz23456789'[_secure(32)]).join() : null);
+    return Isolate.run(
+      () => PdfEncryptor().encrypt(pdfBytes, userPassword: password, ownerPassword: owner, access: access),
+    );
   }
 
-  /// Remove password protection from a PDF (requires knowing the password).
-  Future<Uint8List?> removeProtection({
-    required Uint8List pdfBytes,
+  /// Protects the PDF at [sourcePath] and writes `<name>_protected.pdf` to
+  /// the app's documents folder, through a temporary file so a failure
+  /// leaves nothing half-written. Returns the new path.
+  Future<String> protectFile({
+    required String sourcePath,
     required String password,
+    PdfAccess access = const PdfAccess(),
+    Future<Directory> Function()? outputDirectory,
   }) async {
-    return compute(_decryptPdf, _DecryptParams(
-      pdfBytes: pdfBytes,
-      password: password,
-    ));
+    final bytes = await File(sourcePath).readAsBytes();
+    final out = await protect(pdfBytes: bytes, password: password, access: access);
+    final dir = await (outputDirectory ?? getApplicationDocumentsDirectory)();
+    var base = sourcePath.split(Platform.pathSeparator).last;
+    if (base.toLowerCase().endsWith('.pdf')) base = base.substring(0, base.length - 4);
+    final path = '${dir.path}/${base}_protected_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final tmp = File('$path.partial');
+    try {
+      await tmp.writeAsBytes(out, flush: true);
+      await tmp.rename(path);
+    } catch (_) {
+      if (tmp.existsSync()) await tmp.delete();
+      rethrow;
+    }
+    return path;
   }
 }
 
-/// PDF permission flags (standard PDF spec).
-class PdfPermissions {
-  final bool allowPrinting;
-  final bool allowCopying;
-  final bool allowEditing;
-  final bool allowAnnotating;
-
-  const PdfPermissions({
-    this.allowPrinting = true,
-    this.allowCopying = true,
-    this.allowEditing = true,
-    this.allowAnnotating = true,
-  });
-}
-
-// ── Isolate workers ─────────────────────────────────────────────────────────
-
-class _EncryptParams {
-  final Uint8List pdfBytes;
-  final String userPassword;
-  final String ownerPassword;
-  final PdfPermissions permissions;
-
-  _EncryptParams({
-    required this.pdfBytes,
-    required this.userPassword,
-    required this.ownerPassword,
-    required this.permissions,
-  });
-}
-
-class _DecryptParams {
-  final Uint8List pdfBytes;
-  final String password;
-
-  _DecryptParams({required this.pdfBytes, required this.password});
-}
-
-/// Encrypt a PDF in an isolate. Uses pypdf-equivalent approach:
-/// parse → set encryption → serialize. In Flutter/Dart this would use the
-/// `pypdf` equivalent or native platform channel to PyMuPDF.
-///
-/// For now, this delegates to the platform (Android/iOS) which has native
-/// PDF encryption support. The method channel call is:
-///   com.aidocassistant.app/pdf_crypto → encrypt(bytes, userPw, ownerPw, perms)
-Uint8List _encryptPdf(_EncryptParams params) {
-  // Platform implementation via method channel is called from the main isolate.
-  // In the isolate, we prepare the data structure. The actual encryption
-  // happens via the native PDF library (PyMuPDF on Android via JNI, or
-  // PDFKit on iOS).
-  //
-  // For the MVP: return the original bytes with a marker that the UI layer
-  // should call the platform channel. This will be wired in the presentation
-  // layer which has access to the method channel.
-  //
-  // The architecture is: UI calls protect() → compute prepares params →
-  // returns to main thread → main thread calls platform channel → done.
-  // This keeps the heavy byte copying off the UI thread.
-  return params.pdfBytes; // placeholder — platform channel handles encryption
-}
-
-Uint8List? _decryptPdf(_DecryptParams params) {
-  return params.pdfBytes; // placeholder — platform channel handles decryption
-}
+final _rng = Random.secure();
+int _secure(int max) => _rng.nextInt(max);

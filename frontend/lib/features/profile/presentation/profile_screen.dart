@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/app_settings.dart';
@@ -45,7 +46,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   void dispose() {
-    for (final c in _c.values) c.dispose();
+    for (final c in _c.values) {
+      c.dispose();
+    }
     _serverCtrl.dispose();
     super.dispose();
   }
@@ -61,16 +64,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _clearMemory() async {
+    final l = AppLocalizations.of(context)!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Forget remembered answers?'),
-        content: const Text(
-            'This clears answers the AI learned from forms you filled before. '
-            'Your profile above is not affected.'),
+        title: Text(l.bProfileForgetTitle),
+        content: Text(l.bProfileForgetBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Forget')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.bProfileForget)),
         ],
       ),
     );
@@ -90,19 +92,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) {
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved on this device')));
+          SnackBar(content: Text(AppLocalizations.of(context)!.bProfileSaved)));
     }
   }
 
   Future<void> _clear() async {
+    final l = AppLocalizations.of(context)!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear profile?'),
-        content: const Text('This removes your saved details from this device.'),
+        title: Text(l.bProfileClearTitle),
+        content: Text(l.bProfileClearBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.clear)),
         ],
       ),
     );
@@ -121,27 +124,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _serverCtrl.text = AppSettings.instance.apiBaseUrl;
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Backend server updated')));
+          .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context)!.bProfileServerUpdated)));
     }
   }
+
+  String _fieldLabel(AppLocalizations l, (String, String) f) => switch (f.$1) {
+        'first_name' => l.bProfileFieldFirstName,
+        'last_name' => l.bProfileFieldLastName,
+        'date_of_birth' => l.bProfileFieldDateOfBirth,
+        'nationality' => l.bProfileFieldNationality,
+        'phone_number' => l.bProfileFieldPhone,
+        'email' => l.bProfileFieldEmail,
+        'street_address' => l.bProfileFieldAddress,
+        'city' => l.bProfileFieldCity,
+        'postal_code' => l.bProfileFieldPostalCode,
+        'country' => l.bProfileFieldCountry,
+        'id_number' => l.bProfileFieldIdNumber,
+        'employer_name' => l.bProfileFieldEmployer,
+        'job_title' => l.bProfileFieldJobTitle,
+        _ => f.$2,
+      };
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
+        appBar: AppBar(title: Text(l.bProfileTitle)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('My Profile'), actions: [
+      appBar: AppBar(title: Text(l.myProfile), actions: [
         IconButton(
-          tooltip: 'Clear',
+          tooltip: l.clear,
           icon: const Icon(Icons.delete_outline),
           onPressed: _clear,
         ),
         IconButton(
+          tooltip: l.save,
           icon: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.save),
@@ -152,17 +174,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: cs.primaryContainer.withOpacity(0.3),
+            color: cs.primaryContainer.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Row(children: [
-            Icon(Icons.lock_outline, size: 20),
-            SizedBox(width: 10),
+          child: Row(children: [
+            const Icon(Icons.lock_outline, size: 20),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Saved encrypted on this device only. Used to auto-fill forms — the '
-                'AI pre-answers fields it already knows.',
-                style: TextStyle(fontSize: 13),
+                l.bProfileEncryptedNote,
+                style: const TextStyle(fontSize: 13),
               ),
             ),
           ]),
@@ -171,8 +192,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         Card(
           child: ListTile(
             leading: Icon(Icons.smart_toy_outlined, color: cs.primary),
-            title: const Text('AI Settings'),
-            subtitle: const Text('Provider, API key, model'),
+            title: Text(l.aiSettings),
+            subtitle: Text(l.bProfileAiSettingsSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/settings'),
           ),
@@ -184,13 +205,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             return Card(
               child: ListTile(
                 leading: Icon(Icons.history_edu_outlined, color: cs.primary),
-                title: const Text('Remembered answers'),
+                title: Text(l.bProfileRememberedTitle),
                 subtitle: Text(count == 0
-                    ? 'Answers you give while filling forms are saved here to auto-fill later'
-                    : '$count field${count == 1 ? '' : 's'} remembered from past forms'),
+                    ? l.bProfileRememberedEmpty
+                    : l.bProfileRememberedCount(count)),
                 trailing: count == 0
                     ? null
-                    : TextButton(onPressed: _clearMemory, child: const Text('Forget')),
+                    : TextButton(onPressed: _clearMemory, child: Text(l.bProfileForget)),
               ),
             );
           },
@@ -201,7 +222,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: TextField(
                 controller: _c[f.$1],
                 decoration: InputDecoration(
-                  labelText: f.$2,
+                  labelText: _fieldLabel(l, f),
                   prefixIcon: Icon(_icons[f.$1] ?? Icons.edit, size: 20),
                   border: const OutlineInputBorder(),
                   isDense: true,
@@ -214,7 +235,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: FilledButton.icon(
             onPressed: _saving ? null : _save,
             icon: const Icon(Icons.save),
-            label: const Text('Save Profile'),
+            label: Text(l.bProfileSaveProfile),
           ),
         ),
         const SizedBox(height: 20),
@@ -222,17 +243,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           childrenPadding: const EdgeInsets.only(bottom: 12),
-          title: const Text('Backend server (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: const Text('Not needed for on-device AI or file tools', style: TextStyle(fontSize: 12)),
+          title: Text(l.bProfileBackendTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(l.bProfileBackendSubtitle, style: const TextStyle(fontSize: 12)),
           children: [
             TextField(
               controller: _serverCtrl,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Backend URL',
-                hintText: 'https://your-server.com/api/v1',
-                prefixIcon: Icon(Icons.link, size: 20),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l.bProfileBackendUrl,
+                hintText: l.managedServerHint,
+                prefixIcon: const Icon(Icons.link, size: 20),
+                border: const OutlineInputBorder(),
                 isDense: true,
               ),
             ),
@@ -242,7 +263,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: FilledButton.tonalIcon(
                 onPressed: _saveServer,
                 icon: const Icon(Icons.save, size: 18),
-                label: const Text('Save server'),
+                label: Text(l.bProfileSaveServer),
               ),
             ),
           ],

@@ -54,21 +54,21 @@ class _HomeScreenState extends State<HomeScreen> {
           _AppBarAction(
             icon: Icons.key,
             color: cs.surfaceContainerHighest,
-            tooltip: 'AI settings & API key',
+            tooltip: l10n.aHomeAiSettingsTooltip,
             onPressed: () => context.push('/settings'),
           ),
           const SizedBox(width: 6),
           _AppBarAction(
             icon: Icons.history,
             color: cs.surfaceContainerHighest,
-            tooltip: 'Recent files',
+            tooltip: l10n.recentFiles,
             onPressed: () => context.push('/recent'),
           ),
           const SizedBox(width: 6),
           _AppBarAction(
             icon: Icons.person_outlined,
             color: cs.surfaceContainerHighest,
-            tooltip: 'Profile',
+            tooltip: l10n.myProfile,
             onPressed: () => context.push('/profile'),
           ),
           const SizedBox(width: 10),
@@ -83,14 +83,14 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               gradient: AppColors.heroGradient,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 10))],
+              boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10))],
             ),
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(l10n.smartDocuments, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3)),
                   const SizedBox(height: 6),
-                  Text(l10n.appTagline, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14, height: 1.4)),
+                  Text(l10n.appTagline, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14, height: 1.4)),
                   const SizedBox(height: 20),
                   SizedBox(
                     height: 44,
@@ -112,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: 72,
                 height: 72,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
                 child: const Icon(Icons.auto_awesome, size: 36, color: Colors.white),
               ),
             ]),
@@ -209,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: (f.isPdf ? AppColors.error : AppColors.primary).withOpacity(0.1),
+                                color: (f.isPdf ? AppColors.error : AppColors.primary).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(f.isPdf ? Icons.picture_as_pdf : Icons.image, color: f.isPdf ? AppColors.error : AppColors.primary, size: 22),
@@ -342,16 +342,16 @@ class _QuickAction extends StatelessWidget {
           width: 80,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.2)),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 22),

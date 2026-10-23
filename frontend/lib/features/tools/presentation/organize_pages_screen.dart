@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import 'package:ai_pdf/core/utils/error_text.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
@@ -16,7 +18,7 @@ import '../widgets/result_sheet.dart';
 class _OrgPage {
   final Uint8List bytes;
   int rot; // quarter turns clockwise, 0..3
-  _OrgPage(this.bytes, [this.rot = 0]);
+  _OrgPage(this.bytes) : rot = 0;
 }
 
 /// Pro "Organize Pages" tool: reorder (drag), delete, rotate, and add pages
@@ -44,7 +46,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       allowMultiple: true,
     );
-    if (result == null || result.files.isEmpty) return;
+    if (result == null || result.files.isEmpty || !mounted) return;
     final l10n = AppLocalizations.of(context)!;
     setState(() => _busy = true);
     try {
@@ -58,7 +60,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
         }
       }
     } catch (e) {
-      _status = l10n.couldNotAddFile(e.toString());
+      _status = l10n.couldNotAddFile(describeError(e, l10n));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -165,7 +167,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
             paths: [outPath], title: l10n.organizedPdf, subtitle: l10n.nPages(_pages.length));
       }
     } catch (e) {
-      _status = l10n.operationFailed(e.toString());
+      _status = l10n.operationFailed(describeError(e, l10n));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -291,7 +293,7 @@ class _OrganizePagesScreenState extends State<OrganizePagesScreen> {
           ),
           IconButton(
             tooltip: l10n.delete,
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
             onPressed: () => _delete(i),
           ),
           ReorderableDragStartListener(

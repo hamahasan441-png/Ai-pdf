@@ -3,55 +3,115 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
-import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
 import 'package:ai_pdf/features/editor/data/annotation_serialization.dart';
+import 'package:ai_pdf/features/editor/data/document_identity.dart';
+import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
+
+/// Result of reading a saved annotation file.
+class AnnotationLoadResult {
+  final Map<int, PageLayer> layers;
+
+  /// The file was unreadable. Its bytes were moved aside and were not
+  /// treated as an empty document.
+  final bool corrupt;
+
+  /// Page order and rotations the marks belong to. Null for files saved
+  /// before structure was recorded, or when nothing was saved.
+  final SavedPageStructure? structure;
+
+  /// Edited form-field values, by field name.
+  final Map<String, Object> formValues;
+
+  const AnnotationLoadResult({
+    required this.layers,
+    this.corrupt = false,
+    this.structure,
+    this.formValues = const {},
+  });
+}
 
 /// Persists editor annotations to disk so work is never lost.
 ///
-/// ### How it works
-/// - After each edit (via [save]), the full layer state is serialized to JSON
-///   and written to a file keyed by the source document's path hash.
-/// - On re-open (via [load]), saved annotations are restored into the editor's
-///   layer map — the user picks up exactly where they left off.
-/// - On successful export (via [delete]), the save file is removed (the work
-///   is now in the exported PDF).
-///
-/// ### Crash recovery
-/// Because [save] is called after every mutation (debounce-friendly from the
-/// caller), an unexpected kill/crash loses at most the last in-flight edit.
-///
-/// ### File location
-/// Saves go to `<appDocs>/annotations/<hash>.json`. This directory is internal
-/// to the app (not visible in the gallery or file manager), automatically
-/// cleaned on uninstall, and never backed up (per the security config).
+/// Saves go to `<appDocs>/annotations/<stable-id>.json`. The id is a
+/// deterministic hash of the source path, not [String.hashCode].
 class AnnotationPersistenceService {
-  const AnnotationPersistenceService();
+  final Future<Directory> Function()? documentsDirectory;
+
+  const AnnotationPersistenceService({this.documentsDirectory});
 
   /// Save all annotation layers for the document at [filePath].
+  ///
+  /// Writes a temporary file and renames it into place so a crash mid-write
+  /// cannot leave a half-written JSON as the only copy.
   Future<void> save({
     required String filePath,
     required Map<int, PageLayer> layers,
+    SavedPageStructure? structure,
+    Map<String, Object> formValues = const {},
   }) async {
     final savePath = await _savePath(filePath);
-    final json = layersToJson(layers);
-    final content = jsonEncode(json);
-    await File(savePath).writeAsString(content);
+    final content = jsonEncode(layersToJson(layers, structure: structure, formValues: formValues));
+    final tmp = File('$savePath.tmp');
+    await tmp.writeAsString(content, flush: true);
+    await tmp.rename(savePath);
   }
 
-  /// Load saved annotations for the document at [filePath].
-  /// Returns an empty map if no save exists or it's corrupt.
+  /// Load saved annotations. Prefer [loadChecked] when a corrupt file must
+  /// be distinguished from a document that simply has no marks.
   Future<Map<int, PageLayer>> load(String filePath) async {
+    final result = await loadChecked(filePath);
+    return result.layers;
+  }
+
+  Future<AnnotationLoadResult> loadChecked(String filePath) async {
     final savePath = await _savePath(filePath);
+    await _migrateLegacy(filePath, savePath);
     final file = File(savePath);
-    if (!file.existsSync()) return {};
+    if (!file.existsSync()) {
+      return const AnnotationLoadResult(layers: {});
+    }
     try {
       final content = await file.readAsString();
-      final json = jsonDecode(content) as Map<String, dynamic>;
-      return layersFromJson(json);
+      final decoded = jsonDecode(content);
+      if (decoded is! Map) {
+        throw const FormatException('annotation file is not a JSON object');
+      }
+      final json = Map<String, dynamic>.from(decoded);
+      final version = json['version'];
+      if (version != 1) {
+        throw FormatException('unsupported annotation schema: $version');
+      }
+      final structure = json.containsKey('structure')
+          ? SavedPageStructure.fromJson(json['structure'])
+          : null;
+      if (json.containsKey('structure') && structure == null) {
+        throw const FormatException('malformed page structure');
+      }
+      return AnnotationLoadResult(
+        layers: layersFromJson(json),
+        structure: structure,
+        formValues: formValuesFromJson(json['forms']),
+      );
     } catch (_) {
-      // Corrupt file — don't block the editor. The user starts fresh.
-      return {};
+      final backup = File('$savePath.corrupt');
+      if (backup.existsSync()) {
+        backup.deleteSync();
+      }
+      await file.rename(backup.path);
+      return const AnnotationLoadResult(layers: {}, corrupt: true);
     }
+  }
+
+  /// Move the save file aside without reading it again. Used when its marks
+  /// do not fit the document that was opened (for example the PDF at that
+  /// path was replaced by one with fewer pages).
+  Future<void> quarantine(String filePath) async {
+    final savePath = await _savePath(filePath);
+    final file = File(savePath);
+    if (!file.existsSync()) return;
+    final backup = File('$savePath.corrupt');
+    if (backup.existsSync()) backup.deleteSync();
+    await file.rename(backup.path);
   }
 
   /// Check whether a save file exists for [filePath].
@@ -69,14 +129,27 @@ class AnnotationPersistenceService {
     }
   }
 
-  /// Compute the on-disk path for a given source file.
+  Future<void> _migrateLegacy(String filePath, String savePath) async {
+    final current = File(savePath);
+    if (current.existsSync()) return;
+    final legacyName = filePath.hashCode.toRadixString(36);
+    final legacy = File('${current.parent.path}/$legacyName.json');
+    if (!legacy.existsSync()) return;
+    try {
+      await legacy.rename(savePath);
+    } catch (_) {
+      // Leave the old file in place if it cannot be moved.
+    }
+  }
+
   Future<String> _savePath(String filePath) async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = documentsDirectory != null
+        ? await documentsDirectory!()
+        : await getApplicationDocumentsDirectory();
     final saveDir = Directory('${dir.path}/annotations');
     if (!saveDir.existsSync()) {
       saveDir.createSync(recursive: true);
     }
-    final hash = filePath.hashCode.toRadixString(36);
-    return '${saveDir.path}/$hash.json';
+    return '${saveDir.path}/${stableDocumentId(filePath)}.json';
   }
 }

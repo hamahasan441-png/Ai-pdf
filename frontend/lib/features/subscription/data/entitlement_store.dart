@@ -7,7 +7,7 @@ import '../domain/entitlement.dart';
 /// Persists the last-known [Entitlement] locally so Pro access survives
 /// restarts and works offline. This is a CACHE for UX only — it is not a
 /// source of truth. Authoritative entitlement must come from server-side
-/// purchase verification (see docs/CTO_REVIEW.md).
+/// purchase verification (see docs/MASTERPLAN.md).
 class EntitlementStore {
   static const String _key = 'entitlement_v1';
   static const String _trialUsedKey = 'trial_used_v1';
