@@ -126,7 +126,7 @@ def main() -> int:
         for e in all_errors:
             print(f"  - {e}")
         print("\n[fix] Replace:\n  is_pro(db, token) + check_and_increment(key)  →\n  tier, limit = await get_quota(db, token)\n  if limit is not None: allowed, count = check_and_increment_tiered(key, limit)")
-        print("\nSee docs/ENHANCEMENT_BASED_MASTERPLAN.md Pillar 5 E5.5")
+        print("\nSee docs/MASTERPLAN.md")
         return 1
     else:
         print("[check_metering] PASS — all AI endpoints use tiered metering")

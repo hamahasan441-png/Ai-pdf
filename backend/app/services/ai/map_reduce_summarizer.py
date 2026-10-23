@@ -123,7 +123,7 @@ async def stream_map_reduce_summarize(
     Yields dicts: {"type": "chunk", "index": int, "total": int, "summary": str}
     and finally {"type": "final", "summary": str, "chunks": int}
 
-    This implements E2.2 streaming (see ENHANCEMENT_BASED_MASTERPLAN.md).
+    This implements E2.2 streaming (see docs/MASTERPLAN.md).
     """
     chunks = _split_text(text, chunk_size)
 

@@ -212,7 +212,7 @@ cd frontend && flutter test
 
 ## Known issues & roadmap
 
-See `docs/MASTER_ENGINEERING_PLAN.md` for the full 5-part roadmap and `docs/EDITOR_AND_INTELLIGENCE_MASTERPLAN.md` for the deep editor/AI plan.
+See `docs/MASTERPLAN.md` for the current plan and roadmap.
 
 **Next priorities:**
 - Inline text editing (caret + selection, not dialog)

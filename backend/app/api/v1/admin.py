@@ -291,7 +291,7 @@ async def webhook_stats(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
         "inactive_or_dlq": inactive,
         "failed_delivery_attempts": failed_attempts,
         "successful_delivery_attempts": success_attempts,
-        "delivery_model": "v2 with HMAC signing + exponential backoff retry + DLQ (see ENHANCEMENT_BASED_MASTERPLAN.md E5.4/E7.2)",
+        "delivery_model": "v2 with HMAC signing + exponential backoff retry + DLQ (see docs/MASTERPLAN.md)",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
