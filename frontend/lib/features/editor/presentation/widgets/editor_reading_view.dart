@@ -70,7 +70,6 @@ class _EditorReadingViewState extends State<EditorReadingView> {
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      bottom: 96,
       child: LayoutBuilder(builder: (context, c) {
         final width = (c.maxWidth - 2 * EditorReadingView.margin).clamp(1.0, double.infinity);
         if (_scroll == null || _width != width) {

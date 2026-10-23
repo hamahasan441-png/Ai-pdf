@@ -230,9 +230,9 @@ class _BarSurface extends StatelessWidget {
         decoration: BoxDecoration(
           color: palette.barSurface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: palette.barForeground.withValues(alpha: 0.08)),
           boxShadow: const [
-            BoxShadow(color: Color(0x40000000), blurRadius: 12, offset: Offset(0, 4)),
+            BoxShadow(color: Color(0x1F111827), blurRadius: 18, offset: Offset(0, 6)),
           ],
         ),
         child: child,
@@ -327,7 +327,7 @@ class EditorSelectionActionBar extends StatelessWidget {
                         width: 30,
                         height: 30,
                         decoration: BoxDecoration(
-                          color: transformMode ? palette.handleColor : Colors.white.withValues(alpha: 0.10),
+                          color: transformMode ? palette.handleColor : palette.barForeground.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(9),
                         ),
                         child: Icon(
@@ -367,7 +367,7 @@ class EditorSelectionActionBar extends StatelessWidget {
 
   Widget _divider(EditorPalette palette) => SizedBox(
         height: 24,
-        child: VerticalDivider(color: Colors.white.withValues(alpha: 0.14), width: 4, thickness: 1),
+        child: VerticalDivider(color: palette.barForeground.withValues(alpha: 0.14), width: 4, thickness: 1),
       );
 }
 
@@ -472,7 +472,7 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                   ),
                 ),
               ),
-              _divider(),
+              _divider(palette),
               PopupMenuButton<String>(
                 tooltip: l10n.alignTools,
                 color: palette.barSurface,
@@ -493,7 +493,7 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                   _alignItem(palette.barForeground, 'bottom', Icons.align_vertical_bottom, l10n.alignBottom, onAlignBottom),
                 ],
               ),
-              _divider(),
+              _divider(palette),
               PopupMenuButton<String>(
                 tooltip: l10n.distributeTools,
                 color: palette.barSurface,
@@ -510,7 +510,7 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                   _alignItem(palette.barForeground, 'dv', Icons.vertical_distribute, l10n.distributeV, onDistributeV),
                 ],
               ),
-              _divider(),
+              _divider(palette),
               EditorMiniButton(
                   icon: Icons.copy_all, tooltip: l10n.duplicate, onTap: onDuplicate),
               EditorMiniButton(
@@ -539,8 +539,8 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
     );
   }
 
-  Widget _divider() => SizedBox(
+  Widget _divider(EditorPalette palette) => SizedBox(
         height: 24,
-        child: VerticalDivider(color: Colors.white.withValues(alpha: 0.14), width: 6, thickness: 1),
+        child: VerticalDivider(color: palette.barForeground.withValues(alpha: 0.14), width: 6, thickness: 1),
       );
 }

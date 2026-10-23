@@ -874,5 +874,14 @@
   "fieldNameDuplicate": "Otro campo ya tiene este nombre",
   "unsavedChangesDot": "Cambios sin guardar",
   "toolRasterNotice": "Esta herramienta guarda cada página como una imagen. Las páginas se ven igual, pero su texto ya no se puede seleccionar, buscar ni copiar, y no se conservan enlaces, campos de formulario ni marcadores. Para conservarlos, usa el editor.",
-  "compressNotSmaller": "Este PDF ya es compacto: comprimirlo lo haría más grande, así que tu archivo se dejó como estaba."
+  "compressNotSmaller": "Este PDF ya es compacto: comprimirlo lo haría más grande, así que tu archivo se dejó como estaba.",
+  "modeView": "Ver",
+  "modeAnnotate": "Anotar",
+  "modeText": "Texto",
+  "modeSign": "Rellenar",
+  "modePages": "Páginas",
+  "toolStyle": "Color y tamaño",
+  "toolThickness": "Grosor",
+  "toolTextSize": "Tamaño del texto",
+  "modeTextHint": "Toca un párrafo para cambiarlo o añade texto nuevo"
 }

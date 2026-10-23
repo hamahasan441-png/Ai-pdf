@@ -6,20 +6,32 @@ import 'package:ai_pdf/core/theme/motion.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_empty_state.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_loading_overlay.dart';
 
+/// The editor's layout: the top bar, the page area and the bottom bars in a
+/// column. When [chromeHidden] the bars fold away and the page takes the
+/// whole screen; the page area is the same widget either way, so the page,
+/// its zoom and anything being edited keep their state.
 class EditorScreenBody extends StatelessWidget {
   final Uint8List? bytes;
   final bool loading;
   final bool detecting;
   final String? detectingLabel;
   final VoidCallback onPick;
+  final Widget topBar;
   final Widget documentViewport;
   final Widget toolbar;
+
+  /// Full-screen reading: the bars are folded away.
+  final bool chromeHidden;
+
+  /// "3 / 8": shown briefly over the page while the bars are hidden.
+  final String? pageLabel;
+  final bool showPageLabel;
   final Widget? inlineOverlay;
   final Widget? richTextToolbar;
-  final Widget? thumbnailStrip;
   final Widget? searchBar;
 
-  /// A bar naming the current mode (such as Edit text) with a Done button.
+  /// A bar naming the current task (such as placing a field) with a button
+  /// to end it.
   final Widget? modeBanner;
 
   /// The bar on top of the keyboard while filling a form.
@@ -36,11 +48,14 @@ class EditorScreenBody extends StatelessWidget {
     required this.detecting,
     required this.detectingLabel,
     required this.onPick,
+    required this.topBar,
     required this.documentViewport,
     required this.toolbar,
+    this.chromeHidden = false,
+    this.pageLabel,
+    this.showPageLabel = false,
     this.inlineOverlay,
     this.richTextToolbar,
-    this.thumbnailStrip,
     this.searchBar,
     this.modeBanner,
     this.formFillBar,
@@ -53,22 +68,19 @@ class EditorScreenBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (bytes == null) {
-      return EditorEmptyState(loading: loading, onPick: onPick);
+      return Column(
+        children: [
+          topBar,
+          Expanded(child: EditorEmptyState(loading: loading, onPick: onPick)),
+        ],
+      );
     }
-    return Stack(
+    final duration = Motion.of(context, Motion.medium);
+    final page = Stack(
       fit: StackFit.expand,
       children: [
         documentViewport,
         if (inlineOverlay != null) inlineOverlay!,
-        EditorLoadingOverlay(
-          loading: loading,
-          detecting: detecting,
-          detectingLabel: detecting ? detectingLabel : null,
-        ),
-        Positioned(left: 0, right: 0, bottom: 0, child: toolbar),
-        if (thumbnailStrip != null)
-          Positioned(left: 0, right: 0, bottom: 96, child: thumbnailStrip!),
-        if (richTextToolbar != null) richTextToolbar!,
         // The bars over the page slide in and out instead of popping.
         Positioned(
           left: 16,
@@ -86,9 +98,29 @@ class EditorScreenBody extends StatelessWidget {
         Positioned(
           left: 8,
           right: 8,
-          bottom: thumbnailStrip != null ? 168 : 112,
+          bottom: 12,
           child: MotionReveal(from: const Offset(0, 0.3), child: textSelectionBar),
         ),
+        if (outlinePanel != null) Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
+        if (layerPanel != null) Positioned(right: 0, top: 0, bottom: 0, child: layerPanel!),
+      ],
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Column(
+          children: [
+            _Fold(visible: !chromeHidden, duration: duration, alignment: Alignment.bottomCenter, child: topBar),
+            Expanded(child: page),
+            _Fold(visible: !chromeHidden, duration: duration, alignment: Alignment.topCenter, child: toolbar),
+          ],
+        ),
+        EditorLoadingOverlay(
+          loading: loading,
+          detecting: detecting,
+          detectingLabel: detecting ? detectingLabel : null,
+        ),
+        if (richTextToolbar != null) richTextToolbar!,
         // Rides on the keyboard (or the bottom edge when it is closed).
         Positioned(
           left: 0,
@@ -96,12 +128,56 @@ class EditorScreenBody extends StatelessWidget {
           bottom: MediaQuery.viewInsetsOf(context).bottom,
           child: MotionReveal(from: const Offset(0, 0.5), child: formFillBar),
         ),
-        if (outlinePanel != null)
-          Positioned(left: 0, top: 0, bottom: 0, child: outlinePanel!),
-        if (layerPanel != null)
-          Positioned(right: 0, top: 0, bottom: 0, child: layerPanel!),
+        if (pageLabel != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24 + MediaQuery.paddingOf(context).bottom,
+            child: IgnorePointer(
+              child: Center(
+                child: AnimatedOpacity(
+                  opacity: chromeHidden && showPageLabel ? 1 : 0,
+                  duration: duration,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xB81F2328),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      pageLabel!,
+                      style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (pageOpsDialog != null) pageOpsDialog!,
       ],
+    );
+  }
+}
+
+/// Folds a bar to nothing and back, so the page area grows into its space.
+class _Fold extends StatelessWidget {
+  final bool visible;
+  final Duration duration;
+  final Alignment alignment;
+  final Widget child;
+
+  const _Fold({required this.visible, required this.duration, required this.alignment, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedAlign(
+        alignment: alignment,
+        heightFactor: visible ? 1 : 0,
+        duration: duration,
+        curve: Motion.enter,
+        child: IgnorePointer(ignoring: !visible, child: child),
+      ),
     );
   }
 }
