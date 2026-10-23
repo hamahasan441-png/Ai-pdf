@@ -8,7 +8,7 @@ cap — all via ``app.services.ai.usage_limiter`` and
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -31,7 +31,7 @@ from app.services.ai.usage_limiter import (
     identity_for,
 )
 
-from app.services.billing.quota_tiers import get_quota, get_quota_with_team
+from app.services.billing.quota_tiers import get_quota, get_quota_with_team, parse_team_header
 
 # Character threshold above which we switch to map-reduce summarization so the
 # full document is covered rather than truncated.
@@ -46,15 +46,22 @@ router = APIRouter(prefix="/document-ai", tags=["document-ai"])
 # Models
 # ---------------------------------------------------------------------------
 
+class ChatHistoryMessage(BaseModel):
+    """One prior turn. ``system`` is not allowed: it would override the grounding prompt."""
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4000)
+
+
 class DocumentChatRequest(BaseModel):
     """Chat with a document."""
     document_text: str = Field(..., max_length=50000,
                                description="OCR/extracted text of the document (from client)")
     question: str = Field(..., max_length=2000)
-    context_pages: list[str] = Field(default_factory=list,
-                                     description="Pre-retrieved relevant page excerpts")
-    history: list[dict] = Field(default_factory=list,
-                                description="Previous messages [{role, content}]")
+    context_pages: list[Annotated[str, Field(max_length=8000)]] = Field(
+        default_factory=list, max_length=10,
+        description="Pre-retrieved relevant page excerpts (max 10)")
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=20,
+                                              description="Previous messages [{role, content}] (max 20)")
 
 
 class DocumentChatResponse(BaseModel):
@@ -201,7 +208,7 @@ async def chat_with_document(
 
     # Add conversation history
     for msg in req.history[-10:]:  # Keep last 10 messages for context window
-        messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": msg.role, "content": msg.content})
 
     messages.append({"role": "user", "content": req.question})
 
@@ -651,16 +658,12 @@ async def _meter(
     limit = None
     source = "free"
 
-    if team_id_header:
-        try:
-            import uuid
-
-            team_uuid = uuid.UUID(team_id_header)
-            tier, limit, source = await get_quota_with_team(db, token, team_uuid)
-        except Exception:
-            # Invalid team id header — fall back to normal quota
-            tier, limit = await get_quota(db, token)
-            source = "entitlement" if token else "free"
+    team_uuid = parse_team_header(team_id_header)
+    if team_uuid:
+        # 403 unless the caller is an authenticated member of the team.
+        tier, limit, source = await get_quota_with_team(
+            db, token, team_uuid, user_id=user.id if user else None
+        )
     else:
         tier, limit = await get_quota(db, token)
         source = "entitlement" if token else "free"
@@ -669,8 +672,8 @@ async def _meter(
         return UNLIMITED
 
     # Identity: team-scoped counter if team quota, else user/ip
-    if source == "team" and team_id_header:
-        identity = f"team:{team_id_header}"
+    if source == "team" and team_uuid:
+        identity = f"team:{team_uuid}"  # canonical form: one counter per team
     else:
         identity = identity_for(user, request)
 

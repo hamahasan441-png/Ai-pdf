@@ -40,9 +40,15 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.models.user import User
 from app.services.ai.usage_limiter import UNLIMITED, check_and_increment_tiered, identity_for
-from app.services.billing.quota_tiers import get_quota_with_team
+from app.services.billing.quota_tiers import (
+    get_quota,
+    get_quota_with_team,
+    parse_team_header,
+    require_team_member,
+)
 
 from app.services.pdf.secure_redact import RedactionRejected, redact_pdf
+from app.utils.filenames import safe_filename as _safe_filename
 
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
 
@@ -71,32 +77,21 @@ async def _meter(request: Request, user: Optional[User], db: AsyncSession) -> in
     tier = "free"
     limit = None
     source = "free"
-    if team_id_header:
-        try:
-            import uuid
-
-            team_uuid = uuid.UUID(team_id_header)
-            tier, limit, source = await get_quota_with_team(db, token, team_uuid)
-        except Exception:
-            tier, limit = await get_quota_with_team(db, token, None)
-            tier = tier[0] if isinstance(tier, tuple) else tier
-            limit = limit[1] if isinstance(limit, tuple) else limit
-            source = "entitlement" if token else "free"
-            # fallback to simple
-            from app.services.billing.quota_tiers import get_quota
-
-            tier, limit = await get_quota(db, token)
+    team_uuid = parse_team_header(team_id_header)
+    if team_uuid:
+        # 403 unless the caller is an authenticated member of the team.
+        tier, limit, source = await get_quota_with_team(
+            db, token, team_uuid, user_id=user.id if user else None
+        )
     else:
-        from app.services.billing.quota_tiers import get_quota
-
         tier, limit = await get_quota(db, token)
         source = "entitlement" if token else "free"
 
     if limit is None:
         return UNLIMITED
 
-    if source == "team" and team_id_header:
-        identity = f"team:{team_id_header}"
+    if source == "team" and team_uuid:
+        identity = f"team:{team_uuid}"  # canonical form: one counter per team
     else:
         identity = identity_for(user, request)
 
@@ -192,14 +187,14 @@ async def redact_document(
 
     out_bytes = report.pdf
 
-    team_id_header = request.headers.get("X-Team-Id")
-    if team_id_header and user:
+    team_uuid = parse_team_header(request.headers.get("X-Team-Id"))
+    if team_uuid and user:
+        # Membership is enforced before metering (_meter); re-check here so a
+        # team audit entry is only ever written by a member of that team.
+        await require_team_member(db, team_uuid, user.id)
         try:
-            import uuid
-
             from app.services.team.team_service import record_audit
 
-            team_uuid = uuid.UUID(team_id_header)
             await record_audit(
                 db,
                 team_id=team_uuid,
@@ -228,11 +223,3 @@ async def redact_document(
             "X-Redaction-Occurrences-Elsewhere": str(report.occurrences_elsewhere),
         },
     )
-
-
-def _safe_filename(name: Optional[str]) -> str:
-    """ASCII-only name for headers and audit logs; drops quotes and paths."""
-    base = (name or "").replace("\\", "/").rsplit("/", 1)[-1]
-    cleaned = "".join(ch for ch in base if ch.isascii() and (ch.isalnum() or ch in "._- "))
-    cleaned = cleaned.strip(" .")[:120]
-    return cleaned or "document.pdf"

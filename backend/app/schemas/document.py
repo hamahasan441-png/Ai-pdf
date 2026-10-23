@@ -1,5 +1,6 @@
 """Document request/response schemas."""
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field
 class DocumentUploadResponse(BaseModel):
     """Response after uploading a document."""
 
-    id: str
+    id: uuid.UUID
     filename: str
     original_filename: str
     file_size: int
@@ -24,7 +25,7 @@ class DocumentUploadResponse(BaseModel):
 class DocumentResponse(BaseModel):
     """Full document response."""
 
-    id: str
+    id: uuid.UUID
     filename: str
     original_filename: str
     file_size: int
@@ -45,7 +46,7 @@ class DocumentResponse(BaseModel):
 class FormFieldResponse(BaseModel):
     """Form field response."""
 
-    id: str
+    id: uuid.UUID
     field_name: str
     field_label: Optional[str] = None
     field_type: str

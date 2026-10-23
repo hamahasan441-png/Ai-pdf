@@ -16,13 +16,21 @@ import json
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.database import get_db
 from app.models.entitlement import Entitlement
+from app.services.auth.id_token import (
+    GOOGLE_ISSUERS,
+    GOOGLE_JWKS_URL,
+    IdTokenKeysUnavailable,
+    InvalidIdToken,
+    verify_id_token,
+)
 from app.services.billing.play_verifier import play_verifier
 
 logger = logging.getLogger(__name__)
@@ -153,32 +161,70 @@ def _decode_pubsub_message(payload: dict) -> dict | None:
         return None
 
 
+async def _require_pubsub_push(authorization: str | None) -> None:
+    """Authenticate a Pub/Sub push request (fail closed).
+
+    The push subscription must attach a Google-signed OIDC token. We verify
+    its signature against Google's JWKS, that ``aud`` is RTDN_PUSH_AUDIENCE
+    and that it was minted for RTDN_PUSH_SERVICE_ACCOUNT (verified email).
+    When either setting is blank the endpoint rejects everything.
+    """
+    audience = settings.RTDN_PUSH_AUDIENCE.strip()
+    service_account = settings.RTDN_PUSH_SERVICE_ACCOUNT.strip()
+    if not audience or not service_account:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RTDN push authentication is not configured on the server.",
+        )
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing push token")
+    try:
+        claims = await verify_id_token(
+            authorization[7:],
+            jwks_url=GOOGLE_JWKS_URL,
+            audiences=[audience],
+            issuers=GOOGLE_ISSUERS,
+        )
+    except IdTokenKeysUnavailable:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google keys unavailable")
+    except InvalidIdToken:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid push token")
+    if claims.get("email") != service_account or claims.get("email_verified") not in (True, "true"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Push token from unexpected sender")
+
+
 @router.post("/rtdn")
-async def realtime_developer_notification(payload: dict, db: AsyncSession = Depends(get_db)):
+async def realtime_developer_notification(
+    payload: dict,
+    authorization: str | None = Header(None, alias="Authorization"),
+    db: AsyncSession = Depends(get_db),
+):
     """Play Real-time Developer Notifications (Pub/Sub push) webhook.
 
     Wire this URL as the RTDN endpoint in Play Console to receive
-    renewal / cancellation / refund / pause events.
+    renewal / cancellation / refund / pause events. The Pub/Sub push
+    subscription must be authenticated (OIDC token, see _require_pubsub_push).
 
-    Flow (enhancement-based):
-    1. Decode Pub/Sub push envelope (base64 data -> JSON).
-    2. Extract subscriptionNotification / oneTimeProductNotification.
-    3. If purchase_token present, re-verify via Play verifier when configured;
-       else mark validity based on notificationType.
-    4. Upsert Entitlement so subsequent X-Entitlement-Token checks reflect
-       renewal/cancel/expiry immediately.
-    5. Always return 200 quickly — Play retries on non-2xx.
+    Flow:
+    1. Authenticate the push (401/403 for forged or unauthenticated calls).
+    2. Decode Pub/Sub push envelope (base64 data -> JSON).
+    3. Extract the purchase token + product id. A notification never changes
+       an entitlement by itself: the entitlement is set ONLY from the result
+       of re-verifying the token with the Play Developer API.
+    4. Unknown products are acknowledged without any change.
+    5. Return 2xx once handled; transient verification failures return 5xx so
+       Pub/Sub retries.
 
     Notification types (subscriptions):
     - 1 SUBSCRIPTION_RECOVERED, 2 RENEWED, 3 CANCELED, 4 PURCHASED,
       5 ON_HOLD, 6 IN_GRACE_PERIOD, 7 RESTARTED, 8 PRICE_CHANGE_CONFIRMED,
       9 DEFERRED, 10 PAUSED, 11 PAUSE_SCHEDULE_CHANGED, 12 REVOKED, 13 EXPIRED
     """
-    logger.info("RTDN received: %s", str(payload)[:500])
+    await _require_pubsub_push(authorization)
 
     decoded = _decode_pubsub_message(payload)
     if decoded is None:
-        # Not Pub/Sub envelope, treat raw payload as event (tests / manual push)
+        # Not Pub/Sub envelope, treat raw payload as event (manual push)
         decoded = payload
 
     # Try to extract common fields
@@ -203,77 +249,49 @@ async def realtime_developer_notification(payload: dict, db: AsyncSession = Depe
         purchase_token = voided.get("purchaseToken")
         product_id = voided.get("productId")
 
-    # Fallback direct fields (for tests)
+    # Fallback direct fields
     if not purchase_token and isinstance(decoded, dict):
         purchase_token = decoded.get("purchase_token") or decoded.get("purchaseToken")
-        product_id = decoded.get("product_id") or decoded.get("productId") or decoded.get("subscriptionId") or "unknown"
+        product_id = decoded.get("product_id") or decoded.get("productId") or decoded.get("subscriptionId")
         notification_type = decoded.get("notificationType", notification_type)
 
-    if not purchase_token:
-        logger.info("RTDN: no purchase_token found, ack only (decoded=%s)", str(decoded)[:500])
+    if not purchase_token or not isinstance(purchase_token, str):
+        logger.info("RTDN: no purchase_token found, ack only")
         return {"received": True, "decoded": bool(decoded), "action": "ack_no_token"}
 
-    # If verifier is configured, re-verify authoritative state
-    if play_verifier.configured and product_id and product_id != "unknown":
-        try:
-            is_sub = True
-            # Heuristic: one-time product is not subscription
-            if one_time:
-                is_sub = False
-            result = await play_verifier.verify(product_id, purchase_token, is_sub)
-            await _persist_rtdn_event(db, product_id, purchase_token, result.valid, result.tier, result.expiry_millis)
-            logger.info(
-                "RTDN re-verified token %s... -> valid=%s tier=%s type=%s",
-                purchase_token[:12],
-                result.valid,
-                result.tier,
-                notification_type,
-            )
-            return {"received": True, "reverified": True, "valid": result.valid, "tier": result.tier}
-        except httpx.HTTPStatusError as e:
-            # 404/410 = token invalid/expired -> mark invalid
-            if e.response.status_code in (404, 410):
-                await _persist_rtdn_event(db, product_id or "unknown", purchase_token, False, "free", None)
-                return {"received": True, "reverified": False, "marked_invalid": True, "reason": f"Play {e.response.status_code}"}
-            logger.warning("RTDN re-verify failed %s: %s", e.response.status_code, e.response.text[:200])
-            # Fall through to notification-type heuristic
-        except Exception as e:  # noqa: BLE001
-            logger.warning("RTDN re-verify exception: %s", e)
+    known_products = {settings.PRODUCT_MONTHLY, settings.PRODUCT_YEARLY, settings.PRODUCT_LIFETIME}
+    if product_id not in known_products:
+        logger.info("RTDN: unknown product %r, ack without change", product_id)
+        return {"received": True, "action": "ignored_unknown_product"}
 
-    # Fallback heuristic when verifier not configured or re-verify failed:
-    # Map notification types to entitlement validity.
-    # Types that imply still valid: 1,2,4,7 ; invalid / should revoke: 3,12,13 (cancel/revoked/expired)
-    valid = True
-    tier = "unknown"
-    if notification_type in (3, 12, 13):
-        valid = False
-        tier = "free"
-    elif notification_type in (5, 6, 10):  # on hold, grace, paused — treat as still valid but flag
-        valid = True
-        tier = "monthly"  # keep existing tier intent
-    else:
-        valid = True
+    if not play_verifier.configured:
+        # Without the authoritative Play check we must not touch entitlements.
+        # 503 makes Pub/Sub redeliver once verification is configured.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Purchase verification is not configured on the server.",
+        )
 
-    # If we have an existing entitlement, preserve its tier when notification says still valid
+    is_sub = product_id != settings.PRODUCT_LIFETIME
     try:
-        existing = (
-            await db.execute(
-                select(Entitlement).where(Entitlement.purchase_token == purchase_token)
-            )
-        ).scalar_one_or_none()
-        if existing and valid:
-            tier = existing.tier
-        elif existing and not valid:
-            tier = "free"
-    except Exception:  # noqa: BLE001
-        pass
+        result = await play_verifier.verify(product_id, purchase_token, is_sub)
+    except httpx.HTTPStatusError as e:
+        # 404/410 from Play = token invalid/expired -> authoritative "not entitled".
+        if e.response.status_code in (404, 410):
+            await _persist_rtdn_event(db, product_id, purchase_token, False, "free", None)
+            return {"received": True, "reverified": True, "valid": False, "tier": "free"}
+        logger.warning("RTDN re-verify failed %s: %s", e.response.status_code, e.response.text[:200])
+        raise HTTPException(status_code=502, detail="Play verification service error")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("RTDN re-verify exception: %s", e)
+        raise HTTPException(status_code=502, detail="Play verification error")
 
-    await _persist_rtdn_event(db, product_id or "unknown", purchase_token, valid, tier, None)
-    return {
-        "received": True,
-        "reverified": False,
-        "heuristic_valid": valid,
-        "tier": tier,
-        "notification_type": notification_type,
-    }
-
+    await _persist_rtdn_event(db, product_id, purchase_token, result.valid, result.tier, result.expiry_millis)
+    logger.info(
+        "RTDN re-verified token %s... -> valid=%s tier=%s type=%s",
+        purchase_token[:12],
+        result.valid,
+        result.tier,
+        notification_type,
+    )
+    return {"received": True, "reverified": True, "valid": result.valid, "tier": result.tier}

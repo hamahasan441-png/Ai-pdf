@@ -29,7 +29,7 @@ from app.db.database import get_db
 from app.models.user import User
 from app.services.ai.provider import ai_provider
 from app.services.ai.usage_limiter import UNLIMITED, check_and_increment_tiered, identity_for
-from app.services.billing.quota_tiers import get_quota, get_quota_with_team
+from app.services.billing.quota_tiers import get_quota, get_quota_with_team, parse_team_header
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +72,12 @@ async def _meter(request: Request, user: Optional[User], db: AsyncSession) -> in
     tier = "free"
     limit = None
     source = "free"
-    if team_id_header:
-        try:
-            import uuid
-
-            team_uuid = uuid.UUID(team_id_header)
-            tier, limit, source = await get_quota_with_team(db, token, team_uuid)
-        except Exception:
-            tier, limit = await get_quota(db, token)
-            source = "entitlement" if token else "free"
+    team_uuid = parse_team_header(team_id_header)
+    if team_uuid:
+        # 403 unless the caller is an authenticated member of the team.
+        tier, limit, source = await get_quota_with_team(
+            db, token, team_uuid, user_id=user.id if user else None
+        )
     else:
         tier, limit = await get_quota(db, token)
         source = "entitlement" if token else "free"
@@ -88,7 +85,7 @@ async def _meter(request: Request, user: Optional[User], db: AsyncSession) -> in
     if limit is None:
         return UNLIMITED
 
-    identity = f"team:{team_id_header}" if source == "team" and team_id_header else identity_for(user, request)
+    identity = f"team:{team_uuid}" if source == "team" and team_uuid else identity_for(user, request)
     allowed, count = check_and_increment_tiered(identity, limit)
     if not allowed:
         raise HTTPException(status_code=429, detail="Daily AI limit reached")

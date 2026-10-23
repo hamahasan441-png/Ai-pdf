@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.auth import get_current_user
+from app.core.config import settings
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.db.database import get_db
 from app.models.team import (
@@ -162,6 +163,10 @@ async def update_team_quota(
     if request.ai_daily_quota is not None:
         if request.ai_daily_quota < 1:
             raise ValidationError("ai_daily_quota must be >=1 or None")
+        if request.ai_daily_quota > settings.AI_TEAM_DAILY_QUOTA_MAX:
+            raise ValidationError(
+                f"ai_daily_quota must be <= {settings.AI_TEAM_DAILY_QUOTA_MAX}"
+            )
         team.ai_daily_quota = request.ai_daily_quota
     # Allow explicit nullification: when client sends {"ai_daily_quota": null}
     # Pydantic will set None, but we need to distinguish between omitted and null.
