@@ -519,7 +519,6 @@
   "fileMissing": "الملف لم يعد موجوداً",
   "saveToDevice": "حفظ على الجهاز",
   "savedToDevice": "تم الحفظ على الجهاز",
-  "savedToAppFolder": "تم الحفظ في مجلد Pdoczy",
   "saveCancelled": "تم إلغاء الحفظ",
   "couldNotShare": "تعذّرت المشاركة: {error}",
   "noFilesToShare": "لا توجد ملفات للمشاركة",

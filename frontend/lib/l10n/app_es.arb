@@ -519,7 +519,6 @@
   "fileMissing": "El archivo ya no existe",
   "saveToDevice": "Guardar en el dispositivo",
   "savedToDevice": "Guardado en el dispositivo",
-  "savedToAppFolder": "Guardado en la carpeta Pdoczy",
   "saveCancelled": "Guardado cancelado",
   "couldNotShare": "No se pudo compartir: {error}",
   "noFilesToShare": "No hay archivos para compartir",

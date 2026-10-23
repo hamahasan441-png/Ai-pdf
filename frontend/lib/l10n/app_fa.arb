@@ -519,7 +519,6 @@
   "fileMissing": "فایل دیگر وجود ندارد",
   "saveToDevice": "ذخیره در دستگاه",
   "savedToDevice": "در دستگاه ذخیره شد",
-  "savedToAppFolder": "در پوشهٔ Pdoczy ذخیره شد",
   "saveCancelled": "ذخیره لغو شد",
   "couldNotShare": "اشتراک‌گذاری نشد: {error}",
   "noFilesToShare": "فایلی برای اشتراک نیست",

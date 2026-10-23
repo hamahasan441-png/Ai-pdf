@@ -872,7 +872,6 @@
   "fileMissing": "The file no longer exists",
   "saveToDevice": "Save to device",
   "savedToDevice": "Saved to device",
-  "savedToAppFolder": "Saved to the Pdoczy folder",
   "saveCancelled": "Save cancelled",
   "couldNotShare": "Could not share: {error}",
   "@couldNotShare": {

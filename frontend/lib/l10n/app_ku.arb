@@ -519,7 +519,6 @@
   "fileMissing": "فایلەکە ئیتر نەماوە",
   "saveToDevice": "پاشەکەوتکردن لە ئامێر",
   "savedToDevice": "لە ئامێر پاشەکەوت کرا",
-  "savedToAppFolder": "لە بوخچەی Pdoczy پاشەکەوت کرا",
   "saveCancelled": "پاشەکەوتکردن هەڵوەشێنرایەوە",
   "couldNotShare": "هاوبەشکردن نەکرا: {error}",
   "noFilesToShare": "هیچ فایلێک بۆ هاوبەشکردن نییە",

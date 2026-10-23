@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -69,6 +70,28 @@ void main() {
     await again.load();
     expect(again.current.items.single.name, 'report.pdf');
     expect(LibraryController.typeOf('scan.JPG'), LibraryItemType.image);
+  });
+
+  test('a damaged catalogue keeps its good entries and a backup', () async {
+    final good = LibraryItem(
+      id: 'a',
+      name: 'kept.pdf',
+      path: '/x/kept.pdf',
+      type: LibraryItemType.pdf,
+      sizeBytes: 1,
+      createdAt: DateTime(2026),
+      modifiedAt: DateTime(2026),
+    ).toJson();
+    final raw = jsonEncode([good, 42, {'name': 'no id'}]);
+    SharedPreferences.setMockInitialValues({'library_items_v1': raw});
+    final items = await const LibraryRepository().loadItems();
+    expect(items.map((i) => i.name), ['kept.pdf']);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('library_items_v1.damaged'), raw);
+
+    SharedPreferences.setMockInitialValues({'library_items_v1': '{not json'});
+    expect(await const LibraryRepository().loadItems(), isEmpty);
+    expect((await SharedPreferences.getInstance()).getString('library_items_v1.damaged'), '{not json');
   });
 
   testWidgets('import, rename, pin and delete from the item menu', (tester) async {
