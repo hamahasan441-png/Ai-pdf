@@ -28,6 +28,11 @@ router = APIRouter(prefix="/admin/perf", tags=["Admin"])
 # Each entry: {timestamp, route, pageCount, annotationCount, lowRamMode, p95Ms, slowRate, etc}
 _recent_events: deque = deque(maxlen=1000)
 _summary_by_route: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+# Ingest is public: bound the number of distinct route keys so arbitrary
+# client-chosen routes cannot grow memory without limit. New routes beyond the
+# cap are folded into one bucket.
+_MAX_ROUTES = 200
+_OVERFLOW_ROUTE = "(other)"
 
 
 class PerfIngestRequest(BaseModel):
@@ -38,7 +43,7 @@ class PerfIngestRequest(BaseModel):
     pageCount: Optional[int] = None
     annotationCount: Optional[int] = None
     lowRamMode: Optional[bool] = None
-    route: Optional[str] = Field("/home", description="Current route")
+    route: Optional[str] = Field("/home", max_length=200, description="Current route")
     slow: Optional[bool] = False
     p50Ms: Optional[int] = None
     p95Ms: Optional[int] = None
@@ -59,6 +64,8 @@ async def ingest_perf(request: Request, body: PerfIngestRequest):
 
     # If summary (has p95), aggregate by route
     route = body.route or "/home"
+    if route not in _summary_by_route and len(_summary_by_route) >= _MAX_ROUTES:
+        route = _OVERFLOW_ROUTE
     if body.p95Ms is not None:
         _summary_by_route[route].append(event)
         # Keep only last 100 per route
