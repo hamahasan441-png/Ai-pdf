@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
+import 'package:intl/intl.dart' show Bidi;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColors;
 import 'package:pdf/widgets.dart' as pw;
@@ -10,6 +12,9 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import '../../../core/image/image_ops.dart';
 import '../../../core/services/ocr_service.dart';
 import '../../../core/utils/error_text.dart';
+import '../../editor/data/document_plain_text.dart';
+import '../../editor/data/pdf_content_text_extractor.dart';
+import '../../editor/data/text_layer_extraction_service.dart';
 
 /// OfflinePdfService - All document operations run 100% ON-DEVICE.
 ///
@@ -292,6 +297,42 @@ class OfflinePdfService {
   // WATERMARK (offline: overlay diagonal text on every page)
   // ==========================================================
 
+  /// [text] as a PNG drawn at twice its size, with its size in points, for
+  /// placing on a PDF page. Any script and direction.
+  @visibleForTesting
+  Future<({pw.MemoryImage image, double width, double height})> textImage(
+    String text, {
+    required double fontSize,
+    required ui.Color color,
+  }) async {
+    const k = 2.0;
+    final rtl = Bidi.detectRtlDirectionality(text);
+    final builder = ui.ParagraphBuilder(ui.ParagraphStyle(
+      textDirection: rtl ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+      fontSize: fontSize * k,
+      fontWeight: ui.FontWeight.bold,
+      maxLines: 1,
+    ))
+      ..pushStyle(ui.TextStyle(color: color))
+      ..addText(text);
+    final paragraph = builder.build()..layout(const ui.ParagraphConstraints(width: double.infinity));
+    final w = paragraph.maxIntrinsicWidth.ceil() + 4;
+    final h = paragraph.height.ceil() + 4;
+    paragraph.layout(ui.ParagraphConstraints(width: w.toDouble()));
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawParagraph(paragraph, const ui.Offset(2, 2));
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(w, h);
+    try {
+      final png = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (png == null) throw StateError('The watermark text could not be drawn');
+      return (image: pw.MemoryImage(png.buffer.asUint8List()), width: w / k, height: h / k);
+    } finally {
+      img.dispose();
+      picture.dispose();
+    }
+  }
+
   /// Stamp a semi-transparent diagonal [text] watermark across every page.
   Future<String> watermarkPdf(
     String pdfPath,
@@ -300,6 +341,9 @@ class OfflinePdfService {
   }) async {
     final label = text.trim().isEmpty ? 'CONFIDENTIAL' : text.trim();
     final op = opacity.clamp(0.05, 1.0).toDouble();
+    // Drawn by Flutter's own text shaper: the PDF library's built-in font is
+    // Latin-only, so Kurdish, Arabic or Persian text came out blank.
+    final mark = await textImage(label, fontSize: 54, color: const ui.Color(0xFF546E7A));
     final doc = await pdfx.PdfDocument.openFile(pdfPath);
     final out = pw.Document();
     try {
@@ -322,14 +366,7 @@ class OfflinePdfService {
                       angle: 0.6,
                       child: pw.Opacity(
                         opacity: op,
-                        child: pw.Text(
-                          label,
-                          style: pw.TextStyle(
-                            fontSize: 54,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey600,
-                          ),
-                        ),
+                        child: pw.Image(mark.image, width: mark.width, height: mark.height),
                       ),
                     ),
                   ),
@@ -510,13 +547,24 @@ class OfflinePdfService {
   // PDF -> TEXT (offline: OCR each page, combine to a .txt file)
   // ==========================================================
 
-  /// OCR every page and combine the text into a single .txt file, useful
-  /// for copy/pasting or searching the full content of a scanned document.
+  /// The text of every page in a single .txt file, for copying or
+  /// searching. A page's own text layer is used when it has one (exact, any
+  /// script); only pages without text, such as scans, are OCR'd.
   Future<String> pdfToText(String pdfPath) async {
+    // Parsed off the UI thread: a large file would otherwise freeze it.
+    final textLayer = await compute(_extractTextLayer, await File(pdfPath).readAsBytes());
     final doc = await pdfx.PdfDocument.openFile(pdfPath);
     final buf = StringBuffer();
     try {
       for (var i = 1; i <= doc.pagesCount; i++) {
+        final own = plainTextOfPage(textLayer[i - 1] ?? const []);
+        if (own.isNotEmpty) {
+          buf
+            ..writeln('--- Page $i ---')
+            ..writeln(own)
+            ..writeln();
+          continue;
+        }
         final page = await doc.getPage(i);
         try {
           final longEdge = page.width > page.height ? page.width : page.height;
@@ -743,3 +791,5 @@ class UnreadablePageError implements Exception, KindedError {
   @override
   String toString() => 'Page $page could not be read';
 }
+
+Map<int, List<PdfTextElement>> _extractTextLayer(Uint8List bytes) => const PdfContentTextExtractor().extract(bytes);
