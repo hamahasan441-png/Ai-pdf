@@ -65,14 +65,17 @@ class EditorRichTextToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Floats above the keyboard; slides up when typing starts and away when
-    // it ends.
+    // The scaffold does not shrink for the keyboard, so the bar has to
+    // rise with it. Otherwise bold, size and colour sit underneath it
+    // while a new text box is being typed.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     return Positioned(
       left: 8,
       right: 8,
-      bottom: 8,
+      bottom: keyboard + (keyboard == 0 ? 0 : 8),
       child: SafeArea(
         top: false,
+        bottom: keyboard == 0,
         child: MotionReveal(from: const Offset(0, 0.4), child: hasFocus ? _bar(context) : null),
       ),
     );

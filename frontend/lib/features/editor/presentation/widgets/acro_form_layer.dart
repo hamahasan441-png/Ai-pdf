@@ -119,6 +119,12 @@ class AcroFormLayer extends StatelessWidget {
       AcroFieldKind.checkbox => _mark(on ? Icons.check : null, color: checkColor),
       AcroFieldKind.radio => _mark(on ? Icons.circle : null, round: true, color: markColor),
       AcroFieldKind.text || AcroFieldKind.choice => typing ? _input(p, page) : _text(p, value, page),
+      AcroFieldKind.signature => const FittedBox(
+          child: Padding(
+            padding: EdgeInsets.all(3),
+            child: Icon(Icons.draw_outlined, color: Color(0xFF6B7488)),
+          ),
+        ),
       _ => const SizedBox.shrink(),
     };
     final l10n = AppLocalizations.of(context);
@@ -131,6 +137,7 @@ class AcroFormLayer extends StatelessWidget {
                   l10n.formOption(f.name, p.widget.onState ?? ''),
                   if (on) l10n.formSelected,
                 ].join(', '),
+              AcroFieldKind.signature => '${l10n.fieldKindSignature}. ${f.name}',
               _ => '${f.name}: ${fieldDisplayText(f, value)}',
             };
 

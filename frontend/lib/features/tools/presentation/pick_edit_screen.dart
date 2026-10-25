@@ -507,7 +507,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _placeValue(Offset pos, double size, String text) {
-    final tb = _annotationFactory.textAt(pos, size, text, color: Colors.black);
+    final tb = _annotationFactory.textAt(pos, size, text, color: _color, bold: _bold);
     setState(() {
       _editorController.pushAnnotation(_layer, tb);
       _selected = tb;
@@ -610,7 +610,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   /// Fill & Sign: add a typed signature rendered in a script-like style. A fast
   /// alternative to drawing when the user just wants their name on the line.
-  Future<void> _typeSignature() async {
+  Future<void> _typeSignature({Offset? at, double? size}) async {
     final val = await _promptValue(
       AppLocalizations.of(context)!.typeYourSignature,
       TextInputType.text,
@@ -621,6 +621,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         // Auto-select the typed signature so it can be moved/resized right away,
         // consistent with drawn/saved signatures and other annotations.
         final typed = _annotationFactory.typedSignature(val.trim());
+        if (at != null) typed.pos = at;
+        if (size != null) typed.size = size;
         _pushItem(typed);
         _selected = typed;
         _tool = EditTool.pan;
@@ -2392,6 +2394,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     setState(() {
       _editorController.beginEdit([sel], label: 'Text colour');
       sel.color = picked;
+      _color = picked;
       _editorController.commitEdit(_layer, force: true);
     });
   }
@@ -2898,6 +2901,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         editing.runs = _richText.toggleBold(editing, 0, editing.text.length);
       } else {
         editing.bold = !editing.bold;
+        _bold = editing.bold;
       }
       _hasUnsavedChanges = true;
     });
@@ -2948,8 +2952,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (!range.isCollapsed) {
         editing.runs = _richText.applyStyle(editing, start: range.start, end: range.end, color: picked);
       } else {
-        // No selection: the whole box. Runs drop their own colour.
+        // No selection: the whole box. Runs drop their own colour, and the
+        // next text box and the next filled field use this colour too.
         editing.color = picked;
+        _color = picked;
         final runs = editing.runs;
         if (runs != null) {
           editing.runs = [
@@ -3110,7 +3116,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _schedulePersist();
   }
 
-  Future<void> _addSignature() async {
+  Future<void> _addSignature({Offset? center, Offset? textAt, double? width}) async {
     List<Offset>? points;
     final choice = await showEditorSignaturePickerSheet(
       context,
@@ -3122,7 +3128,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       return;
     }
     if (choice.action == 'type') {
-      await _typeSignature();
+      await _typeSignature(at: textAt ?? center, size: width == null ? null : (width * 0.35).clamp(0.02, 0.06));
       return;
     } else if (choice.action == 'new') {
       points = await _drawSignature();
@@ -3135,7 +3141,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         // Insert as a normal stroke annotation, then immediately select it and
         // switch to the pan tool so the user can drag it and resize it via the
         // selection handles — same behaviour as stamps / images / text boxes.
-        final signature = _signatureInsert.signatureFromPadPoints(points!);
+        // A tap on a signature field centres it on that field.
+        final signature = _signatureInsert.signatureFromPadPoints(
+          points!,
+          centerX: center?.dx ?? 0.5,
+          centerY: center?.dy ?? 0.5,
+          targetW: width ?? 0.32,
+        );
         _pushItem(signature);
         _selected = signature;
         _tool = EditTool.pan;
@@ -3419,7 +3431,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final turns = _pageQuarterTurns[page] ?? 0;
     final placed = <PlacedAcroWidget>[
       for (final f in _form.fields)
-        if (f.kind != AcroFieldKind.pushButton && f.kind != AcroFieldKind.signature)
+        if (f.kind != AcroFieldKind.pushButton)
           for (final w in f.widgets)
             if (w.pageIndex == source) (field: f, widget: w, rect: _form.rectOf(w, quarterTurns: turns)),
     ];
@@ -3430,8 +3442,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       key: interactive ? _formLayerKey : null,
       widgets: placed,
       edits: _formValues,
-      // Drawing tools keep drawing over fields; Move and Select fill them.
-      interactive: interactive && (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
+      // Fill & Sign is for the form: a check or a cross must not stop a tap
+      // on a field. Drawing tools still pass over the fields.
+      interactive: interactive &&
+          !_redactionController.isActive &&
+          (_mode == EditorMode.sign || _tool == EditTool.pan || _tool == EditTool.select),
       onTap: _fillFormField,
       focusName: fill?.field.name,
       focusObjNum: fill?.widget.objNum,
@@ -3515,6 +3530,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _focusField(field, widget);
         final next = await showFormChoiceSheet(context, field: field, current: fieldValue(field, _formValues));
         if (next != null && mounted) _setFieldValue(field, next);
+      case AcroFieldKind.signature:
+        final rect = _form.rectOf(widget, quarterTurns: _pageQuarterTurns[_current] ?? 0);
+        await _addSignature(center: rect.center, textAt: rect.topLeft, width: rect.width.clamp(0.18, 0.55));
       default:
         return;
     }
@@ -4052,7 +4070,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onColor: _pickSelectionColor,
           box: _inlineEditing,
           onFont: (f) => _styleInlineBox((b) => b.fontFamily = f),
-          onSizeStep: (d) => _styleInlineBox((b) => b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2)),
+          onSizeStep: (d) => _styleInlineBox((b) {
+            b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2);
+            _textSize = b.size.clamp(0.008, 0.08);
+          }),
           onAlign: (a) => _styleInlineBox((b) => b.textAlign = a),
           onToggleRtl: () => _styleInlineBox((b) => b.textDirection =
               b.textDirection == TextDirection.rtl ? TextDirection.ltr : TextDirection.rtl),
