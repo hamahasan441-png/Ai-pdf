@@ -3,8 +3,11 @@ import 'package:ai_pdf/features/editor/data/text_style_match.dart';
 /// How an existing PDF text run can be changed with the libraries this app
 /// actually ships.
 enum PdfEditMode {
-  /// A whiteout shape plus a new text box. The original content stream,
-  /// embedded font, and search text stay in the source file.
+  /// A whiteout plus a new text box. The editor does not rewrite the source
+  /// operators in place. On export, glyphs under that whiteout are removed
+  /// when their widths are known; a font with no metrics still flattens the
+  /// page. The new text is real PDF text when it can be, and an invisible
+  /// Unicode copy when it cannot, so search still finds it.
   overlayReplacement,
 }
 

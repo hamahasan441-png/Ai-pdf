@@ -7,14 +7,15 @@ import 'package:ai_pdf/features/editor/data/pdf_content_text_extractor.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_standard_widths.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
 final widths600 = '/FirstChar 32 /LastChar 126 /Widths [${'600 ' * 95}]';
 
 /// A 400 × 300 pt page. /F1 is a simple font with /Widths (600 for every
-/// character), /F2 Helvetica without widths, /F3 an Identity-H CID font
-/// (500 per glyph), /Fm a form with text.
-Uint8List page(String content, {String form = 'BT /F1 10 Tf 50 50 Td (FORM) Tj ET'}) {
+/// character), /F2 a Type 1 font (Helvetica unless [f2] says otherwise),
+/// /F3 an Identity-H CID font (500 per glyph), /Fm a form with text.
+Uint8List page(String content, {String form = 'BT /F1 10 Tf 50 50 Td (FORM) Tj ET', String f2 = '/Helvetica'}) {
   final objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -22,7 +23,7 @@ Uint8List page(String content, {String form = 'BT /F1 10 Tf 50 50 Td (FORM) Tj E
         '/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> /XObject << /Fm 9 0 R >> >> >>',
     '<< /Length ${content.length} >>\nstream\n$content\nendstream',
     '<< /Type /Font /Subtype /TrueType /BaseFont /Mono $widths600 >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont $f2 >>',
     '<< /Type /Font /Subtype /Type0 /BaseFont /Cid /Encoding /Identity-H /DescendantFonts [8 0 R] '
         '/ToUnicode 10 0 R >>',
     '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Cid /DW 500 /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>',
@@ -154,7 +155,7 @@ void main() {
   });
 
   test('a font without widths or text in a form is reported, not half erased', () {
-    final noWidths = page('BT /F2 10 Tf 20 100 Td (Hello) Tj ET');
+    final noWidths = page('BT /F2 10 Tf 20 100 Td (Hello) Tj ET', f2: '/NoMetrics');
     final (r1, _) = eraseIn(noWidths, [[0, 90, 400, 120]]);
     expect(r1.complete, isFalse);
     final inForm = page('q /Fm Do Q');
@@ -163,6 +164,17 @@ void main() {
     final formElsewhere = page('q /Fm Do Q BT /F1 10 Tf 20 200 Td (Hi) Tj ET', form: 'BT /F1 10 Tf 300 20 Td (X) Tj ET');
     final (r3, _) = eraseIn(formElsewhere, [[15, 195, 40, 215]]);
     expect(r3.complete, isTrue, reason: "the form's text is outside the region");
+  });
+
+  test('Helvetica without a /Widths array uses the standard metrics', () {
+    expect(standard14Widths('Helvetica')![0x41], 667);
+    expect(standard14Widths('Courier-Bold')![0x41], 600);
+    final pdf = page('BT /F2 12 Tf 20 100 Td (OLDWORD) Tj ET');
+    final (r, out) = eraseIn(pdf, [[15, 90, 120, 120]]);
+    expect(r.complete, isTrue);
+    expect(r.removed, 7);
+    final text = (const PdfContentTextExtractor().extract(out)[0] ?? const []).map((w) => w.text).join(' ');
+    expect(text, isNot(contains('OLDWORD')));
   });
 
   test('everything else is copied byte for byte, inline images too', () {

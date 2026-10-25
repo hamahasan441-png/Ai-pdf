@@ -163,11 +163,13 @@ Also fixed:
 - `frontend/test/editor/pdf_source/preserving_export_test.dart` runs against
   synthetic PDFs from `frontend/test/fixtures/pdf/make_fixtures.py`: classic
   and object-stream xrefs, an incremental file, inherited attributes, an
-  encrypted and a truncated file. It checks that original content streams are
-  unchanged byte for byte, that deleted and flattened pages' content is not in
-  the output, form field pruning, bookmark retargeting, overlay placement for
-  all rotations, refusal of encrypted input, and that truncated or randomly
-  corrupted input only ever parses or is refused (never crashes). A
+  encrypted (empty user password, AES-256 revision 6) and a truncated file. It
+  checks that original content streams are unchanged byte for byte, that deleted
+  and flattened pages' content is not in the output, form field pruning, bookmark
+  retargeting, overlay placement for all rotations, that an empty-password
+  AES-256 file is decrypted and rewritten without /Encrypt while a file that
+  needs a password is refused, and that truncated or randomly corrupted input
+  only ever parses or is refused (never crashes). A
   600-page document parses and is rewritten in reverse order in about 30 ms
   here.
 - In CI the same tests keep their output, and
@@ -184,10 +186,14 @@ Vector (searchable) export is used only when `pdf` 3.11 can shape the text
 correctly: every character is in the chosen font, every Arabic-script letter
 has presentation forms in `pdf`'s shaper, and the text does not mix RTL and
 Latin letters. Sorani text almost always contains ڕ ڵ ێ ە or ۊ, which that
-shaper cannot join, so Sorani is painted into the page image: correct shapes,
-not searchable. Exported vector Arabic is stored as presentation forms; it
-extracts, and matches after NFKC normalisation, but plain PyMuPDF
-`search_for` with base letters does not find it.
+shaper cannot join, so Sorani is painted into the page image: correct shapes.
+The same export writes those characters again as invisible Unicode
+(text render mode 3, Identity-H, a ToUnicode map of the original code points),
+so Find and copy see `سڵاو` and not a picture. Arabic that the shaper can
+draw is still stored as presentation forms for the visible glyphs, and the
+same invisible layer carries the base letters, which is what PyMuPDF
+`search_for` matches. The shaper itself is unchanged and still does not
+support the Sorani letters.
 
 ## Undo, redo and recovery
 
@@ -217,12 +223,17 @@ structure has no widget test.
 
 ## Not done
 
-- Native editing of existing PDF text. Edits are overlays (a box covering the
-  old text plus new text) and the UI says so.
-- Keep-original export of encrypted PDFs (the app asks before an image-only
-  export instead).
-- Removing the original text under an overlay edit while keeping the rest of
-  the page as text: such pages are saved as images.
+- Native in-place rewriting of existing text operators into the new words in
+  the same embedded font. An edit is still a whiteout plus new text. On
+  export the covered glyphs are removed when the font has widths (including
+  Helvetica, Times and Courier with no /Widths array). A custom font with no
+  metrics, or text inside a Form XObject, still flattens that page.
+- Encrypted PDFs other than standard AES-256 revision 6 (/V 5 /R 6). That
+  revision opens with the user or owner password, including an empty user
+  password, and the export is an ordinary unencrypted PDF with the text and
+  form values kept. A wrong password, or an older encryption, is refused.
+  The editor does not ask for a password in the UI; only an empty password
+  is tried on open.
 - A widget test of the editor screen itself (the workflow is tested at the
   controller and recovery-file level).
 - Pre-existing translation gaps: 12 keys each in Arabic, German and Spanish,

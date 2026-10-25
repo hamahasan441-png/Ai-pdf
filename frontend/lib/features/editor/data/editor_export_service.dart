@@ -365,6 +365,7 @@ class EditorExportService {
           generatedCount++,
           replacesSource: source < 0 ? null : source,
           newFields: newFieldsOf(layers[i]),
+          searchable: _searchRuns(pageLayers[i], uni, size.height),
         ));
         await Future<void>.delayed(Duration.zero);
         continue;
@@ -421,6 +422,7 @@ class EditorExportService {
         overlayPage: generatedCount++,
         eraseRegions: eraseJobs[i]?.$2 ?? const [],
         newFields: newFieldsOf(layer),
+        searchable: _searchRuns(layer, uni, pageH),
       ));
       await Future<void>.delayed(Duration.zero);
     }
@@ -649,6 +651,24 @@ class EditorExportService {
       latin1: _isLatin1(t.text),
       unicodeFontAvailable: uni.pick(t) != null,
     );
+  }
+
+  /// Text the vector export does not store as the original characters.
+  ///
+  /// Latin text that [_canVectorize] accepts is already searchable. Everything
+  /// else (Sorani, mixed direction, rotated or multi-run text, and Arabic
+  /// stored as presentation forms) gets an invisible Unicode layer so search
+  /// and copy see the base letters. The visible shapes stay as they are.
+  List<SearchableRun> _searchRuns(PageLayer? layer, PdfUnicodeFonts uni, double pageH) {
+    if (layer == null || pageH <= 0) return const [];
+    final runs = <SearchableRun>[];
+    for (final t in layer.texts) {
+      if (!t.visible || t.text.trim().isEmpty) continue;
+      if (_canVectorize(t, uni) && _isLatin1(t.text)) continue;
+      final size = t.size * pageH;
+      runs.add(SearchableRun(t.text, t.pos.dx, t.pos.dy, size < 1 ? 1.0 : size));
+    }
+    return runs;
   }
 
   /// Build a positioned vector-text widget, choosing a standard PDF font for
