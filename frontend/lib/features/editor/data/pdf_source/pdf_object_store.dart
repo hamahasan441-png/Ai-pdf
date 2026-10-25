@@ -2,6 +2,7 @@ import 'dart:convert' show latin1, utf8;
 import 'dart:io' show ZLibCodec, ZLibDecoder;
 import 'dart:typed_data';
 import 'package:ai_pdf/core/utils/error_text.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_standard_crypt.dart';
 
 /// Raw PDF objects read from an existing file, for the source-preserving
 /// export. Pure Dart, no Flutter, so it can run in an isolate.
@@ -13,8 +14,11 @@ import 'package:ai_pdf/core/utils/error_text.dart';
 /// written back exactly as it was read.
 ///
 /// Throws [PdfSourceException] for files it cannot read safely: encrypted
-/// files, missing catalog or page tree, and filters other than FlateDecode
-/// on xref or object streams.
+/// files whose password is not known (an empty password is tried, and a
+/// password can be passed to [PdfObjectStore.parse]), missing catalog or page
+/// tree, and filters other than FlateDecode on xref or object streams.
+/// AES-256 revision 6 with the right password is decrypted in memory. The
+/// bytes written back out are not encrypted.
 class PdfObjectStore {
   PdfObjectStore._(this.bytes);
 
@@ -31,8 +35,23 @@ class PdfObjectStore {
   /// Every page, in document order, with inherited attributes resolved.
   late final List<PdfPageInfo> pages;
 
-  static PdfObjectStore parse(Uint8List bytes) {
+  /// Set when [parse] had to decrypt the file. The trailer of the source
+  /// still contains /Encrypt; a rewrite does not copy it.
+  bool get wasEncrypted => _wasEncrypted;
+
+  PdfFileEncryption? _crypt;
+  bool _wasEncrypted = false;
+  String _password = '';
+
+  /// Object numbers whose strings and streams stay ciphertext-free: the
+  /// encryption dictionary itself.
+  final Set<int> _cryptExempt = {};
+
+  /// [password] is the user or owner password. It defaults to empty, which
+  /// opens a file that was saved with no user password and nothing else.
+  static PdfObjectStore parse(Uint8List bytes, {String password = ''}) {
     final store = PdfObjectStore._(bytes);
+    store._password = password;
     store._load();
     return store;
   }
@@ -69,7 +88,10 @@ class PdfObjectStore {
     PdfIndirect? obj;
     try {
       obj = loc.inStream ? _readFromObjStm(num, loc) : _readAt(loc.offset, expectNum: num);
-    } on PdfSourceException {
+    } on PdfSourceException catch (e) {
+      // A wrong or unsupported encryption must fail the whole file. Swallowing
+      // it would drop the object and export a page with its text missing.
+      if (e.encrypted) rethrow;
       obj = null;
     } on RangeError {
       obj = null;
@@ -121,17 +143,113 @@ class PdfObjectStore {
     } on FormatException {
       trailerDict = null;
     }
+    if (trailerDict != null && trailerDict.containsKey('/Encrypt')) {
+      if (!_unlock(trailerDict)) {
+        throw const PdfSourceException('The PDF is encrypted.', encrypted: true);
+      }
+    }
     if (trailerDict == null || !_rootReadable(trailerDict)) {
+      _crypt = null;
+      _wasEncrypted = false;
+      _cryptExempt.clear();
       _xref.clear();
       _cache.clear();
+      _objStmCache.clear();
       trailerDict = _reconstruct();
+      if (trailerDict.containsKey('/Encrypt')) {
+        if (!_unlock(trailerDict)) {
+          throw const PdfSourceException('The PDF is encrypted.', encrypted: true);
+        }
+        if (!_rootReadable(trailerDict)) {
+          throw const PdfSourceException('The PDF is damaged.');
+        }
+      }
     }
     trailer = trailerDict;
-    if (isEncrypted) {
-      throw const PdfSourceException('The PDF is encrypted.', encrypted: true);
-    }
     pages = _collectPages();
     if (pages.isEmpty) throw const PdfSourceException('The PDF has no pages.');
+  }
+
+  /// Derives the file key and drops anything read before it, so the next
+  /// object read decrypts strings and streams. Returns false when this
+  /// handler or password cannot open the file.
+  bool _unlock(PdfDict trailerDict) {
+    _cryptExempt.clear();
+    final encRef = trailerDict['/Encrypt'];
+    if (encRef is PdfRef) _cryptExempt.add(encRef.num);
+    final enc = resolve(encRef);
+    if (enc is! PdfDict) return false;
+    PdfValue? at(String key) => resolve(enc[key]);
+    Uint8List? bytesOf(String key) {
+      final v = at(key);
+      return v is PdfString ? v.bytes : null;
+    }
+
+    final cf = at('/CF');
+    final std = cf is PdfDict ? resolve(cf['/StdCF']) : null;
+    final cfm = std is PdfDict ? resolve(std['/CFM']) : null;
+    final meta = at('/EncryptMetadata');
+    final crypt = PdfFileEncryption.tryUnlock(
+      standardHandler: at('/Filter') == const PdfName('/Standard'),
+      version: at('/V') is PdfNum ? (at('/V') as PdfNum).toInt() : -1,
+      revision: at('/R') is PdfNum ? (at('/R') as PdfNum).toInt() : -1,
+      stdCryptFilter: at('/StmF') == const PdfName('/StdCF') && at('/StrF') == const PdfName('/StdCF'),
+      aesV3: cfm == const PdfName('/AESV3'),
+      u: bytesOf('/U'),
+      ue: bytesOf('/UE'),
+      o: bytesOf('/O'),
+      oe: bytesOf('/OE'),
+      perms: bytesOf('/Perms'),
+      encryptMetadata: meta is! PdfBool || meta.value,
+      password: _password,
+    );
+    if (crypt == null) return false;
+    _crypt = crypt;
+    _wasEncrypted = true;
+    _cache.clear();
+    _objStmCache.clear();
+    return true;
+  }
+
+  bool _skipCrypt(PdfDict dict) {
+    final type = dict['/Type'];
+    if (type == const PdfName('/XRef')) return true;
+    if (type == const PdfName('/Metadata') && _crypt?.encryptMetadata == false) return true;
+    return false;
+  }
+
+  Uint8List _decrypt(Uint8List data) {
+    try {
+      return _crypt!.decryptData(data);
+    } on FormatException {
+      throw const PdfSourceException('The PDF is encrypted.', encrypted: true);
+    }
+  }
+
+  PdfString _decryptedString(PdfString value) {
+    final plain = _decrypt(value.bytes);
+    final hex = StringBuffer('<');
+    for (final b in plain) {
+      hex.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    hex.write('>');
+    return PdfString(Uint8List.fromList(latin1.encode(hex.toString())));
+  }
+
+  PdfValue _decryptStrings(PdfValue v) {
+    switch (v) {
+      case PdfString():
+        return _decryptedString(v);
+      case PdfArray(:final items):
+        return PdfArray([for (final i in items) _decryptStrings(i)]);
+      case PdfDict(:final entries):
+        final sig = entries['/Type'] == const PdfName('/Sig');
+        return PdfDict({
+          for (final e in entries.entries) e.key: sig && e.key == '/Contents' ? e.value : _decryptStrings(e.value),
+        });
+      default:
+        return v;
+    }
   }
 
   bool _rootReadable(PdfDict t) {
@@ -312,7 +430,7 @@ class PdfObjectStore {
     if (expectNum != null && num != expectNum) {
       throw const PdfSourceException('Xref points at the wrong object.');
     }
-    final value = lex.readValue();
+    var value = lex.readValue();
     Uint8List? stream;
     lex.skipWhitespace();
     if (value is PdfDict && lex.peekKeyword('stream')) {
@@ -329,6 +447,13 @@ class PdfObjectStore {
       }
       if (end < 0) end = _scanEndstream(start);
       stream = Uint8List.sublistView(bytes, start, end);
+    }
+    if (_crypt != null && (expectNum == null || !_cryptExempt.contains(expectNum))) {
+      final skip = value is PdfDict && _skipCrypt(value);
+      if (!skip) {
+        if (stream != null) stream = _decrypt(stream);
+        value = _decryptStrings(value);
+      }
     }
     return PdfIndirect(num, gen, value, stream);
   }
@@ -368,7 +493,10 @@ class PdfObjectStore {
       if (index < 0) return null;
     }
     final value = PdfLexer(data, entries[index].$2).readValue();
-    return PdfIndirect(num, 0, value, null);
+    // The object stream is decrypted as a stream. The strings inside it are
+    // encrypted a second time, as strings.
+    final decoded = _crypt == null ? value : _decryptStrings(value);
+    return PdfIndirect(num, 0, decoded, null);
   }
 
   /// Object streams being loaded: one that is (or leads back to) itself

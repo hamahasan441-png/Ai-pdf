@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:pointycastle/export.dart';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_standard_crypt.dart';
 
 /// What a reader may do with the file without the owner password
 /// (ISO 32000-2 Table 22).
@@ -47,17 +47,23 @@ class PdfEncryptor {
     PdfAccess access = const PdfAccess(),
   }) {
     if (userPassword.isEmpty) throw ArgumentError('A password is required.');
-    final store = PdfObjectStore.parse(pdf); // refuses an encrypted input
+    final store = PdfObjectStore.parse(pdf);
+    // An empty user password is opened by the parser. Encrypting it again
+    // would nest a second encryption dictionary around plaintext we just
+    // decrypted, so an already-encrypted file is still refused.
+    if (store.wasEncrypted) {
+      throw const PdfSourceException('The PDF is encrypted.', encrypted: true);
+    }
     final user = _pw(userPassword);
     final owner = _pw(ownerPassword == null || ownerPassword.isEmpty ? userPassword : ownerPassword);
     final fileKey = _bytes(32);
 
     final uvs = _bytes(8), uks = _bytes(8);
-    final u = Uint8List.fromList([...hashR6(user, uvs, const []), ...uvs, ...uks]);
-    final ue = _aesCbcNoPad(hashR6(user, uks, const []), Uint8List(16), fileKey, encrypt: true);
+    final u = Uint8List.fromList([...pdfRevision6Hash(user, uvs, const []), ...uvs, ...uks]);
+    final ue = pdfAesCbcNoPad(pdfRevision6Hash(user, uks, const []), Uint8List(16), fileKey, encrypt: true);
     final ovs = _bytes(8), oks = _bytes(8);
-    final o = Uint8List.fromList([...hashR6(owner, ovs, u), ...ovs, ...oks]);
-    final oe = _aesCbcNoPad(hashR6(owner, oks, u), Uint8List(16), fileKey, encrypt: true);
+    final o = Uint8List.fromList([...pdfRevision6Hash(owner, ovs, u), ...ovs, ...oks]);
+    final oe = pdfAesCbcNoPad(pdfRevision6Hash(owner, oks, u), Uint8List(16), fileKey, encrypt: true);
     final p = access.pValue;
     final permsPlain = Uint8List.fromList([
       p & 0xFF, p >> 8 & 0xFF, p >> 16 & 0xFF, p >> 24 & 0xFF, //
@@ -172,7 +178,7 @@ class PdfEncryptor {
     final padded = Uint8List(data.length + pad)
       ..setRange(0, data.length, data)
       ..fillRange(data.length, data.length + pad, pad);
-    return Uint8List.fromList([...iv, ..._aesCbcNoPad(key, iv, padded, encrypt: true)]);
+    return Uint8List.fromList([...iv, ...pdfAesCbcNoPad(key, iv, padded, encrypt: true)]);
   }
 
   Uint8List _bytes(int n) => Uint8List.fromList([for (var i = 0; i < n; i++) _rnd.nextInt(256)]);
@@ -192,39 +198,4 @@ PdfString _hex(List<int> bytes) {
   }
   b.write('>');
   return PdfString(Uint8List.fromList(latin1.encode(b.toString())));
-}
-
-Uint8List _aesCbcNoPad(Uint8List key, Uint8List iv, Uint8List data, {required bool encrypt}) {
-  final c = CBCBlockCipher(AESEngine())..init(encrypt, ParametersWithIV(KeyParameter(key), iv));
-  final out = Uint8List(data.length);
-  for (var off = 0; off < data.length; off += 16) {
-    c.processBlock(data, off, out, off);
-  }
-  return out;
-}
-
-/// Hash algorithm 2.B of ISO 32000-2 (revision 6).
-Uint8List hashR6(Uint8List password, List<int> salt, List<int> udata) {
-  var k = Uint8List.fromList(crypto.sha256.convert([...password, ...salt, ...udata]).bytes);
-  for (var i = 0;; i++) {
-    final round = [...password, ...k, ...udata];
-    final k1 = Uint8List(round.length * 64);
-    for (var r = 0; r < 64; r++) {
-      k1.setRange(r * round.length, (r + 1) * round.length, round);
-    }
-    final e = _aesCbcNoPad(Uint8List.sublistView(k, 0, 16), Uint8List.sublistView(k, 16, 32), k1, encrypt: true);
-    // The first 16 bytes as a big-endian number, mod 3 (256 ≡ 1 mod 3).
-    var sum = 0;
-    for (var j = 0; j < 16; j++) {
-      sum += e[j];
-    }
-    final digest = switch (sum % 3) {
-      0 => crypto.sha256,
-      1 => crypto.sha384,
-      _ => crypto.sha512,
-    };
-    k = Uint8List.fromList(digest.convert(e).bytes);
-    if (i >= 63 && e.last <= i + 1 - 32) break;
-  }
-  return Uint8List.sublistView(k, 0, 32);
 }

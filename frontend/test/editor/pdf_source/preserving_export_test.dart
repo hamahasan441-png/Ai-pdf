@@ -15,6 +15,7 @@ import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/text_replace_service.dart';
+import 'package:ai_pdf/features/security/data/pdf_encryptor.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/form_field_annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/page_layer.dart';
@@ -30,6 +31,34 @@ const keep = 'ORIGINAL-SEARCHABLE-TEXT';
 const secret = 'SECRET-REDACT-74192';
 
 Uint8List fixture(String name) => File('test/fixtures/pdf/$name.pdf').readAsBytesSync();
+
+/// One page, Type 1 font with no metrics and no standard name. Replacing its
+/// text cannot be done glyph by glyph, so the export must flatten the page.
+Uint8List noMetricsPdf() {
+  const content = 'BT /F1 12 Tf 72 100 Td (HELLO) Tj ET';
+  final objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 4 0 R '
+        '/Resources << /Font << /F1 5 0 R >> >> >>',
+    '<< /Length ${content.length} >>\nstream\n$content\nendstream',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /NoMetrics >>',
+  ];
+  final b = BytesBuilder()..add(latin1.encode('%PDF-1.4\n'));
+  final offsets = <int>[];
+  for (var i = 0; i < objects.length; i++) {
+    offsets.add(b.length);
+    b.add(latin1.encode('${i + 1} 0 obj\n${objects[i]}\nendobj\n'));
+  }
+  final xref = b.length;
+  final t = StringBuffer('xref\n0 ${objects.length + 1}\n0000000000 65535 f \n');
+  for (final o in offsets) {
+    t.write('${o.toString().padLeft(10, '0')} 00000 n \n');
+  }
+  t.write('trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n');
+  b.add(latin1.encode(t.toString()));
+  return b.toBytes();
+}
 
 PdfObjectStore store(String name) => PdfObjectStore.parse(fixture(name));
 
@@ -73,6 +102,27 @@ Uint8List pageContent(PdfObjectStore s, int index) {
 
 String pageText(Uint8List pdf, int page) =>
     (const PdfContentTextExtractor().extract(pdf)[page] ?? const []).map((e) => e.text).join(' ');
+
+bool _valueContains(PdfObjectStore store, String needle) {
+  bool walk(PdfValue? v) {
+    switch (v) {
+      case PdfString():
+        return v.text.contains(needle);
+      case PdfArray(:final items):
+        return items.any(walk);
+      case PdfDict(:final entries):
+        return entries.values.any(walk);
+      default:
+        return false;
+    }
+  }
+
+  for (var n = 1; n <= store.maxObjectNumber; n++) {
+    final obj = store.object(n);
+    if (obj != null && walk(obj.value)) return true;
+  }
+  return false;
+}
 
 int annotCount(PdfObjectStore s, int page) {
   final a = s.resolve(s.pages[page].dict['/Annots']);
@@ -119,11 +169,36 @@ void main() {
       expect(inh.pages.single.attr('/Resources'), isA<PdfDict>());
     });
 
-    test('refuses encrypted, truncated and non-PDF input', () {
+    test('opens an empty-password AES-256 file and still refuses a real password', () {
+      final opened = store('encrypted');
+      expect(opened.wasEncrypted, isTrue);
+      expect(opened.pages, hasLength(1));
+      final openedText = utf8.decode(pageContent(opened, 0), allowMalformed: true);
+      // MuPDF stores this phrase as a hex string inside TJ, not as `(...)`.
+      final asHex = [for (final b in keep.codeUnits) b.toRadixString(16).padLeft(2, '0')].join();
+      expect(openedText.toLowerCase(), anyOf(contains(keep.toLowerCase()), contains(asHex)));
+      final written = PreservingPdfWriter(opened, null).write(const [SourcePageSpec(0)]);
+      final back = PdfObjectStore.parse(written);
+      expect(back.wasEncrypted, isFalse);
+      expect(back.trailer.containsKey('/Encrypt'), isFalse);
+      expect(pageText(written, 0), contains(keep));
+
+      expect(PdfObjectStore.parse(fixture('encrypted'), password: 'owner').wasEncrypted, isTrue);
       expect(
-        () => store('encrypted'),
+        () => PdfObjectStore.parse(fixture('encrypted'), password: 'nope'),
         throwsA(isA<PdfSourceException>().having((e) => e.encrypted, 'encrypted', isTrue)),
       );
+      final locked = PdfEncryptor().encrypt(fixture('forms'), userPassword: 'secret');
+      expect(
+        () => PdfObjectStore.parse(locked),
+        throwsA(isA<PdfSourceException>().having((e) => e.encrypted, 'encrypted', isTrue)),
+      );
+      final forms = PdfObjectStore.parse(locked, password: 'secret');
+      expect(_valueContains(forms, 'Ada'), isTrue);
+      expect(_valueContains(forms, 'ID-7'), isTrue);
+      final keptForms = PreservingPdfWriter(forms, null).write(const [SourcePageSpec(0), SourcePageSpec(1)]);
+      expect(_valueContains(PdfObjectStore.parse(keptForms), 'Ada'), isTrue);
+
       expect(() => store('truncated'), throwsA(isA<PdfSourceException>()));
       expect(() => PdfObjectStore.parse(Uint8List.fromList(utf8.encode('<html>not a pdf</html>'))),
           throwsA(isA<PdfSourceException>()));
@@ -308,6 +383,24 @@ void main() {
       final dest = back.resolve(secondItem['/Dest']) ??
           back.resolve((back.resolve(secondItem['/A']) as PdfDict?)?['/D']);
       expect((dest as PdfArray).items.first, back.pages[1].ref);
+    });
+
+    test('invisible Unicode text is stored as the original characters', () {
+      final src = store('rich_classic');
+      const sorani = 'سڵاو ڕۆژهەڵات';
+      const arabic = 'مرحبا';
+      final out = PreservingPdfWriter(src, null).write(const [
+        SourcePageSpec(0, searchable: [SearchableRun(sorani, 0.15, 0.2, 16), SearchableRun(arabic, 0.15, 0.3, 16)]),
+        SourcePageSpec(1),
+        SourcePageSpec(2),
+      ]);
+      final text = pageText(out, 0);
+      expect(text, contains(keep));
+      // The file stores visual order. This parser does not undo bidi; MuPDF does,
+      // and the export verifier searches for the typed string.
+      expect(text, contains(pdfSearchVisualOrder(sorani)));
+      expect(text, contains(pdfSearchVisualOrder(arabic)));
+      expect(pageText(out, 1), contains(keep));
     });
 
     test('a field whose widget is on a removed page is dropped with its value', () {
@@ -806,12 +899,12 @@ void main() {
       });
     });
 
-    testWidgets('text that cannot be removed cleanly falls back to a flattened page', (tester) async {
+    testWidgets('Helvetica text with no /Widths array is removed and the page stays text', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/edit.pdf';
         File(source).writeAsBytesSync(fixture('edit_text'));
         final words = const PdfContentTextExtractor().extract(fixture('edit_text'));
-        final r = words[1]!.firstWhere((w) => w.text == 'OLDWORD').rect; // Helvetica: no widths
+        final r = words[1]!.firstWhere((w) => w.text == 'OLDWORD').rect;
         final result = await const EditorExportService().renderPreservingPdfFile(
           sourcePath: source,
           doc: null,
@@ -825,28 +918,97 @@ void main() {
           sourcePages: const [0, 1],
           outputDirectory: () async => tmp,
         );
-        expect(result.flattenedPages, [1]);
-        expect(pageText(File(result.path).readAsBytesSync(), 1), isNot(contains('OLDWORD')));
+        expect(result.flattenedPages, isEmpty);
+        final text = pageText(File(result.path).readAsBytesSync(), 1).replaceAll(' ', '');
+        expect(text, isNot(contains('OLDWORD')));
+        expect(text, contains('Helvetica'));
+        expect(text, contains('Turned'));
       });
     });
 
-    testWidgets('an encrypted source is reported, not silently flattened', (tester) async {
+    testWidgets('a font with no metrics still flattens the page', (tester) async {
+      await tester.runAsync(() async {
+        final pdf = noMetricsPdf();
+        final source = '${tmp.path}/nometrics.pdf';
+        File(source).writeAsBytesSync(pdf);
+        final words = const PdfContentTextExtractor().extract(pdf);
+        final r = words[0]!.firstWhere((w) => w.text == 'HELLO').rect;
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: {0: await whitePng(400, 300)},
+          layers: {
+            0: PageLayer()
+              ..items.add(ShapeAnnotation(ShapeType.whiteout, r.topLeft, r.bottomRight, Colors.white, 1)
+                ..metadata[eraseTextKey] = true),
+          },
+          pageCount: 1,
+          sourcePages: const [0],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, [0]);
+        expect(pageText(File(result.path).readAsBytesSync(), 0), isNot(contains('HELLO')));
+      });
+    });
+
+    testWidgets('an empty-password encrypted source keeps its text', (tester) async {
       await tester.runAsync(() async {
         final source = '${tmp.path}/enc.pdf';
         File(source).writeAsBytesSync(fixture('encrypted'));
-        await expectLater(
-          const EditorExportService().renderPreservingPdfFile(
-            sourcePath: source,
-            doc: null,
-            pageCache: const {},
-            layers: const {},
-            pageCount: 1,
-            sourcePages: const [0],
-            outputDirectory: () async => tmp,
-          ),
-          throwsA(isA<PreservingExportUnavailable>()),
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: const {},
+          pageCount: 1,
+          sourcePages: const [0],
+          outputDirectory: () async => tmp,
         );
-        expect(tmp.listSync().where((f) => f.path.contains('edited_')), isEmpty);
+        expect(result.flattenedPages, isEmpty);
+        final bytes = File(result.path).readAsBytesSync();
+        expect(pageText(bytes, 0), contains(keep));
+        expect(PdfObjectStore.parse(bytes).trailer.containsKey('/Encrypt'), isFalse);
+        keepFor('service_encrypted_empty', result.path, {
+          'pages': [
+            {'text_contains': [keep]},
+          ],
+        });
+      });
+    });
+
+    testWidgets('Sorani and Arabic added in the editor stay searchable', (tester) async {
+      await tester.runAsync(() async {
+        final source = '${tmp.path}/rich.pdf';
+        File(source).writeAsBytesSync(fixture('rich_classic'));
+        const sorani = 'سڵاو ڕۆژهەڵات';
+        const arabic = 'مرحبا بالعالم';
+        final result = await const EditorExportService().renderPreservingPdfFile(
+          sourcePath: source,
+          doc: null,
+          pageCache: const {},
+          layers: {
+            0: PageLayer()
+              ..items.addAll([
+                TextAnnotation(const Offset(0.12, 0.22), sorani, Colors.black, 0.02, false),
+                TextAnnotation(const Offset(0.12, 0.32), arabic, Colors.black, 0.02, false),
+              ]),
+          },
+          pageCount: 3,
+          sourcePages: const [0, 1, 2],
+          outputDirectory: () async => tmp,
+        );
+        expect(result.flattenedPages, isEmpty);
+        final text = pageText(File(result.path).readAsBytesSync(), 0);
+        expect(text, contains(keep));
+        expect(text, contains(pdfSearchVisualOrder(sorani)));
+        expect(text, contains(pdfSearchVisualOrder(arabic)));
+        keepFor('service_sorani_search', result.path, {
+          'pages': [
+            {'text_contains': [keep, sorani, arabic]},
+            {'text_contains': [keep]},
+            {'text_contains': [keep]},
+          ],
+        });
       });
     });
 

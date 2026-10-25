@@ -2,6 +2,7 @@ import 'dart:convert' show latin1;
 import 'dart:typed_data';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_standard_widths.dart';
 
 /// A rectangle in a page's default user space: [x0, y0, x1, y1], x0 < x1,
 /// y0 < y1.
@@ -123,9 +124,21 @@ class _Fonts {
       return _FontInfo(twoByte: true, widths: widths, defaultWidth: _num(cid['/DW'], 1000), exact: true);
     }
     if (subtype == '/Type3') return _FontInfo.unknown; // widths are in a custom glyph space
+    final base = _baseName(f);
+    final standard = base == null ? null : standard14Widths(base);
+    // A standard 14 font may omit /Widths. Its metrics are the AFM widths,
+    // the same table the text extractor uses for the word box.
+    if (standard != null && subtype == '/Type1') {
+      return _FontInfo(
+        twoByte: false,
+        widths: {for (var i = 0; i < standard.length; i++) i: standard[i].toDouble()},
+        defaultWidth: standard[0].toDouble(),
+        exact: true,
+      );
+    }
     final first = _num(f['/FirstChar'], 0).toInt();
     final ws = s.resolve(f['/Widths']);
-    if (ws is! PdfArray) return _FontInfo.unknown; // a standard 14 font: built-in metrics
+    if (ws is! PdfArray) return _FontInfo.unknown; // a custom font with no metrics
     final desc = s.resolve(f['/FontDescriptor']);
     final missing = desc is PdfDict ? _num(desc['/MissingWidth'], 0) : 0.0;
     return _FontInfo(
@@ -134,6 +147,16 @@ class _Fonts {
       defaultWidth: missing,
       exact: true,
     );
+  }
+
+  /// Base font name without a subset prefix. A subset (`ABC+Helvetica`) does
+  /// not use the standard widths: its encoding is its own.
+  String? _baseName(PdfDict f) {
+    final n = s.resolve(f['/BaseFont']);
+    if (n is! PdfName) return null;
+    var name = n.name.startsWith('/') ? n.name.substring(1) : n.name;
+    if (name.contains('+')) return null;
+    return name;
   }
 }
 

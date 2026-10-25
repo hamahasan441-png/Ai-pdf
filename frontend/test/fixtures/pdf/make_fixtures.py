@@ -245,8 +245,9 @@ def edit_text(path: pathlib.Path) -> None:
 
     Page 1 (A4): lines in embedded Noto Sans (a CID font with /W widths, as
     most real PDFs), one of them on a light blue band. Page 2 is turned by
-    /Rotate 90 and holds a Noto line and a Helvetica line (no widths, so a
-    replacement there must fall back to flattening the page).
+    /Rotate 90 and holds a Noto line and a Helvetica line. Helvetica is a
+    standard font with no /Widths; the editor uses the AFM metrics, so a
+    replacement there stays vector text.
     """
     font = OUT.parent.parent.parent / "assets" / "fonts" / "NotoSans-Regular.ttf"
     doc = fitz.open()

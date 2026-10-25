@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Color, Offset, Rect;
 
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_standard_widths.dart';
 import 'package:ai_pdf/features/editor/data/text_layer_extraction_service.dart';
 
 /// Reads positioned text out of a PDF's content streams.
@@ -397,6 +398,14 @@ class _PdfDoc {
       if (font.widths == null) _cidWidths(cd['/W'], font);
     }
     if (font.unicode.keys.any((k) => k > 255)) font.twoByte = true;
+    // Same AFM widths as the eraser, so a word box covers the glyphs it names.
+    if (font.widths == null && subtype == '/Type1') {
+      final table = standard14Widths(font.baseName);
+      if (table != null) {
+        font.firstChar = 0;
+        font.widths = [for (final w in table) w.toDouble()];
+      }
+    }
     return font;
   }
 

@@ -7,12 +7,81 @@ import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 
+/// Text order to write for [text] so a PDF reader recovers the typed string.
+///
+/// PDF stores a line in visual order. MuPDF then applies bidi and searches
+/// the original characters. A right-to-left line is stored reversed; a line
+/// that starts with Latin keeps that order and only reverses the RTL runs.
+String pdfSearchVisualOrder(String text) => text.split('\n').map(_visualSearchLine).join('\n');
+
+bool _rtlCode(int o) =>
+    (o >= 0x0590 && o <= 0x08FF) || (o >= 0xFB50 && o <= 0xFDFF) || (o >= 0xFE70 && o <= 0xFEFF);
+
+bool _latinLetter(int o) =>
+    (o >= 0x41 && o <= 0x5A) || (o >= 0x61 && o <= 0x7A) || (o >= 0xC0 && o <= 0x24F && o != 0xD7 && o != 0xF7);
+
+String _visualSearchLine(String line) {
+  if (line.isEmpty) return line;
+  final codes = line.runes.toList();
+  final runs = <(bool, List<int>)>[];
+  var i = 0;
+  while (i < codes.length) {
+    final rtl = _rtlCode(codes[i]);
+    var j = i + 1;
+    while (j < codes.length && _rtlCode(codes[j]) == rtl) {
+      j++;
+    }
+    runs.add((rtl, codes.sublist(i, j)));
+    i = j;
+  }
+  bool? firstRtl;
+  for (final (rtl, t) in runs) {
+    for (final c in t) {
+      if (_rtlCode(c)) {
+        firstRtl = true;
+        break;
+      }
+      if (_latinLetter(c)) {
+        firstRtl = false;
+        break;
+      }
+    }
+    if (firstRtl != null) break;
+  }
+  final seq = firstRtl == true ? runs.reversed : runs;
+  final out = <int>[];
+  for (final (rtl, t) in seq) {
+    out.addAll(rtl ? t.reversed : t);
+  }
+  return String.fromCharCodes(out);
+}
+
+/// One line of text to embed as invisible, searchable Unicode.
+///
+/// [x] and [y] are fractions of the displayed page, origin at the top left.
+/// [size] is the font size in points. [text] is logical order. It is written
+/// in [pdfSearchVisualOrder] with text render mode 3, so it can be searched
+/// and copied but does not change the pixels. Used for text the `pdf` shaper
+/// cannot export as base characters: Sorani, mixed-direction lines, and
+/// Arabic that would otherwise be stored only as presentation forms.
+class SearchableRun {
+  final String text;
+  final double x;
+  final double y;
+  final double size;
+
+  const SearchableRun(this.text, this.x, this.y, this.size);
+}
+
 /// One page of the output document.
 sealed class OutputPageSpec {
-  const OutputPageSpec({this.newFields = const []});
+  const OutputPageSpec({this.newFields = const [], this.searchable = const []});
 
   /// Form fields to add on this page (see [NewFormField]).
   final List<NewFormField> newFields;
+
+  /// Invisible Unicode text added on top of this page.
+  final List<SearchableRun> searchable;
 }
 
 /// Keep a page of the source PDF: its text, vectors, images, links,
@@ -29,6 +98,7 @@ final class SourcePageSpec extends OutputPageSpec {
     this.overlayPage,
     this.eraseRegions = const [],
     super.newFields,
+    super.searchable,
   });
 
   /// Boxes (0..1 from the displayed top left) whose glyphs are removed from
@@ -46,7 +116,7 @@ final class GeneratedPageSpec extends OutputPageSpec {
   /// links that pointed at that page then point here.
   final int? replacesSource;
 
-  const GeneratedPageSpec(this.generatedPage, {this.replacesSource, super.newFields});
+  const GeneratedPageSpec(this.generatedPage, {this.replacesSource, super.newFields, super.searchable});
 }
 
 /// What the writer kept and dropped, for the caller to report.
@@ -115,6 +185,7 @@ class PreservingPdfWriter {
   final List<PdfRef> _newFieldRefs = [];
   bool _newFieldsNeedAppearances = false;
   Set<String>? _fieldNames;
+  int? _searchFontNum;
 
   /// Writes [pages]. [formValues] sets form fields by full name: a String
   /// for text, single choice, check box and radio (the state name, "Off"
@@ -130,6 +201,7 @@ class PreservingPdfWriter {
     }
     _written = true;
     _next = source.maxObjectNumber + 1;
+    _prepareSearchFont(pages);
     final pagesRoot = _alloc();
 
     // Which source page objects survive, and which slots are duplicates.
@@ -183,7 +255,7 @@ class PreservingPdfWriter {
           generatedCount++;
           final num = _alloc();
           _overrides[num] = _withNewFields(
-            _generatedPageDict(spec.generatedPage, pagesRoot),
+            _generatedPageDict(spec.generatedPage, pagesRoot, spec.searchable),
             spec.newFields,
             num,
             _generatedBox(spec.generatedPage),
@@ -300,45 +372,46 @@ class PreservingPdfWriter {
     if (overlay == null) {
       if (contents != null) dict['/Contents'] = contents;
       if (resources != null) dict['/Resources'] = resources;
-      return PdfDict(dict);
-    }
+    } else {
+      // Original content runs in its own q/Q so its graphics state cannot leak
+      // into the overlay; the overlay is a Form XObject drawn after it.
+      final formNum = _importOverlayForm(overlay);
+      final formBox = _generatedBox(overlay);
+      final name = _freeXObjectName(resources);
+      final crop4 = info.cropBox;
+      final m = overlayMatrix(
+        crop: crop4,
+        rotate: rotate,
+        formWidth: formBox[2] - formBox[0],
+        formHeight: formBox[3] - formBox[1],
+      );
+      final head = _newStream(Uint8List.fromList(latin1.encode('q\n')));
+      final tail = _newStream(Uint8List.fromList(latin1.encode(
+        'Q\nq ${m.map(_n).join(' ')} cm $name Do Q\n',
+      )));
+      final items = <PdfValue>[PdfRef(head, 0)];
+      final resolvedContents = contents is PdfRef ? source.resolve(contents) : contents;
+      if (resolvedContents is PdfArray) {
+        items.addAll(resolvedContents.items);
+      } else if (contents != null) {
+        items.add(contents);
+      }
+      items.add(PdfRef(tail, 0));
+      dict['/Contents'] = PdfArray(items);
 
-    // Original content runs in its own q/Q so its graphics state cannot leak
-    // into the overlay; the overlay is a Form XObject drawn after it.
-    final formNum = _importOverlayForm(overlay);
-    final formBox = _generatedBox(overlay);
-    final name = _freeXObjectName(resources);
-    final crop4 = info.cropBox;
-    final m = overlayMatrix(
-      crop: crop4,
-      rotate: rotate,
-      formWidth: formBox[2] - formBox[0],
-      formHeight: formBox[3] - formBox[1],
-    );
-    final head = _newStream(Uint8List.fromList(latin1.encode('q\n')));
-    final tail = _newStream(Uint8List.fromList(latin1.encode(
-      'Q\nq ${m.map(_n).join(' ')} cm $name Do Q\n',
-    )));
-    final items = <PdfValue>[PdfRef(head, 0)];
-    final resolvedContents = contents is PdfRef ? source.resolve(contents) : contents;
-    if (resolvedContents is PdfArray) {
-      items.addAll(resolvedContents.items);
-    } else if (contents != null) {
-      items.add(contents);
+      final res = <String, PdfValue>{};
+      final resolvedRes = source.resolve(resources);
+      if (resolvedRes is PdfDict) res.addAll(resolvedRes.entries);
+      final xobjects = <String, PdfValue>{};
+      final existing = source.resolve(res['/XObject']);
+      if (existing is PdfDict) xobjects.addAll(existing.entries);
+      xobjects[name] = PdfRef(formNum, 0);
+      res['/XObject'] = PdfDict(xobjects);
+      dict['/Resources'] = PdfDict(res);
     }
-    items.add(PdfRef(tail, 0));
-    dict['/Contents'] = PdfArray(items);
-
-    final res = <String, PdfValue>{};
-    final resolvedRes = source.resolve(resources);
-    if (resolvedRes is PdfDict) res.addAll(resolvedRes.entries);
-    final xobjects = <String, PdfValue>{};
-    final existing = source.resolve(res['/XObject']);
-    if (existing is PdfDict) xobjects.addAll(existing.entries);
-    xobjects[name] = PdfRef(formNum, 0);
-    res['/XObject'] = PdfDict(xobjects);
-    dict['/Resources'] = PdfDict(res);
-    return PdfDict(dict);
+    final page = PdfDict(dict);
+    if (spec.searchable.isEmpty) return page;
+    return _paintSearch(page, spec.searchable, info.cropBox, rotate, source, resolveRefs: true);
   }
 
   /// A duplicated page gets its own copies of the original's annotations.
@@ -366,7 +439,7 @@ class PreservingPdfWriter {
     return PdfDict({...pageDict.entries, '/Annots': PdfArray(copies)});
   }
 
-  PdfDict _generatedPageDict(int pageIndex, int parent) {
+  PdfDict _generatedPageDict(int pageIndex, int parent, List<SearchableRun> searchable) {
     final g = generated!;
     if (pageIndex < 0 || pageIndex >= g.pages.length) {
       throw PdfSourceException('Generated page ${pageIndex + 1} does not exist.');
@@ -380,9 +453,38 @@ class PreservingPdfWriter {
     final contents = info.attr('/Contents');
     if (contents != null) dict['/Contents'] = _importValue(contents);
     final resources = info.attr('/Resources');
-    if (resources != null) dict['/Resources'] = _importValue(resources);
+    if (searchable.isEmpty) {
+      if (resources != null) dict['/Resources'] = _importValue(resources);
+    } else {
+      dict['/Resources'] = _inlineGeneratedResources(info);
+    }
     if (info.rotate != 0) dict['/Rotate'] = PdfNum.of(info.rotate);
-    return PdfDict(dict);
+    final page = PdfDict(dict);
+    if (searchable.isEmpty) return page;
+    return _paintSearch(page, searchable, info.cropBox, info.rotate, generated!, resolveRefs: false);
+  }
+
+  /// A copy of the generated page's resources whose references already point
+  /// at output objects, so a searchable-text form can be added beside them.
+  PdfDict _inlineGeneratedResources(PdfPageInfo info) {
+    final g = generated!;
+    final resolved = g.resolve(info.attr('/Resources'));
+    final entries = <String, PdfValue>{};
+    if (resolved is PdfDict) {
+      for (final e in resolved.entries.entries) {
+        if (e.key == '/XObject') {
+          final xo = g.resolve(e.value);
+          if (xo is PdfDict) {
+            entries['/XObject'] = PdfDict({
+              for (final x in xo.entries.entries) x.key: _importValue(x.value),
+            });
+            continue;
+          }
+        }
+        entries[e.key] = _importValue(e.value);
+      }
+    }
+    return PdfDict(entries);
   }
 
   List<double> _generatedBox(int pageIndex) {
@@ -445,6 +547,202 @@ class PreservingPdfWriter {
     final num = _alloc();
     _out[num] = _OutObject(num, 0, PdfDict({'/Length': PdfNum.of(data.length)}), data, mapped: true);
     return num;
+  }
+
+  void _prepareSearchFont(List<OutputPageSpec> pages) {
+    final cps = <int>{};
+    for (final spec in pages) {
+      for (final run in spec.searchable) {
+        for (final u in run.text.codeUnits) {
+          if (u != 0) cps.add(u);
+        }
+      }
+    }
+    if (cps.isEmpty) return;
+    _searchFontNum = _buildSearchFont(cps);
+  }
+
+  /// Identity-H font whose CID is the UTF-16 code unit, with a ToUnicode map
+  /// of the same. The line is stored in visual order, so a reader that applies
+  /// bidi returns the typed characters, not presentation forms. No font
+  /// program: the text is invisible.
+  int _buildSearchFont(Set<int> cps) {
+    final cmap = _newStream(Uint8List.fromList(latin1.encode(_toUnicode(cps))));
+    final cid = _alloc();
+    _out[cid] = _OutObject(
+      cid,
+      0,
+      PdfDict({
+        '/Type': const PdfName('/Font'),
+        '/Subtype': const PdfName('/CIDFontType2'),
+        '/BaseFont': const PdfName('/PdoczyUnicode'),
+        '/CIDSystemInfo': PdfDict({
+          '/Registry': PdfString.ofText('Adobe'),
+          '/Ordering': PdfString.ofText('Identity'),
+          '/Supplement': PdfNum.of(0),
+        }),
+        '/FontDescriptor': PdfDict({
+          '/Type': const PdfName('/FontDescriptor'),
+          '/FontName': const PdfName('/PdoczyUnicode'),
+          '/Flags': PdfNum.of(32),
+          '/ItalicAngle': PdfNum.of(0),
+          '/Ascent': PdfNum.of(800),
+          '/Descent': PdfNum.of(-200),
+          '/CapHeight': PdfNum.of(700),
+          '/StemV': PdfNum.of(80),
+          '/FontBBox': PdfArray([
+            PdfNum.of(-200),
+            PdfNum.of(-200),
+            PdfNum.of(1200),
+            PdfNum.of(1200),
+          ]),
+        }),
+        '/DW': PdfNum.of(1000),
+        '/CIDToGIDMap': const PdfName('/Identity'),
+      }),
+      null,
+      mapped: true,
+    );
+    final font = _alloc();
+    _out[font] = _OutObject(
+      font,
+      0,
+      PdfDict({
+        '/Type': const PdfName('/Font'),
+        '/Subtype': const PdfName('/Type0'),
+        '/BaseFont': const PdfName('/PdoczyUnicode'),
+        '/Encoding': const PdfName('/Identity-H'),
+        '/DescendantFonts': PdfArray([PdfRef(cid, 0)]),
+        '/ToUnicode': PdfRef(cmap, 0),
+      }),
+      null,
+      mapped: true,
+    );
+    return font;
+  }
+
+  String _toUnicode(Set<int> cps) {
+    final list = cps.toList()..sort();
+    final b = StringBuffer()
+      ..write('/CIDInit /ProcSet findresource begin\n')
+      ..write('12 dict begin\nbegincmap\n')
+      ..write('/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n')
+      ..write('/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n')
+      ..write('1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n');
+    for (var i = 0; i < list.length; i += 100) {
+      final end = i + 100 < list.length ? i + 100 : list.length;
+      b.write('${end - i} beginbfchar\n');
+      for (var k = i; k < end; k++) {
+        final h = list[k].toRadixString(16).padLeft(4, '0');
+        b.write('<$h> <$h>\n');
+      }
+      b.write('endbfchar\n');
+    }
+    b.write('endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n');
+    return b.toString();
+  }
+
+  String _hexUtf16(String text) {
+    final b = StringBuffer('<');
+    for (final u in text.codeUnits) {
+      if (u == 0) continue;
+      b.write(u.toRadixString(16).padLeft(4, '0'));
+    }
+    b.write('>');
+    return b.toString();
+  }
+
+  /// Draws [runs] as an invisible form in displayed-page space.
+  PdfDict _paintSearch(
+    PdfDict page,
+    List<SearchableRun> runs,
+    List<double> crop,
+    int rotate,
+    PdfObjectStore store, {
+    required bool resolveRefs,
+  }) {
+    final font = _searchFontNum;
+    if (font == null) return page;
+    final r = ((rotate % 360) + 360) % 360;
+    final w = (crop[2] - crop[0]).abs();
+    final h = (crop[3] - crop[1]).abs();
+    final shownW = r == 90 || r == 270 ? h : w;
+    final shownH = r == 90 || r == 270 ? w : h;
+    if (shownW < 1 || shownH < 1) return page;
+    final content = StringBuffer();
+    for (final run in runs) {
+      if (run.text.isEmpty) continue;
+      final size = run.size < 1 ? 1.0 : run.size;
+      final nx = run.x < 0 ? 0.0 : (run.x > 1 ? 1.0 : run.x);
+      final ny = run.y < 0 ? 0.0 : (run.y > 1 ? 1.0 : run.y);
+      final x = nx * shownW;
+      final y = (1 - ny) * shownH - size;
+      content.write(
+        'BT /PdoczySearch ${_n(size)} Tf 3 Tr 1 0 0 1 ${_n(x)} ${_n(y)} Tm ${_hexUtf16(pdfSearchVisualOrder(run.text))} Tj ET\n',
+      );
+    }
+    if (content.isEmpty) return page;
+    final bytes = Uint8List.fromList(latin1.encode(content.toString()));
+    final formNum = _alloc();
+    _out[formNum] = _OutObject(
+      formNum,
+      0,
+      PdfDict({
+        '/Type': const PdfName('/XObject'),
+        '/Subtype': const PdfName('/Form'),
+        '/BBox': PdfArray([PdfNum.of(0), PdfNum.of(0), PdfNum.of(shownW), PdfNum.of(shownH)]),
+        '/Resources': PdfDict({
+          '/Font': PdfDict({'/PdoczySearch': PdfRef(font, 0)}),
+        }),
+        '/Length': PdfNum.of(bytes.length),
+      }),
+      bytes,
+      mapped: true,
+    );
+    final m = overlayMatrix(crop: crop, rotate: r, formWidth: shownW, formHeight: shownH);
+    final name = _freeName(page['/Resources'], store);
+    final piece = _newStream(Uint8List.fromList(latin1.encode('q ${m.map(_n).join(' ')} cm $name Do Q\n')));
+    final contents = page['/Contents'];
+    final items = <PdfValue>[];
+    if (contents is PdfArray) {
+      items.addAll(contents.items);
+    } else if (resolveRefs && contents is PdfRef) {
+      final inner = store.resolve(contents);
+      if (inner is PdfArray) {
+        items.addAll(inner.items);
+      } else {
+        items.add(contents);
+      }
+    } else if (contents != null) {
+      items.add(contents);
+    }
+    items.add(PdfRef(piece, 0));
+    final res = <String, PdfValue>{};
+    final resValue = page['/Resources'];
+    final resolvedRes = resValue is PdfDict ? resValue : store.resolve(resValue);
+    if (resolvedRes is PdfDict) res.addAll(resolvedRes.entries);
+    final xobjects = <String, PdfValue>{};
+    final xo = res['/XObject'];
+    final resolvedXo = xo is PdfDict ? xo : store.resolve(xo);
+    if (resolvedXo is PdfDict) xobjects.addAll(resolvedXo.entries);
+    xobjects[name] = PdfRef(formNum, 0);
+    res['/XObject'] = PdfDict(xobjects);
+    return PdfDict({
+      ...page.entries,
+      '/Contents': PdfArray(items),
+      '/Resources': PdfDict(res),
+    });
+  }
+
+  String _freeName(PdfValue? resources, PdfObjectStore store) {
+    final res = resources is PdfDict ? resources : store.resolve(resources);
+    final xo = res is PdfDict ? (res['/XObject'] is PdfDict ? res['/XObject'] as PdfDict : store.resolve(res['/XObject'])) : null;
+    final taken = xo is PdfDict ? xo.entries.keys.toSet() : <String>{};
+    var i = 0;
+    while (taken.contains('/PdoczyText$i')) {
+      i++;
+    }
+    return '/PdoczyText$i';
   }
 
   // ─── Form fields ───────────────────────────────────────────────────────

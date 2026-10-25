@@ -18,8 +18,10 @@ enum EmbeddedScript { arabic, hebrew, other }
 /// * `pdf` 3.11's Arabic shaper has forms for every Arabic-script letter in
 ///   it ([pdfShaperSupports]), and
 /// * the text does not mix right-to-left and left-to-right letters.
-/// Otherwise it returns null and the export paints the text with Flutter's
-/// own shaper into the page image: it looks right but is not searchable.
+/// Otherwise it returns null. The export then paints the text with Flutter's
+/// shaper into the page image (the shapes stay correct) and, in a
+/// source-preserving export, also writes an invisible Unicode layer of the
+/// original characters so the text can still be searched.
 class PdfUnicodeFonts {
   pw.Font? notoSans;
   pw.Font? arabic;
