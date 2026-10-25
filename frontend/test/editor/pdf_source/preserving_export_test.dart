@@ -173,7 +173,10 @@ void main() {
       final opened = store('encrypted');
       expect(opened.wasEncrypted, isTrue);
       expect(opened.pages, hasLength(1));
-      expect(utf8.decode(pageContent(opened, 0), allowMalformed: true), contains(keep));
+      final openedText = utf8.decode(pageContent(opened, 0), allowMalformed: true);
+      // MuPDF stores this phrase as a hex string inside TJ, not as `(...)`.
+      final asHex = [for (final b in keep.codeUnits) b.toRadixString(16).padLeft(2, '0')].join();
+      expect(openedText.toLowerCase(), anyOf(contains(keep.toLowerCase()), contains(asHex)));
       final written = PreservingPdfWriter(opened, null).write(const [SourcePageSpec(0)]);
       final back = PdfObjectStore.parse(written);
       expect(back.wasEncrypted, isFalse);
