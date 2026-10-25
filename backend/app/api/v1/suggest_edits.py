@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/document-ai", tags=["Document AI"])
 
 # Categories the model is asked to use; anything else is normalised to "other".
-_CATEGORIES = {"grammar", "spelling", "clarity", "conciseness", "tone", "other"}
+_CATEGORIES = {
+    "grammar", "spelling", "clarity", "conciseness", "tone", "other",
+    "redact", "translate", "simplify", "formalize", "rephrase"
+}
 
 # Hard cap so a runaway model response can't return thousands of edits.
 _MAX_EDITS = 100
@@ -45,16 +48,17 @@ class SuggestEditsRequest(BaseModel):
     text: str = Field(..., max_length=20000, description="Text to review (not modified)")
     focus: str = Field(
         "all",
-        description="What to focus on: grammar | spelling | clarity | conciseness | tone | all",
+        description="What to focus on: grammar | spelling | clarity | conciseness | tone | redact | translate | simplify | formalize | all",
     )
     language: str = Field("auto", description="Language hint, or 'auto' to detect")
+    context: Optional[str] = Field(None, description="Optional document context (e.g. form, contract, letter)")
 
 
 class SuggestedEdit(BaseModel):
     original: str = Field(..., description="Exact span from the input to replace")
     suggestion: str = Field(..., description="Proposed replacement for that span")
     reason: str = Field("", description="Short human-readable rationale")
-    category: str = Field("other", description="grammar|spelling|clarity|conciseness|tone|other")
+    category: str = Field("other", description="grammar|spelling|clarity|conciseness|tone|redact|translate|simplify|formalize|rephrase|other")
 
 
 class SuggestEditsResponse(BaseModel):
@@ -87,26 +91,28 @@ async def suggest_edits(
 
     focus = req.focus.strip().lower()
     focus_hint = (
-        "grammar, spelling, clarity, conciseness, and tone"
+        "grammar, spelling, clarity, conciseness, tone, redaction of sensitive data, simplification, formalization, and rephrasing"
         if focus not in _CATEGORIES or focus == "all"
         else focus
     )
     lang_hint = f" The text is in {req.language}." if req.language != "auto" else ""
+    context_hint = f" Document context: {req.context}." if req.context else ""
 
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a meticulous copy editor. Review the user's text and propose "
-                f"specific improvements focused on {focus_hint}.{lang_hint} Do NOT rewrite "
+                "You are a meticulous copy editor and document assistant. Review the user's text and propose "
+                f"specific improvements focused on {focus_hint}.{lang_hint}{context_hint} Do NOT rewrite "
                 "the whole text. Instead return a JSON object with an 'edits' array, where "
                 "each element has EXACTLY these keys:\n"
-                '  "original": the exact substring from the input to change,\n'
-                '  "suggestion": the replacement text,\n'
+                '  "original": the exact substring from the input to change (must match exactly),\n'
+                '  "suggestion": the replacement text (or empty string for pure redaction),\n'
                 '  "reason": a short (<= 12 words) explanation,\n'
-                '  "category": one of grammar|spelling|clarity|conciseness|tone.\n'
+                '  "category": one of grammar|spelling|clarity|conciseness|tone|redact|translate|simplify|formalize|rephrase.\n'
                 "Only include genuine improvements; never change meaning, numbers, names, "
-                "or facts. If the text is already good, return an empty edits array. "
+                "or facts unless the focus explicitly asks for redaction or translation. "
+                "If the text is already good, return an empty edits array. "
                 "Respond with valid JSON only."
             ),
         },
@@ -145,8 +151,10 @@ def _parse_edits(result: object) -> list[SuggestedEdit]:
             continue
         original = str(item.get("original", item.get("from", ""))).strip()
         suggestion = str(item.get("suggestion", item.get("to", item.get("replacement", "")))).strip()
-        # A suggestion must reference real source text and actually change it.
-        if not original or not suggestion or original == suggestion:
+        # Allow empty suggestion for pure redaction
+        if not original:
+            continue
+        if suggestion == original and not suggestion == "":
             continue
         category = str(item.get("category", "other")).strip().lower()
         if category not in _CATEGORIES:

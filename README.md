@@ -1,6 +1,8 @@
 # Pdoczy — AI-Powered PDF Editor & Document Intelligence
 
-A **privacy-first, offline-capable** Android app that edits, converts, signs, and understands PDFs — with on-device AI that fills forms, answers questions, summarizes, translates, and extracts data. No cloud upload required.
+A **privacy-first, offline-capable** Android app that edits, converts, signs, and understands PDFs — with on-device AI that fills forms, answers questions, summarizes, translates, and extracts data. No cloud upload required for core features.
+
+**AI-native direction**: AI never silently rewrites your document. Suggestions are always reviewable (accept/reject) before applying — closer to the ideal AI PDF editor experience.
 
 ---
 
@@ -41,6 +43,7 @@ A **privacy-first, offline-capable** Android app that edits, converts, signs, an
 - **Extract data**: structured JSON extraction (names, dates, amounts, IDs)
 - **Analyze**: document type, entities, key points, action items, suggested questions
 - **Fix OCR**: AI-powered correction of OCR recognition errors
+- **Suggest Edits (review-first)**: discrete, accept/reject suggestions for grammar, clarity, redaction, simplification, etc. (never silent rewrite)
 - **Quick actions**: Summarize, Key facts, Action items, Translate, Explain — one tap
 
 ### Offline PDF Tools (no internet, nothing uploaded)
@@ -160,6 +163,7 @@ The backend provides managed AI (no user key needed), server-side billing verifi
 | `POST /api/v1/document-ai/extract` | Structured JSON data extraction |
 | `POST /api/v1/document-ai/analyze` | Full document intelligence (type, entities, actions, questions) |
 | `POST /api/v1/document-ai/fix-ocr` | OCR error correction |
+| `POST /api/v1/document-ai/suggest-edits` | Review-first discrete edit suggestions (accept/reject) |
 | `POST /api/v1/document-ai/understand-form` | Semantic field classification |
 | `POST /api/v1/forms/acroform/read` | Native AcroForm field reading (PyMuPDF) |
 | `POST /api/v1/billing/verify` | Google Play purchase verification |
