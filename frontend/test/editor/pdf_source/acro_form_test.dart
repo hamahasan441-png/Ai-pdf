@@ -13,6 +13,19 @@ PdfObjectStore forms() => PdfObjectStore.parse(File('test/fixtures/pdf/forms.pdf
 Map<String, AcroField> byName(PdfObjectStore s) => {for (final f in const AcroFormReader().read(s)) f.name: f};
 
 void main() {
+  test('a signature field can be tapped, a read-only one cannot', () {
+    AcroField field(int flags) => AcroField(
+          name: 'sig',
+          objNum: 1,
+          kind: AcroFieldKind.signature,
+          flags: flags,
+          value: '',
+          widgets: const [AcroWidget(objNum: 1, pageIndex: 0, rect: [0.0, 0.0, 100.0, 40.0])],
+        );
+    expect(field(0).fillable, isTrue);
+    expect(field(1).fillable, isFalse, reason: 'read-only');
+  });
+
   test('reads every kind of field with its value and options', () {
     final f = byName(forms());
     expect(f.keys.toSet(), {'name', 'address', 'id', 'agree', 'size', 'country', 'langs', 'note'});

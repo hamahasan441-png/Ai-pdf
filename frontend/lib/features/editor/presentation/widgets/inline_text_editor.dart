@@ -32,6 +32,14 @@ class InlineTextEditor extends StatefulWidget {
   /// show/hide the rich-text formatting toolbar and apply per-range styling.
   final void Function(TextSelection selection)? onSelectionChanged;
 
+  /// Keyboard for this box. A phone or email field should not get the
+  /// plain text keyboard.
+  final TextInputType keyboardType;
+
+  /// One line, with a Done key. A form value is one line; a free text box
+  /// is not, so it keeps the newline key.
+  final bool singleLine;
+
   const InlineTextEditor({
     super.key,
     required this.annotation,
@@ -39,6 +47,8 @@ class InlineTextEditor extends StatefulWidget {
     required this.onDone,
     required this.onTextChanged,
     this.onSelectionChanged,
+    this.keyboardType = TextInputType.text,
+    this.singleLine = false,
   });
 
   @override
@@ -139,9 +149,11 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
       child: TextField(
         controller: _controller,
         focusNode: _focusNode,
-        maxLines: null,
+        maxLines: widget.singleLine ? 1 : null,
+        textInputAction: widget.singleLine ? TextInputAction.done : TextInputAction.newline,
         style: box.style,
         textAlign: box.align,
+        keyboardType: widget.keyboardType,
         textDirection: t.textDirection ??
             (_rtl.isRtl(_controller.text) ? TextDirection.rtl : TextDirection.ltr),
         decoration: const InputDecoration(
@@ -153,7 +165,8 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
         ),
         onChanged: widget.onTextChanged,
         onSubmitted: (_) => _commit(),
-        cursorColor: t.color,
+        // A white caret on a white page cannot be seen.
+        cursorColor: t.color.computeLuminance() > 0.85 ? const Color(0xFF1F2430) : t.color,
       ),
     );
   }

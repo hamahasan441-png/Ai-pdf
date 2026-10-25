@@ -375,6 +375,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   @override
   void dispose() {
+    _guideFields = false;
+    _releaseFieldEntry();
     _revealTimer?.cancel();
     _pillTimer?.cancel();
     if (_chromeHidden) _restoreSystemBars();
@@ -445,6 +447,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   /// Tapping a detected field opens the right interaction for its type.
   Future<void> _openFieldInput(DetectedField field) async {
+    if (_inlineEditing != null) _commitInlineEdit();
     if (field.type == FieldType.checkbox) {
       final mark = await _chooseCheckMark();
       if (mark == null) return;
@@ -468,7 +471,18 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
 
     if (field.type == FieldType.signature) {
-      await _addSignature();
+      // The detected rect is the label. The signature belongs on the line
+      // after it, not in the middle of the page.
+      final placement = _fieldInput.buildTextPlacement(field);
+      final room = (0.96 - placement.pos.dx).clamp(0.18, 0.42).toDouble();
+      await _addSignature(
+        center: Offset(
+          placement.pos.dx + room / 2,
+          (placement.pos.dy + field.rect.height * 0.35).clamp(0.0, 0.97),
+        ),
+        textAt: placement.pos,
+        width: room,
+      );
       return;
     }
 
@@ -489,25 +503,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       return;
     }
 
-    final val = await _promptValue(
-      placement.title.isEmpty ? l10n.cEditEnterValue : placement.title,
-      _fieldInput.keyboardTypeFor(field.type),
-      field.type,
-    );
-    if (val != null && val.trim().isNotEmpty) {
-      final v = val.trim();
-      final fitted = _fieldInput.fitTextSize(
-        v,
-        placement.size,
-        (0.98 - placement.pos.dx).clamp(0.05, 1.0).toDouble(),
-      );
-      _placeValue(placement.pos, fitted, v);
-      _offerReplicate(field, v);
-    }
+    // Type in the field, with its keyboard. A dialog used to cover the page
+    // and the value always came out black. Guided fill waits here until the
+    // box is finished, or it would open every remaining field at once.
+    final box = _annotationFactory.textAt(placement.pos, placement.size, '', color: _color, bold: _bold);
+    _editTextBox(box, isNew: true, field: field);
+    if (!mounted || !identical(_inlineEditing, box)) return;
+    final done = Completer<void>();
+    _releaseFieldEntry();
+    _fieldEntryDone = done;
+    await done.future;
   }
 
   void _placeValue(Offset pos, double size, String text) {
-    final tb = _annotationFactory.textAt(pos, size, text, color: Colors.black);
+    final tb = _annotationFactory.textAt(pos, size, text, color: _color, bold: _bold);
     setState(() {
       _editorController.pushAnnotation(_layer, tb);
       _selected = tb;
@@ -602,15 +611,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (!mounted || fields.isEmpty) return;
     final go = await showEditorGuidedFillDialog(context, fieldCount: fields.length);
     if (go != true) return;
-    for (final f in fields) {
-      if (!mounted) break;
-      await _openFieldInput(f);
+    _guideFields = true;
+    try {
+      for (final f in fields) {
+        if (!mounted || !_guideFields) break;
+        await _openFieldInput(f);
+      }
+    } finally {
+      _guideFields = false;
     }
   }
 
   /// Fill & Sign: add a typed signature rendered in a script-like style. A fast
   /// alternative to drawing when the user just wants their name on the line.
-  Future<void> _typeSignature() async {
+  Future<void> _typeSignature({Offset? at, double? size}) async {
     final val = await _promptValue(
       AppLocalizations.of(context)!.typeYourSignature,
       TextInputType.text,
@@ -621,6 +635,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         // Auto-select the typed signature so it can be moved/resized right away,
         // consistent with drawn/saved signatures and other annotations.
         final typed = _annotationFactory.typedSignature(val.trim());
+        if (at != null) typed.pos = at;
+        if (size != null) typed.size = size;
         _pushItem(typed);
         _selected = typed;
         _tool = EditTool.pan;
@@ -757,11 +773,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       final enteringHighlight = tool == EditTool.highlight && _tool != EditTool.highlight;
       if (tool != EditTool.pan) _leaveMode(EditorMode.forTool(tool));
       _tool = tool;
-      if (enteringHighlight && _color == Colors.red) {
+      if (enteringHighlight && (_color == Colors.red || isPoorHighlightColor(_color))) {
         _color = const Color(0xFFFFEB3B);
       }
     });
   }
+
+  /// The colour a stroke should use. A highlight in black or white is not a
+  /// mark, so it is drawn in the yellow marker instead.
+  Color _ink(EditTool tool) => tool == EditTool.highlight ? visibleHighlightColor(_color) : _color;
 
   /// Ends the current tool's unfinished work, and Edit text when leaving
   /// the text workspace. Call inside setState.
@@ -1464,7 +1484,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   void _markSelection(EditTool tool) {
     final sel = _wordSelection;
     if (sel == null) return;
-    final color = tool == EditTool.highlight && _color == Colors.red
+    final color = tool == EditTool.highlight && (_color == Colors.red || isPoorHighlightColor(_color))
         ? const Color(0xFFFFEB3B)
         : _color;
     final ann = _markupFactory.fromSelection(tool: tool, selection: sel, color: color);
@@ -1529,6 +1549,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
 
   Future<void> _goToPage(int index) async {
     if (index < 0 || index >= _pageCount) return;
+    if (index != _current) {
+      // The box being typed belongs to this page. A guided pass is about
+      // the fields found here, so leaving stops it instead of writing the
+      // rest onto the next page.
+      _commitInlineEdit();
+      _guideFields = false;
+    }
     _leaveFill();
     _endPlacementNoRebuild();
     if (_chromeHidden) _flashPagePill();
@@ -1960,7 +1987,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         start: n,
         end: n,
         elements: _textLayer[_current] ?? const [],
-        color: _color,
+        color: _ink(_tool),
       );
       setState(() {});
       return;
@@ -2025,7 +2052,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         start: _shapeStart!,
         end: n,
         elements: _textLayer[_current] ?? const [],
-        color: _color,
+        color: _ink(_tool),
       );
       setState(() {});
       return;
@@ -2089,7 +2116,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
               start: start,
               end: end,
               elements: _textLayer[_current] ?? const [],
-              color: _color,
+              color: _ink(_tool),
             )
           : null;
       _shapeStart = null;
@@ -2110,7 +2137,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         ? _canvasInteraction.completeStroke(
             drawing: _drawing,
             tool: _tool,
-            color: _color,
+            color: _ink(_tool),
             stroke: _stroke,
           )
         : null;
@@ -2119,7 +2146,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             shapeStart: _shapeStart,
             shapeEnd: _shapeEnd,
             tool: _tool,
-            color: _color,
+            color: _ink(_tool),
             stroke: _stroke,
           )
         : null;
@@ -2200,7 +2227,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
     if (_tapTools.isTextTool(_tool)) {
-      _editTextBox(_tapTools.buildTextDraft(n, _color, _textSize, _bold), isNew: true);
+      final hit = _hitTest(n);
+      if (hit is TextAnnotation && !hit.locked) {
+        _editTextBox(hit);
+      } else {
+        _editTextBox(_tapTools.buildTextDraft(n, _color, _textSize, _bold), isNew: true);
+      }
       return;
     }
     if (_tool == EditTool.note) {
@@ -2215,7 +2247,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           start: n,
           end: n,
           elements: words,
-          color: _color,
+          color: _ink(_tool),
         );
         if (ann != null) setState(() => _pushItem(ann));
       }
@@ -2392,6 +2424,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     setState(() {
       _editorController.beginEdit([sel], label: 'Text colour');
       sel.color = picked;
+      _color = picked;
       _editorController.commitEdit(_layer, force: true);
     });
   }
@@ -2881,6 +2914,26 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   TextAnnotation? _inlineEditing; // annotation currently being edited inline
   bool _inlineEditTxnOpen = false; // true when editing EXISTING text (undoable)
   TextSelection _inlineSelection = const TextSelection.collapsed(offset: 0);
+  TextInputType _inlineKeyboard = TextInputType.text;
+
+  /// Set when the inline box is filling a detected field, so a finished
+  /// value can be offered for the other fields with the same label.
+  DetectedField? _replicateFrom;
+
+  /// Guided fill is stepping through the fields of this page. Leaving the
+  /// page turns it off so the rest are not written somewhere else.
+  bool _guideFields = false;
+
+  /// Completed when the inline editor opened for one detected field is
+  /// committed. Guided fill awaits it; otherwise the next field opens
+  /// before this one is typed.
+  Completer<void>? _fieldEntryDone;
+
+  void _releaseFieldEntry() {
+    final done = _fieldEntryDone;
+    _fieldEntryDone = null;
+    if (done != null && !done.isCompleted) done.complete();
+  }
 
   /// Whether the inline editor has a non-collapsed text selection (range).
   bool get _hasInlineSelection =>
@@ -2898,6 +2951,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         editing.runs = _richText.toggleBold(editing, 0, editing.text.length);
       } else {
         editing.bold = !editing.bold;
+        _bold = editing.bold;
       }
       _hasUnsavedChanges = true;
     });
@@ -2948,8 +3002,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (!range.isCollapsed) {
         editing.runs = _richText.applyStyle(editing, start: range.start, end: range.end, color: picked);
       } else {
-        // No selection: the whole box. Runs drop their own colour.
+        // No selection: the whole box. Runs drop their own colour, and the
+        // next text box and the next filled field use this colour too.
         editing.color = picked;
+        _color = picked;
         final runs = editing.runs;
         if (runs != null) {
           editing.runs = [
@@ -2982,9 +3038,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
   }
 
-  Future<void> _editTextBox(TextAnnotation box, {bool isNew = false}) async {
+  Future<void> _editTextBox(TextAnnotation box, {bool isNew = false, DetectedField? field}) async {
     // For NEW text boxes, use inline editing directly on the canvas.
     // For existing text, also use inline (replaces the modal dialog).
+    if (identical(_inlineEditing, box)) return;
+    // Finish the open box first. Its field label is still the one it was
+    // opened with; the new label is applied only after that commit.
+    if (_inlineEditing != null) _commitInlineEdit();
+    _replicateFrom = field;
+    _inlineKeyboard = field != null ? _fieldInput.keyboardTypeFor(field.type) : TextInputType.multiline;
     if (isNew) {
       // Add the annotation first so it's in the layer. The AddCommand already
       // makes creation undoable, so no separate edit transaction is needed.
@@ -3000,8 +3062,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     setState(() {
       _inlineEditing = box;
       _selected = box;
-      _tool = EditTool.pan;
+      // The text tool stays, so the next tap on empty page places another
+      // box. Other tools return to pan so the new box can be dragged.
+      if (_tool != EditTool.text) _tool = EditTool.pan;
     });
+    _scheduleRevealText();
   }
 
   /// A tap on a text box on the page: the first tap selects it (a quiet
@@ -3021,10 +3086,21 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   void _commitInlineEdit() {
     final editing = _inlineEditing;
     if (editing == null) return;
+    final replicate = _replicateFrom;
+    _replicateFrom = null;
+    final typed = editing.text.trim();
     setState(() {
       _inlineEditing = null;
       final replacing = _inlineReplacing;
       _inlineReplacing = null;
+      if (replicate != null && typed.isNotEmpty) {
+        final placement = _fieldInput.buildTextPlacement(replicate);
+        editing.size = _fieldInput.fitTextSize(
+          typed,
+          editing.size,
+          (0.98 - placement.pos.dx).clamp(0.05, 1.0).toDouble(),
+        );
+      }
       if (editing.text.trim().isEmpty && !_inlineEditTxnOpen && replacing != null && _layer.items.contains(editing)) {
         // An emptied replacement deletes the original text: keep only the
         // whiteout, as its own undo step.
@@ -3049,6 +3125,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _schedulePersist();
       _syncSearchPages();
     });
+    if (replicate != null && typed.isNotEmpty && !_guideFields) _offerReplicate(replicate, typed);
+    _releaseFieldEntry();
     // "Edit text" stays on: show the page's paragraphs again.
     if (_editTextMode) _showNativeBlocks();
   }
@@ -3110,7 +3188,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _schedulePersist();
   }
 
-  Future<void> _addSignature() async {
+  Future<void> _addSignature({Offset? center, Offset? textAt, double? width}) async {
     List<Offset>? points;
     final choice = await showEditorSignaturePickerSheet(
       context,
@@ -3122,7 +3200,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       return;
     }
     if (choice.action == 'type') {
-      await _typeSignature();
+      await _typeSignature(at: textAt ?? center, size: width == null ? null : (width * 0.35).clamp(0.02, 0.06));
       return;
     } else if (choice.action == 'new') {
       points = await _drawSignature();
@@ -3135,7 +3213,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         // Insert as a normal stroke annotation, then immediately select it and
         // switch to the pan tool so the user can drag it and resize it via the
         // selection handles — same behaviour as stamps / images / text boxes.
-        final signature = _signatureInsert.signatureFromPadPoints(points!);
+        // A tap on a signature field centres it on that field.
+        final signature = _signatureInsert.signatureFromPadPoints(
+          points!,
+          centerX: center?.dx ?? 0.5,
+          centerY: center?.dy ?? 0.5,
+          targetW: width ?? 0.32,
+        );
         _pushItem(signature);
         _selected = signature;
         _tool = EditTool.pan;
@@ -3419,7 +3503,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final turns = _pageQuarterTurns[page] ?? 0;
     final placed = <PlacedAcroWidget>[
       for (final f in _form.fields)
-        if (f.kind != AcroFieldKind.pushButton && f.kind != AcroFieldKind.signature)
+        if (f.kind != AcroFieldKind.pushButton)
           for (final w in f.widgets)
             if (w.pageIndex == source) (field: f, widget: w, rect: _form.rectOf(w, quarterTurns: turns)),
     ];
@@ -3430,8 +3514,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       key: interactive ? _formLayerKey : null,
       widgets: placed,
       edits: _formValues,
-      // Drawing tools keep drawing over fields; Move and Select fill them.
-      interactive: interactive && (_tool == EditTool.pan || _tool == EditTool.select) && !_redactionController.isActive,
+      // Fill & Sign is for the form: a check or a cross must not stop a tap
+      // on a field. Drawing tools still pass over the fields.
+      interactive: interactive &&
+          !_redactionController.isActive &&
+          (_mode == EditorMode.sign || _tool == EditTool.pan || _tool == EditTool.select),
       onTap: _fillFormField,
       focusName: fill?.field.name,
       focusObjNum: fill?.widget.objNum,
@@ -3515,6 +3602,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _focusField(field, widget);
         final next = await showFormChoiceSheet(context, field: field, current: fieldValue(field, _formValues));
         if (next != null && mounted) _setFieldValue(field, next);
+      case AcroFieldKind.signature:
+        final rect = _form.rectOf(widget, quarterTurns: _pageQuarterTurns[_current] ?? 0);
+        await _addSignature(center: rect.center, textAt: rect.topLeft, width: rect.width.clamp(0.18, 0.55));
       default:
         return;
     }
@@ -3697,6 +3787,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       toViewer(Offset(norm.left * size.width, norm.top * size.height)),
       toViewer(Offset(norm.right * size.width, norm.bottom * size.height)),
     );
+    _placeRectInFreeArea(field, viewerBox, remember: true);
+  }
+
+  /// Moves the page so [field] (viewer-local) sits above the keyboard.
+  /// [remember] keeps the view to restore when a form field is closed.
+  void _placeRectInFreeArea(Rect field, RenderBox viewerBox, {required bool remember}) {
     final screen = MediaQuery.sizeOf(context);
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     const barHeight = 64.0;
@@ -3711,7 +3807,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     final grow = field.height < 30 ? (34 / field.height).clamp(1.0, 3.0 / scale) : 1.0;
     final fits = field.top >= top && field.bottom <= bottom && field.left >= 0 && field.right <= viewerBox.size.width;
     if (grow <= 1.01 && fits) return;
-    _fillSavedView ??= _viewTransform.value.clone();
+    if (remember) _fillSavedView ??= _viewTransform.value.clone();
     final c = field.center;
     final grownWidth = field.width * grow;
     final width = viewerBox.size.width;
@@ -3725,6 +3821,37 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _animateView(move.multiplied(_viewTransform.value));
   }
 
+  void _scheduleRevealText() {
+    _revealTimer?.cancel();
+    _revealTimer = Timer(const Duration(milliseconds: 60), () {
+      if (mounted) _revealInlineText();
+    });
+  }
+
+  /// The caret of a new text box sits above the keyboard, the same way a
+  /// form field does. The page is not put back afterwards.
+  void _revealInlineText() {
+    final editing = _inlineEditing;
+    final viewerBox = _viewerKey.currentContext?.findRenderObject();
+    if (editing == null || viewerBox is! RenderBox || !viewerBox.hasSize) return;
+    final fitted = PageFit.box(
+      maxWidth: viewerBox.size.width,
+      maxHeight: viewerBox.size.height,
+      aspect: _aspectFor(_current),
+    );
+    final zoom = _viewTransform.value;
+    Offset at(double x, double y) => PageCoordinateTransform.mapPoint(
+          zoom,
+          Offset(fitted.left + x * fitted.width, fitted.top + y * fitted.height),
+        );
+    final h = (editing.size * 2).clamp(0.03, 0.15);
+    final rect = Rect.fromPoints(
+      at(editing.pos.dx, editing.pos.dy),
+      at((editing.pos.dx + 0.45).clamp(0.0, 1.0), (editing.pos.dy + h).clamp(0.0, 1.0)),
+    );
+    _placeRectInFreeArea(rect, viewerBox, remember: false);
+  }
+
   ShapeType? _shapePreviewType() => _canvasInteraction.shapePreviewType(_tool);
 
   @override
@@ -3736,6 +3863,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (inset != _lastInset) {
       _lastInset = inset;
       if (_fill != null) _scheduleRevealFill(const Duration(milliseconds: 90));
+      else if (_inlineEditing != null) _scheduleRevealText();
     }
 
     return PopScope(
@@ -3917,10 +4045,13 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                           top: origin.dy,
                           width: AnnotationTextLayout.of(editing, Size(pageW, pageH)).maxWidth.clamp(50.0, pageW),
                           child: InlineTextEditor(
+                            key: ValueKey(editing.id),
                             annotation: editing,
                             canvasSize: Size(pageW, pageH),
                             onDone: _commitInlineEdit,
                             onTextChanged: _onInlineTextChanged,
+                            keyboardType: _inlineKeyboard,
+                            singleLine: _inlineKeyboard != TextInputType.multiline,
                             onSelectionChanged: (sel) =>
                                 setState(() => _inlineSelection = sel),
                           ),
@@ -3947,13 +4078,19 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onOpenPage: (i) => _closeReadingView(page: i),
               )
             : EditorDocumentViewport(
-          panEnabled: _tool == EditTool.pan && !_redactionController.current.active,
+          panEnabled: (_tool == EditTool.pan || _tool == EditTool.text) &&
+              !_redactionController.current.active &&
+              _inlineEditing == null,
           scaleEnabled: !_redactionController.current.active,
           pageAspect: _aspectFor(_current),
           transformationController: _viewTransform,
           viewerKey: _viewerKey,
           viewFilter: ReadingModeState(mode: _readingMode).colorFilter,
-          onSwipePage: _tool == EditTool.pan && _placingField == null ? _swipePage : null,
+          onSwipePage: (_tool == EditTool.pan || _tool == EditTool.text) &&
+                  _placingField == null &&
+                  _inlineEditing == null
+              ? _swipePage
+              : null,
           onBackgroundTap: _mode == EditorMode.view ? () => _setChromeHidden(!_chromeHidden) : null,
           child: EditorCanvas(
             bytes: bytes ?? Uint8List(0),
@@ -3963,7 +4100,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             shapeStart: _shapeStart,
             shapeEnd: _shapeEnd,
             previewShapeType: _shapePreviewType(),
-            color: _color,
+            color: _ink(_tool),
             stroke: _stroke,
             highlightPreview: false,
             securePreview: _redactionController.current.active,
@@ -4052,12 +4189,16 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onColor: _pickSelectionColor,
           box: _inlineEditing,
           onFont: (f) => _styleInlineBox((b) => b.fontFamily = f),
-          onSizeStep: (d) => _styleInlineBox((b) => b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2)),
+          onSizeStep: (d) => _styleInlineBox((b) {
+            b.size = (b.size * (d > 0 ? 1.1 : 1 / 1.1)).clamp(0.006, 0.2);
+            _textSize = b.size.clamp(0.008, 0.08);
+          }),
           onAlign: (a) => _styleInlineBox((b) => b.textAlign = a),
           onToggleRtl: () => _styleInlineBox((b) => b.textDirection =
               b.textDirection == TextDirection.rtl ? TextDirection.ltr : TextDirection.rtl),
           onLineHeight: (v) => _styleInlineBox((b) => b.lineHeight = v),
           onToggleWrap: () => _styleInlineBox(_toggleInlineWrap),
+          onDone: _commitInlineEdit,
         ),
         pageOpsDialog: _pageOpsController.current.visible
             ? EditorPageOpsDialog(
@@ -4078,7 +4219,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           showFields: _showFields,
           hasPageFields: _pageFields.isNotEmpty,
           isShape: _isShape,
-          color: _color,
+          color: _ink(_tool),
           stroke: _stroke,
           textSize: _textSize,
           bold: _bold,
@@ -4098,11 +4239,15 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onRedact: _toggleRedaction,
           onOutline: _toggleOutline,
           onPageOps: _showPageOps,
-          onColorChanged: (c) => setState(() => _color = c),
+          onColorChanged: (c) => setState(() {
+            _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c;
+          }),
           recentColors: RecentColors.current,
           onPickColor: () async {
             final c = await showEditorTextColorPickerSheet(context, selectedColor: _color);
-            if (c != null && mounted) setState(() => _color = c);
+            if (c != null && mounted) {
+              setState(() => _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c);
+            }
           },
           onStrokeChanged: (v) => setState(() => _stroke = v),
           onTextSizeChanged: (v) => setState(() => _textSize = v),

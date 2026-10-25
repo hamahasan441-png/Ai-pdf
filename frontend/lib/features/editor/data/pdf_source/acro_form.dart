@@ -95,14 +95,16 @@ class AcroField {
   bool get editableCombo => combo && flags & (1 << 18) != 0;
   bool get multiSelect => kind == AcroFieldKind.choice && flags & (1 << 21) != 0;
 
-  /// Whether the editor lets the user change it.
+  /// Whether the editor lets the user change it. A signature field is
+  /// included so a tap can place a signature on it; a read-only one is not.
   bool get fillable =>
       !readOnly &&
       !password &&
       (kind == AcroFieldKind.text ||
           kind == AcroFieldKind.checkbox ||
           kind == AcroFieldKind.radio ||
-          kind == AcroFieldKind.choice);
+          kind == AcroFieldKind.choice ||
+          kind == AcroFieldKind.signature);
 
   /// The "on" state a check box takes when ticked.
   String get checkedState =>
