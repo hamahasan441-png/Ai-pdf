@@ -2385,12 +2385,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _deleteSelected() {
-    if (_selected != null) {
-      setState(() {
-        _selected = _editorController.deleteSelected(_layer, _selected);
-      });
-      _schedulePersist();
+    // The box being typed is the selection. Clear it through the editor so
+    // the caret is not left on an object the undo stack already removed.
+    if (_inlineEditing != null && identical(_selected, _inlineEditing)) {
+      _guideFields = false;
+      _inlineEditing!.text = '';
+      _commitInlineEdit();
+      return;
     }
+    if (_inlineEditing != null) _commitInlineEdit();
+    if (_selected == null) return;
+    setState(() {
+      _selected = _editorController.deleteSelected(_layer, _selected);
+    });
+    _schedulePersist();
   }
 
   /// Copy the selected object to an in-editor clipboard (works across pages).
@@ -2935,6 +2943,14 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     if (done != null && !done.isCompleted) done.complete();
   }
 
+  /// The label of the field being typed, or null for an ordinary text box.
+  String? _fieldHint() {
+    final field = _replicateFrom;
+    if (field == null) return null;
+    final label = _fieldInput.cleanLabel(field.label);
+    return label.isEmpty ? null : label;
+  }
+
   /// Whether the inline editor has a non-collapsed text selection (range).
   bool get _hasInlineSelection =>
       _inlineEditing != null && !_inlineSelection.isCollapsed;
@@ -3164,6 +3180,17 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _undo() {
+    final wasEditing = _inlineEditing != null;
+    final hadText = (_inlineEditing?.text.trim().isNotEmpty ?? false);
+    if (wasEditing) {
+      // This step is the text itself. Don't also offer to copy a field
+      // value that the undo is about to take back, and don't open the next
+      // field of a guided pass.
+      _guideFields = false;
+      _replicateFrom = null;
+      _commitInlineEdit();
+      if (!hadText) return;
+    }
     // Typing in a form field is a step of its own: undo takes it back first.
     _commitFillText();
     setState(() {
@@ -3177,6 +3204,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   }
 
   void _redoAction() {
+    if (_inlineEditing != null) {
+      _guideFields = false;
+      _commitInlineEdit();
+      return;
+    }
     _commitFillText();
     setState(() {
       _editorController.redo(_layer);
@@ -3294,7 +3326,9 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     List<int>? onlyIndices,
     bool clearRecovery = true,
   }) async {
-    // What is being typed in a form field belongs in the file.
+    // What is being typed belongs in the file, and an open text edit has to
+    // close so its undo step is finished before the pages are written.
+    _commitInlineEdit();
     _commitFillText();
     final l10n = AppLocalizations.of(context)!;
     final sourcePath = _editorController.filePath;
@@ -3867,7 +3901,12 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_readingView && !_chromeHidden,
+      canPop: !_hasUnsavedChanges &&
+          !_readingView &&
+          !_chromeHidden &&
+          _inlineEditing == null &&
+          _fill == null &&
+          _placingField == null,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         // Back brings the bars back first, then leaves the reading view.
@@ -3877,6 +3916,21 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         }
         if (_readingView) {
           _closeReadingView();
+          return;
+        }
+        // Back finishes the thing under the finger before it leaves the file.
+        // A guided pass stops here instead of opening the next field.
+        if (_inlineEditing != null) {
+          _guideFields = false;
+          _commitInlineEdit();
+          return;
+        }
+        if (_fill != null) {
+          _endFill();
+          return;
+        }
+        if (_placingField != null) {
+          _endPlacement();
           return;
         }
         final action = await showEditorUnsavedChangesDialog(context);
@@ -4052,6 +4106,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                             onTextChanged: _onInlineTextChanged,
                             keyboardType: _inlineKeyboard,
                             singleLine: _inlineKeyboard != TextInputType.multiline,
+                            hint: _fieldHint(),
                             onSelectionChanged: (sel) =>
                                 setState(() => _inlineSelection = sel),
                           ),
