@@ -16,6 +16,8 @@ Future<SignatureChoiceResult?> showEditorSignaturePickerSheet(
 }) {
   return showModalBottomSheet<SignatureChoiceResult>(
     context: context,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,

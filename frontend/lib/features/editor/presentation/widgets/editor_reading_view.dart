@@ -156,7 +156,9 @@ class _EditorReadingViewState extends State<EditorReadingView> {
           width: width,
           height: width / widget.aspectOf(i),
           child: DecoratedBox(
-            decoration: const BoxDecoration(boxShadow: [BoxShadow(color: Color(0x55000000), blurRadius: 4)]),
+            decoration: const BoxDecoration(
+              boxShadow: [BoxShadow(color: Color(0x261B2130), blurRadius: 12, offset: Offset(0, 4))],
+            ),
             child: page,
           ),
         ),

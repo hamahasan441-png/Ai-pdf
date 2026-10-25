@@ -151,9 +151,14 @@ class _EditorDocumentViewportState extends State<EditorDocumentViewport>
                 width: fitted.width,
                 height: fitted.height,
                 child: RepaintBoundary(
-                  child: widget.viewFilter == null
-                      ? widget.child
-                      : ColorFiltered(colorFilter: widget.viewFilter!, child: widget.child),
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      boxShadow: [BoxShadow(color: Color(0x2E1B2130), blurRadius: 22, offset: Offset(0, 10))],
+                    ),
+                    child: widget.viewFilter == null
+                        ? widget.child
+                        : ColorFiltered(colorFilter: widget.viewFilter!, child: widget.child),
+                  ),
                 ),
               ),
             ),

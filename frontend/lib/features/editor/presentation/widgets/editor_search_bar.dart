@@ -4,6 +4,7 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/core/theme/motion.dart';
 import 'package:ai_pdf/features/editor/application/editor_search_controller.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 
 /// Floating search bar shown above the editor when find‑in‑document is active.
 ///
@@ -53,20 +54,21 @@ class _EditorSearchBarState extends State<EditorSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final searchState = widget.searchState;
     final hasQuery = searchState.query.isNotEmpty;
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Color(0x1F1B2130), blurRadius: 20, offset: Offset(0, 6))],
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: EditorChrome.floatShadow(palette.brightness),
       ),
       child: Material(
-        color: cs.surface,
+        color: palette.barSurface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: palette.hairline),
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(

@@ -82,7 +82,7 @@ class EditorSelectionBox extends StatelessWidget {
 }
 
 /// A circular resize handle rendered at a corner of the selection box.
-/// Compact (22 dp visual inside a 44 dp touch target) and shown only in
+/// Compact (26 dp visual inside a 48 dp touch target) and shown only in
 /// transform mode, so the page is never dotted with handles by accident.
 class EditorScaleHandle extends StatelessWidget {
   final Size size;
@@ -111,10 +111,10 @@ class EditorScaleHandle extends StatelessWidget {
     final hx = (bottomRight ? bounds.right : bounds.left) * size.width;
     final hy = (bottomRight ? bounds.bottom : bounds.top) * size.height;
     return Positioned(
-      left: hx - 22,
-      top: hy - 22,
-      width: 44,
-      height: 44,
+      left: hx - 24,
+      top: hy - 24,
+      width: 48,
+      height: 48,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: onResizeStart == null ? null : (_) => onResizeStart!(),
@@ -133,14 +133,14 @@ class EditorScaleHandle extends StatelessWidget {
         },
         child: Center(
           child: Container(
-            width: 22,
-            height: 22,
+            width: 26,
+            height: 26,
             decoration: BoxDecoration(
               color: palette.handleColor,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: Colors.white, width: 2.5),
               boxShadow: const [
-                BoxShadow(color: Color(0x42000000), blurRadius: 4, offset: Offset(0, 1)),
+                BoxShadow(color: Color(0x42000000), blurRadius: 6, offset: Offset(0, 2)),
               ],
             ),
           ),
@@ -173,8 +173,8 @@ class EditorRotateHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = EditorPalette.of(context);
-    final left = bounds.center.dx * size.width - 22;
-    final top = bounds.top * size.height - 50;
+    final left = bounds.center.dx * size.width - 24;
+    final top = bounds.top * size.height - 56;
     final center = Offset(
       bounds.center.dx * size.width,
       bounds.center.dy * size.height,
@@ -182,8 +182,8 @@ class EditorRotateHandle extends StatelessWidget {
     return Positioned(
       left: left,
       top: top,
-      width: 44,
-      height: 44,
+      width: 48,
+      height: 48,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: onRotateStart == null ? null : (_) => onRotateStart!(),
@@ -194,17 +194,17 @@ class EditorRotateHandle extends StatelessWidget {
         },
         child: Center(
           child: Container(
-            width: 22,
-            height: 22,
+            width: 26,
+            height: 26,
             decoration: BoxDecoration(
               color: palette.handleColor,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: Colors.white, width: 2.5),
               boxShadow: const [
-                BoxShadow(color: Color(0x42000000), blurRadius: 4, offset: Offset(0, 1)),
+                BoxShadow(color: Color(0x42000000), blurRadius: 6, offset: Offset(0, 2)),
               ],
             ),
-            child: const Icon(Icons.rotate_right, size: 12, color: Colors.white),
+            child: const Icon(Icons.rotate_right, size: 14, color: Colors.white),
           ),
         ),
       ),

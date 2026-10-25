@@ -93,7 +93,7 @@ class EditorTopBar extends StatelessWidget {
                       if (onSearch != null)
                         IconButton(icon: const Icon(Icons.search), tooltip: l10n.toolFind, onPressed: onSearch),
                       if (canUndo) IconButton(icon: const Icon(Icons.undo), tooltip: l10n.undo, onPressed: onUndo),
-                      IconButton(
+                    IconButton(
                         icon: const Icon(Icons.ios_share),
                         tooltip: l10n.export,
                         onPressed: loading ? null : onExport,
@@ -111,16 +111,16 @@ class EditorTopBar extends StatelessWidget {
                         onPressed: canRedo ? onRedo : null,
                       ),
                       Padding(
-                        padding: const EdgeInsetsDirectional.only(start: 4, end: 8),
+                        padding: const EdgeInsetsDirectional.only(start: 2, end: 10),
                         child: FilledButton(
                           onPressed: onDone,
                           style: FilledButton.styleFrom(
                             backgroundColor: palette.accent,
                             foregroundColor: palette.onAccent,
-                            minimumSize: const Size(0, 36),
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                            minimumSize: const Size(72, 40),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                           ),
                           child: Text(l10n.done),
                         ),
@@ -150,17 +150,26 @@ class EditorTopBar extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: palette.barForeground),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: palette.barForeground),
               ),
             ),
             if (unsavedChanges) ...[
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Tooltip(
                 message: l10n.unsavedChangesDot,
                 child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(color: AppColorsDot.of(context), shape: BoxShape.circle),
+                  width: 12,
+                  height: 12,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColorsDot.of(context).withValues(alpha: 0.45), width: 2),
+                  ),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(color: AppColorsDot.of(context), shape: BoxShape.circle),
+                  ),
                 ),
               ),
             ],
@@ -181,6 +190,7 @@ class EditorTopBar extends StatelessWidget {
     return PopupMenuButton<int>(
       tooltip: l10n.moreActions,
       icon: Icon(Icons.more_vert, color: palette.barForeground),
+      shape: EditorChrome.menuShape,
       onSelected: (i) => menu[i].onTap(),
       itemBuilder: (_) => [
         for (var i = 0; i < menu.length; i++)

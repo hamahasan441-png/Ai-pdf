@@ -4,6 +4,8 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:ai_pdf/features/editor/application/editor_outline_controller.dart';
 import 'package:ai_pdf/features/editor/domain/services/document_outline_service.dart';
 
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
 /// A collapsible sidebar panel showing the document outline (Phase 29).
 ///
 /// Each row indents by [OutlineRow.depth], has a collapse chevron (when
@@ -29,20 +31,19 @@ class EditorOutlinePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
     final rows = outlineState.rows;
     final activeNode = outlineState.activeSection;
-
+    final width = (MediaQuery.sizeOf(context).width * 0.78).clamp(240.0, 320.0);
     return Material(
-      elevation: 8,
-      borderRadius: const BorderRadius.only(
-        topRight: Radius.circular(12),
-        bottomRight: Radius.circular(12),
-      ),
-      color: cs.surface,
+      elevation: 6,
+      shadowColor: const Color(0x331B2130),
+      borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
+      color: palette.barSurface,
       child: SizedBox(
-        width: 260,
+        width: width,
         child: Column(
           children: [
             _header(cs, l10n),

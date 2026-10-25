@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
 /// A horizontally scrollable strip of page thumbnails for quick navigation
 /// and page management (tap to jump, long-press for delete/duplicate).
 ///
@@ -27,54 +29,71 @@ class EditorPageThumbnailStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (pageCount <= 1) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
+    final palette = EditorPalette.of(context);
     return Container(
-      height: 72,
+      height: 96,
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
+        color: palette.barSurface,
+        border: Border(top: BorderSide(color: palette.hairline)),
       ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         itemCount: pageCount,
         itemBuilder: (context, index) {
           final isCurrent = index == currentPage;
           final bytes = pageCache[index];
           return GestureDetector(
             onTap: () => onPageTap(index),
-            onLongPress: onPageAction == null
-                ? null
-                : () => _showActions(context, index),
+            onLongPress: onPageAction == null ? null : () => _showActions(context, index),
             child: Container(
-              width: 44,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: 52,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: isCurrent ? cs.primary : cs.outlineVariant,
+                  color: isCurrent ? palette.accent : palette.hairline,
                   width: isCurrent ? 2.5 : 1,
                 ),
-                borderRadius: BorderRadius.circular(4),
-                color: cs.surface,
+                borderRadius: BorderRadius.circular(8),
+                color: palette.fieldSurface,
+                boxShadow: isCurrent ? EditorChrome.floatShadow(palette.brightness) : null,
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: bytes != null
-                    ? Image.memory(
+                borderRadius: BorderRadius.circular(6),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (bytes != null)
+                      Image.memory(
                         bytes,
                         fit: BoxFit.cover,
                         gaplessPlayback: true,
-                        // Thumbs are ~44px. Decoding the 2400px page bitmap
+                        // Thumbs are ~52px. Decoding the 2400px page bitmap
                         // here blows the image cache and janks the editor.
-                        cacheWidth: 96,
+                        cacheWidth: 120,
                         filterQuality: FilterQuality.low,
                       )
-                    : Center(
+                    else
+                      ColoredBox(color: palette.canvasBackground),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Container(
+                        width: double.infinity,
+                        color: isCurrent ? palette.accent : const Color(0x99000000),
+                        padding: const EdgeInsets.symmetric(vertical: 1),
                         child: Text(
                           '${index + 1}',
-                          style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: isCurrent ? palette.onAccent : Colors.white,
+                          ),
                         ),
                       ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -87,6 +106,8 @@ class EditorPageThumbnailStrip extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(EditorChrome.radiusSheet))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,

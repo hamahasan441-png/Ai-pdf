@@ -29,7 +29,6 @@ class _SignaturePadSheetState extends State<SignaturePadSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.signHere),
@@ -56,14 +55,15 @@ class _SignaturePadSheetState extends State<SignaturePadSheet> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: DecoratedBox(
-            // Paper stays white in dark mode too: ink is black.
+            // Paper stays warm-white in dark mode too: the ink is black.
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: cs.outlineVariant),
+              color: const Color(0xFFFFFDF8),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFE4D7C4)),
+              boxShadow: const [BoxShadow(color: Color(0x1A1B2130), blurRadius: 24, offset: Offset(0, 10))],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
               child: Stack(
                 children: [
                   Positioned(
@@ -112,7 +112,7 @@ class SignaturePadPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = Colors.black
-      ..strokeWidth = 3
+      ..strokeWidth = 3.4
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;

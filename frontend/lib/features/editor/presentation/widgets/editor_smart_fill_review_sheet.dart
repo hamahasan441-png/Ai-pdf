@@ -11,6 +11,8 @@ Future<List<FilledField>?> showEditorSmartFillReviewSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => EditorReviewSheet(fields: fields),
   );
 }

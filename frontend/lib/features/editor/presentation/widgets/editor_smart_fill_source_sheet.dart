@@ -4,6 +4,8 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 Future<String?> showEditorSmartFillSourceSheet(BuildContext context) {
   return showModalBottomSheet<String>(
     context: context,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) {
       final l10n = AppLocalizations.of(ctx)!;
       return SafeArea(
