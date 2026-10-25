@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/core/theme/motion.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
 
 /// A calm card over the page while a document opens or the page is being
 /// analysed (OCR, field detection). It fades in and out.
@@ -20,6 +21,7 @@ class EditorLoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = loading || detecting;
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final label = detecting
@@ -36,18 +38,18 @@ class EditorLoadingOverlay extends StatelessWidget {
           child: TickerMode(
             enabled: active,
             child: ColoredBox(
-              color: Colors.black.withValues(alpha: 0.35),
+              color: palette.canvasBackground.withValues(alpha: 0.55),
               child: Center(
                 child: Semantics(
                   liveRegion: true,
                   label: label,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
-                    decoration: BoxDecoration(
-                      color: cs.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [BoxShadow(color: Color(0x331B2130), blurRadius: 24, offset: Offset(0, 8))],
+                    margin: const EdgeInsets.symmetric(horizontal: 36),
+                    decoration: EditorChrome.floating(
+                      color: palette.barSurface,
+                      border: palette.hairline,
+                      brightness: palette.brightness,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

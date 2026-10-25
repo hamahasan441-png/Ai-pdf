@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
 /// The bar that sits on the keyboard while a form is filled: previous and
 /// next field, the field's name, a calendar for date fields, Reset (clears
 /// this field) and Done.
@@ -27,6 +29,7 @@ class FormFillBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     Widget arrow(IconData icon, String tip, VoidCallback? onTap) => IconButton(
@@ -39,7 +42,8 @@ class FormFillBar extends StatelessWidget {
                 },
           icon: Icon(icon, size: 26),
           style: IconButton.styleFrom(
-            side: BorderSide(color: onTap == null ? cs.outlineVariant : cs.outline),
+            minimumSize: const Size(EditorChrome.touch, EditorChrome.touch),
+            side: BorderSide(color: onTap == null ? cs.outlineVariant : palette.accent.withValues(alpha: 0.45)),
             shape: const CircleBorder(),
           ),
         );
@@ -50,7 +54,7 @@ class FormFillBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Container(
-          height: 58,
+          height: 64,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.outlineVariant))),
           child: Row(
@@ -77,9 +81,17 @@ class FormFillBar extends StatelessWidget {
                   icon: Icon(Icons.event_outlined, color: cs.primary),
                 ),
               TextButton(onPressed: onReset, child: Text(l10n?.formReset ?? 'Reset')),
-              TextButton(
+              const SizedBox(width: 4),
+              FilledButton(
                 onPressed: onDone,
-                style: TextButton.styleFrom(textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: palette.accent,
+                  foregroundColor: palette.onAccent,
+                  minimumSize: const Size(72, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
                 child: Text(l10n?.done ?? 'Done'),
               ),
             ],

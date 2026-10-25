@@ -3,6 +3,8 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/application/editor_layer_controller.dart';
 
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
 /// The Layers panel: the marks on the current page grouped by kind, each
 /// with show/hide and lock. The toggles change the marks themselves, so the
 /// canvas, selection and export all follow them. Right-side overlay, 260 px.
@@ -26,17 +28,17 @@ class EditorLayerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
+    final width = (MediaQuery.sizeOf(context).width * 0.78).clamp(240.0, 320.0);
     return Material(
-      elevation: 8,
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(12),
-        bottomLeft: Radius.circular(12),
-      ),
-      color: cs.surface,
+      elevation: 6,
+      shadowColor: const Color(0x331B2130),
+      borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+      color: palette.barSurface,
       child: SizedBox(
-        width: 260,
+        width: width,
         child: Column(
           children: [
             _header(context, cs, l10n),

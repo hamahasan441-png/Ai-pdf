@@ -3,6 +3,8 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
+
 /// Shown after the user drags across real PDF words (Select tool).
 /// Copy, or turn the selection into a Foxit-style text mark.
 class EditorTextSelectionBar extends StatelessWidget {
@@ -22,26 +24,27 @@ class EditorTextSelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final palette = EditorPalette.of(context);
     final cs = Theme.of(context).colorScheme;
     Widget icon(IconData i, String tip, VoidCallback onTap, {Color? color}) => IconButton(
           tooltip: tip,
-          icon: Icon(i, size: 21, color: color ?? cs.onSurface),
+          icon: Icon(i, size: 22, color: color ?? palette.barForeground),
           onPressed: onTap,
-          constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+          constraints: const BoxConstraints.tightFor(width: EditorChrome.touch, height: EditorChrome.touch),
           padding: EdgeInsets.zero,
         );
     return Center(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Color(0x261B2130), blurRadius: 22, offset: Offset(0, 8))],
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: EditorChrome.floatShadow(palette.brightness),
         ),
         child: Material(
-          color: cs.surface,
+          color: palette.barSurface,
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: cs.outlineVariant),
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: palette.hairline),
           ),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,

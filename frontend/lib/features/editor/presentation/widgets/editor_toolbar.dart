@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/core/theme/motion.dart';
@@ -10,9 +11,9 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_mode_bar.dart
 bool _same(Color a, Color b) => a.toARGB32() == b.toARGB32();
 
 /// The editor's bottom bars: the tools of the current workspace in one
-/// slim row (icons, names on long press), then the workspace bar. Colour
-/// and size live behind one chip instead of a permanent swatch row, so the
-/// page keeps the screen.
+/// comfortable row (icon and name, so a tool is obvious without a long
+/// press), then the workspace bar. Colour and size live behind one chip
+/// instead of a permanent swatch row, so the page keeps the screen.
 class EditorToolbar extends StatelessWidget {
   static const List<Color> presets = [Color(0xFFFFEB3B), Colors.red, Colors.blue, Colors.black, Colors.green];
 
@@ -28,7 +29,7 @@ class EditorToolbar extends StatelessWidget {
     return [...presets, ...extra];
   }
 
-  static const double rowHeight = 56;
+  static const double rowHeight = 74;
 
   final EditorMode mode;
   final ValueChanged<EditorMode> onModeChanged;
@@ -297,6 +298,7 @@ class EditorToolbar extends StatelessWidget {
       tooltip: tooltip,
       enabled: enabled,
       position: PopupMenuPosition.over,
+      shape: EditorChrome.menuShape,
       onSelected: (i) => entries[i].onTap(),
       itemBuilder: (_) => [
         for (var i = 0; i < entries.length; i++)
@@ -311,14 +313,14 @@ class EditorToolbar extends StatelessWidget {
           ),
       ],
       child: Container(
-        height: 44,
-        constraints: const BoxConstraints(minWidth: 44),
+        height: EditorChrome.touch,
+        constraints: const BoxConstraints(minWidth: EditorChrome.touch),
         padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 12),
-        margin: const EdgeInsets.symmetric(horizontal: 1),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
           color: active ? palette.activePill : Colors.transparent,
           border: label == null ? null : Border.all(color: palette.hairline),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(EditorChrome.radius),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -345,18 +347,43 @@ class EditorToolbar extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(EditorChrome.radiusSheet))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
+          final palette = EditorPalette.of(ctx);
           final cs = Theme.of(ctx).colorScheme;
+          final showStroke = tool == EditTool.draw || isShape;
           return SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(l10n.toolStyle, style: Theme.of(ctx).textTheme.titleMedium),
+                  Text(l10n.toolStyle, style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 16),
+                  Center(
+                    child: Container(
+                      width: 148,
+                      height: 52,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: palette.canvasBackground,
+                        borderRadius: BorderRadius.circular(EditorChrome.radius),
+                        border: Border.all(color: palette.hairline),
+                      ),
+                      child: Container(
+                        width: tool == EditTool.text ? 28 : 84,
+                        height: showStroke ? width.clamp(2, 12) : (tool == EditTool.text ? 28 : 10),
+                        decoration: BoxDecoration(
+                          color: current,
+                          borderRadius: BorderRadius.circular(tool == EditTool.text ? 6 : 99),
+                          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -367,21 +394,23 @@ class EditorToolbar extends StatelessWidget {
                           selected: _same(current, c),
                           label: l10n.colorTitle,
                           child: InkResponse(
-                            radius: 24,
+                            radius: 26,
                             onTap: () {
+                              HapticFeedback.selectionClick();
                               setSheet(() => current = c);
                               onColorChanged(c);
                             },
-                            child: Container(
-                              width: 36,
-                              height: 36,
+                            child: AnimatedContainer(
+                              duration: Motion.of(ctx, Motion.quick),
+                              width: 40,
+                              height: 40,
                               decoration: BoxDecoration(
                                 color: c,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.black.withValues(alpha: 0.12)),
-                                boxShadow: _same(current, c)
-                                    ? [BoxShadow(color: cs.onSurface, spreadRadius: 2.5), BoxShadow(color: cs.surface, spreadRadius: 1)]
-                                    : null,
+                                border: Border.all(
+                                  color: _same(current, c) ? palette.accent : Colors.black.withValues(alpha: 0.12),
+                                  width: _same(current, c) ? 3 : 1,
+                                ),
                               ),
                             ),
                           ),
@@ -397,9 +426,9 @@ class EditorToolbar extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (tool == EditTool.draw || isShape) ...[
-                    const SizedBox(height: 20),
-                    Text(l10n.toolThickness, style: TextStyle(color: cs.onSurfaceVariant)),
+                  if (showStroke) ...[
+                    const SizedBox(height: 18),
+                    Text(l10n.toolThickness, style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                     Slider(
                       value: width.clamp(1, 12).toDouble(),
                       min: 1,
@@ -411,14 +440,17 @@ class EditorToolbar extends StatelessWidget {
                     ),
                   ],
                   if (tool == EditTool.text) ...[
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     Row(children: [
-                      Expanded(child: Text(l10n.toolTextSize, style: TextStyle(color: cs.onSurfaceVariant))),
+                      Expanded(
+                        child: Text(l10n.toolTextSize, style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                      ),
                       IconButton(
                         tooltip: l10n.bold,
                         isSelected: isBold,
                         icon: const Icon(Icons.format_bold),
                         onPressed: () {
+                          HapticFeedback.selectionClick();
                           setSheet(() => isBold = !isBold);
                           onToggleBold();
                         },
@@ -453,8 +485,9 @@ class _Entry {
   const _Entry(this.icon, this.label, this.onTap, [this.selected = false]);
 }
 
-/// One tool: an icon with its name as tooltip and for screen readers. The
-/// active one sits on a quiet pill in the accent colour.
+/// One tool: icon and name, with a 48dp-class target. The active one sits
+/// on a quiet accent wash. The name is also the tooltip and the screen
+/// reader label.
 class _IconTool extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -483,22 +516,46 @@ class _IconTool extends StatelessWidget {
         label: label,
         excludeSemantics: true,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(10),
+              onTap: enabled
+                  ? () {
+                      HapticFeedback.selectionClick();
+                      onTap!();
+                    }
+                  : null,
+              borderRadius: BorderRadius.circular(EditorChrome.radius),
               child: AnimatedContainer(
                 duration: Motion.of(context, Motion.quick),
                 curve: Motion.enter,
-                width: 44,
-                height: 44,
+                width: 62,
+                height: 62,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   color: active ? palette.activePill : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(EditorChrome.radius),
                 ),
-                child: Icon(icon, size: 22, color: fg),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 22, color: fg),
+                    const SizedBox(height: 3),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        height: 1.05,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        color: fg,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -529,25 +586,25 @@ class _StyleChip extends StatelessWidget {
           type: MaterialType.transparency,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(EditorChrome.radius),
             child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
-                border: Border.all(color: palette.hairline),
-                borderRadius: BorderRadius.circular(10),
+                color: palette.activePill,
+                borderRadius: BorderRadius.circular(EditorChrome.radius),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
-                  width: 18,
-                  height: 18,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     color: color,
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.black.withValues(alpha: 0.15)),
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 2),
                 Icon(Icons.expand_more, size: 18, color: palette.barMuted),
               ]),
             ),

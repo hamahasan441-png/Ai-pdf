@@ -139,14 +139,15 @@ class EditorScreenBody extends StatelessWidget {
                   opacity: chromeHidden && showPageLabel ? 1 : 0,
                   duration: duration,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
-                      color: const Color(0xB81F2328),
+                      color: const Color(0xE61B2130),
                       borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0x33FFFFFF)),
                     ),
                     child: Text(
                       pageLabel!,
-                      style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w500),
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.2),
                     ),
                   ),
                 ),

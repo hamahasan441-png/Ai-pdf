@@ -71,8 +71,9 @@ class EditorPalette {
   /// Hairlines between the bars and the page.
   Color get hairline => brightness == Brightness.dark ? const Color(0x1FFFFFFF) : const Color(0xFFE6E8EB);
 
-  /// The quiet pill behind the active tool or mode.
-  Color get activePill => brightness == Brightness.dark ? const Color(0x1FFFFFFF) : const Color(0xFFEFF1F4);
+  /// The quiet pill behind the active tool or mode: a wash of the accent,
+  /// never a second colour, so the active thing is obvious without shouting.
+  Color get activePill => accent.withValues(alpha: brightness == Brightness.dark ? 0.22 : 0.12);
 
   /// The one accent: the active tool's icon and the primary action.
   Color get accent => brightness == Brightness.dark ? AppColors.primaryLight : AppColors.primary;
@@ -89,7 +90,7 @@ class EditorPalette {
   /// Dark editor chrome: deep navy-graphite, calm and premium.
   static final EditorPalette darkPalette = EditorPalette._(
     brightness: Brightness.dark,
-    canvasBackground: const Color(0xFF10131C),
+    canvasBackground: const Color(0xFF12151C),
     fieldSurface: Colors.white,
     fieldHairline: Colors.black.withValues(alpha: 0.10),
     readOnlySurface: const Color(0xFFF1F2F5),
@@ -108,7 +109,7 @@ class EditorPalette {
   /// with dark ink, so the document is the only thing that draws the eye.
   static final EditorPalette lightPalette = EditorPalette._(
     brightness: Brightness.light,
-    canvasBackground: const Color(0xFFEEF0F3),
+    canvasBackground: const Color(0xFFF3F1EC),
     fieldSurface: Colors.white,
     fieldHairline: Colors.black.withValues(alpha: 0.10),
     readOnlySurface: const Color(0xFFF1F2F5),
@@ -122,4 +123,39 @@ class EditorPalette {
     detectTeal: AppColors.accent,
     detectViolet: AppColors.toolViolet,
   );
+}
+
+/// Shared geometry for the editor chrome so every bar, sheet, handle and
+/// panel feels like the same quiet instrument: generous targets, soft
+/// corners, and one floating shadow.
+class EditorChrome {
+  EditorChrome._();
+
+  /// Comfortable finger target. Visuals can be smaller; the hit area is not.
+  static const double touch = 48;
+
+  static const double radius = 14;
+  static const double radiusSheet = 24;
+
+  static List<BoxShadow> floatShadow(Brightness brightness) => [
+        BoxShadow(
+          color: const Color(0xFF1B2130).withValues(alpha: brightness == Brightness.dark ? 0.5 : 0.12),
+          blurRadius: 28,
+          offset: const Offset(0, 10),
+        ),
+      ];
+
+  static BoxDecoration floating({
+    required Color color,
+    required Color border,
+    required Brightness brightness,
+  }) =>
+      BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(radiusSheet),
+        border: Border.all(color: border),
+        boxShadow: floatShadow(brightness),
+      );
+
+  static ShapeBorder get menuShape => RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
 }

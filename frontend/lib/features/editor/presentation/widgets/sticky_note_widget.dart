@@ -22,20 +22,20 @@ class StickyNoteWidget extends StatelessWidget {
       return GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 28,
-          height: 28,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: note.color.value,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 3,
-                offset: const Offset(1, 1),
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: const Icon(Icons.sticky_note_2, size: 16, color: Colors.black54),
+          child: const Icon(Icons.sticky_note_2, size: 18, color: Colors.black54),
         ),
       );
     }
@@ -47,7 +47,7 @@ class StickyNoteWidget extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 80, maxHeight: 200),
         decoration: BoxDecoration(
           color: note.color.value,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.15),

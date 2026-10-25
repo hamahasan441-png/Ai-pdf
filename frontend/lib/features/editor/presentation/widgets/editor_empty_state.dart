@@ -46,11 +46,29 @@ class EditorEmptyState extends StatelessWidget {
               l10n.toolEditor,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 6),
-            Text(
-              l10n.openPdfOrImageToEdit,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant, height: 1.45),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Text(
+                l10n.openPdfOrImageToEdit,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurfaceVariant, height: 1.5, fontSize: 15),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final item in [
+                  (Icons.edit_outlined, l10n.modeAnnotate),
+                  (Icons.title, l10n.modeText),
+                  (Icons.draw_outlined, l10n.modeSign),
+                  (Icons.grid_view_outlined, l10n.modePages),
+                ])
+                  _Hint(icon: item.$1, label: item.$2),
+              ],
             ),
             const SizedBox(height: 26),
             FilledButton.icon(
@@ -69,6 +87,34 @@ class EditorEmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _Hint extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _Hint({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface)),
+        ],
       ),
     );
   }

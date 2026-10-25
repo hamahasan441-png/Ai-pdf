@@ -172,8 +172,8 @@ class EditorRichTextToolbar extends StatelessWidget {
                         CheckedPopupMenuItem(value: v, checked: (b?.lineHeight ?? 1) == v, child: Text('$v')),
                     ],
                     child: SizedBox(
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       child: Icon(Icons.format_line_spacing, size: 21, color: cs.onSurface),
                     ),
                   ),
@@ -242,7 +242,7 @@ class _ToolButton extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
           backgroundColor: Colors.transparent,
         ),
-        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
         padding: EdgeInsets.zero,
       ),
     );
@@ -263,7 +263,7 @@ class _ColorButton extends StatelessWidget {
     return IconButton(
       tooltip: tooltip,
       onPressed: onTap,
-      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
       padding: EdgeInsets.zero,
       style: IconButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11))),
       icon: Column(mainAxisSize: MainAxisSize.min, children: [
