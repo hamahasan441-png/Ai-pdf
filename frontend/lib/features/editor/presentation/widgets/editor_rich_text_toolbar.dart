@@ -28,6 +28,10 @@ class EditorRichTextToolbar extends StatelessWidget {
   final ValueChanged<double>? onLineHeight;
   final VoidCallback? onToggleWrap;
 
+  /// Finishes the box. Typing has no other obvious Done while the keyboard
+  /// covers the page.
+  final VoidCallback? onDone;
+
   const EditorRichTextToolbar({
     super.key,
     required this.hasFocus,
@@ -43,6 +47,7 @@ class EditorRichTextToolbar extends StatelessWidget {
     this.onToggleRtl,
     this.onLineHeight,
     this.onToggleWrap,
+    this.onDone,
   });
 
   /// Families the editor can draw on screen and embed on export.
@@ -161,7 +166,7 @@ class EditorRichTextToolbar extends StatelessWidget {
                   ])
                     _ToolButton(icon, label, () => onAlign!(align), active: b?.textAlign == align),
                 ]),
-              _Group(last: true, children: [
+              _Group(last: onDone == null, children: [
                 if (onToggleRtl != null)
                   _ToolButton(Icons.format_textdirection_r_to_l, l10n?.textRightToLeft ?? 'Right to left', onToggleRtl!,
                       active: b?.textDirection == TextDirection.rtl),
@@ -184,6 +189,10 @@ class EditorRichTextToolbar extends StatelessWidget {
                   _ToolButton(Icons.wrap_text, l10n?.wrapText ?? 'Wrap in a fixed width', onToggleWrap!,
                       active: b?.width != null),
               ]),
+              if (onDone != null)
+                _Group(last: true, children: [
+                  _ToolButton(Icons.check, l10n?.done ?? 'Done', onDone!),
+                ]),
             ],
           ),
         ),

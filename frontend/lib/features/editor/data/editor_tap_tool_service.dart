@@ -4,6 +4,18 @@ import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.da
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 
+/// A marker this dark or this pale disappears on a white page.
+bool isPoorHighlightColor(Color color) {
+  final l = color.computeLuminance();
+  return l < 0.12 || l > 0.94;
+}
+
+/// Highlighter ink that still reads. Black and white vanish at the marker's
+/// transparency, so they become the yellow marker. A colour that still
+/// reads, including a red the user picked on purpose, stays.
+Color visibleHighlightColor(Color color) =>
+    isPoorHighlightColor(color) ? const Color(0xFFFFEB3B) : color;
+
 /// Maps tap-based editor tools to the annotations they should create.
 class EditorTapToolService {
   final EditorAnnotationFactoryService _annotationFactory;

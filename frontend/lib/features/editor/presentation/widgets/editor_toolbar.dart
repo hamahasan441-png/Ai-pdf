@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'package:ai_pdf/core/theme/motion.dart';
+import 'package:ai_pdf/features/editor/data/editor_tap_tool_service.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_mode.dart';
 import 'package:ai_pdf/features/editor/domain/entities/editor_tool.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_design.dart';
@@ -340,7 +341,9 @@ class EditorToolbar extends StatelessWidget {
   /// Colour, thickness and text size for the current tool, in one sheet.
   void _openStyleSheet(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    var current = color;
+    final opening = tool == EditTool.highlight ? visibleHighlightColor(color) : color;
+    if (!_same(opening, color)) onColorChanged(opening);
+    var current = opening;
     var width = stroke;
     var size = textSize;
     var isBold = bold;
@@ -368,19 +371,31 @@ class EditorToolbar extends StatelessWidget {
                       height: 52,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: palette.canvasBackground,
+                        color: tool == EditTool.text || tool == EditTool.highlight
+                            ? const Color(0xFFD5D8E0)
+                            : palette.canvasBackground,
                         borderRadius: BorderRadius.circular(EditorChrome.radius),
                         border: Border.all(color: palette.hairline),
                       ),
-                      child: Container(
-                        width: tool == EditTool.text ? 28 : 84,
-                        height: showStroke ? width.clamp(2, 12) : (tool == EditTool.text ? 28 : 10),
-                        decoration: BoxDecoration(
-                          color: current,
-                          borderRadius: BorderRadius.circular(tool == EditTool.text ? 6 : 99),
-                          border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-                        ),
-                      ),
+                      child: tool == EditTool.text
+                          ? Text(
+                              'A',
+                              style: TextStyle(
+                                color: current,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                height: 1,
+                              ),
+                            )
+                          : Container(
+                              width: 84,
+                              height: showStroke ? width.clamp(2, 12) : 10,
+                              decoration: BoxDecoration(
+                                color: tool == EditTool.highlight ? current.withValues(alpha: 0.55) : current,
+                                borderRadius: BorderRadius.circular(99),
+                                border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -397,8 +412,9 @@ class EditorToolbar extends StatelessWidget {
                             radius: 26,
                             onTap: () {
                               HapticFeedback.selectionClick();
-                              setSheet(() => current = c);
-                              onColorChanged(c);
+                              final next = tool == EditTool.highlight ? visibleHighlightColor(c) : c;
+                              setSheet(() => current = next);
+                              onColorChanged(next);
                             },
                             child: AnimatedContainer(
                               duration: Motion.of(ctx, Motion.quick),

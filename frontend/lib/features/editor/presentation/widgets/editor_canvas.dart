@@ -186,11 +186,13 @@ class EditorCanvas extends StatelessWidget {
 
   bool get _canDragText => tool == EditTool.pan || tool == EditTool.text;
 
-  /// The page takes a one-finger drag only when it has a use for it: the
-  /// tool draws or selects, a selected object moves, or an area is being
-  /// redacted. Otherwise the drag is left to the viewport, which pans a
-  /// zoomed page or turns the page.
-  bool get _takesDrag => tool != EditTool.pan || selected != null || securePreview;
+  /// The page takes a one-finger drag only when the tool draws or selects,
+  /// or an area is being redacted. Pan and the text tool leave the drag to
+  /// the viewport, so the page still moves. A text box has its own drag.
+  bool get _takesDrag =>
+      securePreview ||
+      (tool != EditTool.pan && tool != EditTool.text) ||
+      (tool == EditTool.pan && selected != null);
 
   /// A text box laid out like the export lays it out (AnnotationTextLayout).
   static Widget _boxText(TextAnnotation t, Size size) {
