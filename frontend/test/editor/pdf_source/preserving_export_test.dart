@@ -173,7 +173,7 @@ void main() {
       final opened = store('encrypted');
       expect(opened.wasEncrypted, isTrue);
       expect(opened.pages, hasLength(1));
-      expect(latin1.decode(pageContent(opened, 0), allowMalformed: true), contains(keep));
+      expect(utf8.decode(pageContent(opened, 0), allowMalformed: true), contains(keep));
       final written = PreservingPdfWriter(opened, null).write(const [SourcePageSpec(0)]);
       final back = PdfObjectStore.parse(written);
       expect(back.wasEncrypted, isFalse);
@@ -393,8 +393,10 @@ void main() {
       ]);
       final text = pageText(out, 0);
       expect(text, contains(keep));
-      expect(text, contains(sorani));
-      expect(text, contains(arabic));
+      // The file stores visual order. This parser does not undo bidi; MuPDF does,
+      // and the export verifier searches for the typed string.
+      expect(text, contains(pdfSearchVisualOrder(sorani)));
+      expect(text, contains(pdfSearchVisualOrder(arabic)));
       expect(pageText(out, 1), contains(keep));
     });
 
@@ -995,8 +997,8 @@ void main() {
         expect(result.flattenedPages, isEmpty);
         final text = pageText(File(result.path).readAsBytesSync(), 0);
         expect(text, contains(keep));
-        expect(text, contains(sorani));
-        expect(text, contains(arabic));
+        expect(text, contains(pdfSearchVisualOrder(sorani)));
+        expect(text, contains(pdfSearchVisualOrder(arabic)));
         keepFor('service_sorani_search', result.path, {
           'pages': [
             {'text_contains': [keep, sorani, arabic]},

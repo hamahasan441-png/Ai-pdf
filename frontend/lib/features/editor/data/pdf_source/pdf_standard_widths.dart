@@ -1,10 +1,10 @@
-/// Built-in widths of the standard 14 fonts, in glyph units (1/1000 em).
-///
-/// A Type 1 font with no /Widths array still has these metrics. The text
-/// extractor and the text eraser both use this table, so a word box and the
-/// glyph it covers describe the same positions. Courier's four faces share
-/// one width (600). Tables are WinAnsi / cp1252, which matches ASCII and
-/// the WinAnsiEncoding used for these fonts.
+// Built-in widths of the standard 14 fonts, in glyph units (1/1000 em).
+//
+// A Type 1 font with no /Widths array still has these metrics. The text
+// extractor and the text eraser both use this table, so a word box and the
+// glyph it covers describe the same positions. Courier's four faces share
+// one width (600). Tables are WinAnsi / cp1252, which matches ASCII and
+// the WinAnsiEncoding used for these fonts.
 
 const _courier = <int>[600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600];
 

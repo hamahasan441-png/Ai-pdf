@@ -7,14 +7,63 @@ import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 
+/// Text order to write for [text] so a PDF reader recovers the typed string.
+///
+/// PDF stores a line in visual order. MuPDF then applies bidi and searches
+/// the original characters. A right-to-left line is stored reversed; a line
+/// that starts with Latin keeps that order and only reverses the RTL runs.
+String pdfSearchVisualOrder(String text) => text.split('\n').map(_visualSearchLine).join('\n');
+
+bool _rtlCode(int o) =>
+    (o >= 0x0590 && o <= 0x08FF) || (o >= 0xFB50 && o <= 0xFDFF) || (o >= 0xFE70 && o <= 0xFEFF);
+
+bool _latinLetter(int o) =>
+    (o >= 0x41 && o <= 0x5A) || (o >= 0x61 && o <= 0x7A) || (o >= 0xC0 && o <= 0x24F && o != 0xD7 && o != 0xF7);
+
+String _visualSearchLine(String line) {
+  if (line.isEmpty) return line;
+  final codes = line.runes.toList();
+  final runs = <(bool, List<int>)>[];
+  var i = 0;
+  while (i < codes.length) {
+    final rtl = _rtlCode(codes[i]);
+    var j = i + 1;
+    while (j < codes.length && _rtlCode(codes[j]) == rtl) {
+      j++;
+    }
+    runs.add((rtl, codes.sublist(i, j)));
+    i = j;
+  }
+  bool? firstRtl;
+  for (final (rtl, t) in runs) {
+    for (final c in t) {
+      if (_rtlCode(c)) {
+        firstRtl = true;
+        break;
+      }
+      if (_latinLetter(c)) {
+        firstRtl = false;
+        break;
+      }
+    }
+    if (firstRtl != null) break;
+  }
+  final seq = firstRtl == true ? runs.reversed : runs;
+  final out = <int>[];
+  for (final (rtl, t) in seq) {
+    out.addAll(rtl ? t.reversed : t);
+  }
+  return String.fromCharCodes(out);
+}
+
 /// One line of text to embed as invisible, searchable Unicode.
 ///
 /// [x] and [y] are fractions of the displayed page, origin at the top left.
-/// [size] is the font size in points. The text is logical order (not shaped)
-/// and is drawn with text render mode 3, so it can be searched and copied
-/// but does not change the pixels. Used for text the `pdf` shaper cannot
-/// export as base characters: Sorani, mixed-direction lines, and Arabic that
-/// would otherwise be stored only as presentation forms.
+/// [size] is the font size in points. [text] is logical order. It is written
+/// in [pdfSearchVisualOrder] with text render mode 3, so it can be searched
+/// and copied but does not change the pixels. Used for text the `pdf` shaper
+/// cannot export as base characters: Sorani, mixed-direction lines, and
+/// Arabic that would otherwise be stored only as presentation forms.
 class SearchableRun {
   final String text;
   final double x;
@@ -514,8 +563,9 @@ class PreservingPdfWriter {
   }
 
   /// Identity-H font whose CID is the UTF-16 code unit, with a ToUnicode map
-  /// of the same. Extractors then return the original characters, not
-  /// presentation forms. No font program: the text is invisible.
+  /// of the same. The line is stored in visual order, so a reader that applies
+  /// bidi returns the typed characters, not presentation forms. No font
+  /// program: the text is invisible.
   int _buildSearchFont(Set<int> cps) {
     final cmap = _newStream(Uint8List.fromList(latin1.encode(_toUnicode(cps))));
     final cid = _alloc();
@@ -534,7 +584,7 @@ class PreservingPdfWriter {
         '/FontDescriptor': PdfDict({
           '/Type': const PdfName('/FontDescriptor'),
           '/FontName': const PdfName('/PdoczyUnicode'),
-          '/Flags': PdfNum.of(4),
+          '/Flags': PdfNum.of(32),
           '/ItalicAngle': PdfNum.of(0),
           '/Ascent': PdfNum.of(800),
           '/Descent': PdfNum.of(-200),
@@ -628,7 +678,7 @@ class PreservingPdfWriter {
       final x = nx * shownW;
       final y = (1 - ny) * shownH - size;
       content.write(
-        'BT /PdoczySearch ${_n(size)} Tf 3 Tr 1 0 0 1 ${_n(x)} ${_n(y)} Tm ${_hexUtf16(run.text)} Tj ET\n',
+        'BT /PdoczySearch ${_n(size)} Tf 3 Tr 1 0 0 1 ${_n(x)} ${_n(y)} Tm ${_hexUtf16(pdfSearchVisualOrder(run.text))} Tj ET\n',
       );
     }
     if (content.isEmpty) return page;
