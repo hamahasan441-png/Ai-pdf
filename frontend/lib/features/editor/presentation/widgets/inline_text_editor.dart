@@ -40,6 +40,10 @@ class InlineTextEditor extends StatefulWidget {
   /// is not, so it keeps the newline key.
   final bool singleLine;
 
+  /// Shown while the box is empty. A detected field uses its own label,
+  /// so the name of the field is still there after the old dialog went away.
+  final String? hint;
+
   const InlineTextEditor({
     super.key,
     required this.annotation,
@@ -49,6 +53,7 @@ class InlineTextEditor extends StatefulWidget {
     this.onSelectionChanged,
     this.keyboardType = TextInputType.text,
     this.singleLine = false,
+    this.hint,
   });
 
   @override
@@ -153,15 +158,20 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
         textInputAction: widget.singleLine ? TextInputAction.done : TextInputAction.newline,
         style: box.style,
         textAlign: box.align,
-        keyboardType: widget.keyboardType,
+        // A newline action is only legal with the multiline keyboard.
+        keyboardType: widget.singleLine ? widget.keyboardType : TextInputType.multiline,
         textDirection: t.textDirection ??
-            (_rtl.isRtl(_controller.text) ? TextDirection.rtl : TextDirection.ltr),
-        decoration: const InputDecoration(
+            (_rtl.isRtl(_controller.text.isEmpty ? (widget.hint ?? '') : _controller.text)
+                ? TextDirection.rtl
+                : TextDirection.ltr),
+        decoration: InputDecoration(
           isDense: true,
           contentPadding: EdgeInsets.zero,
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
+          hintText: widget.hint,
+          hintStyle: box.style.copyWith(color: const Color(0xFF8B93A7), fontWeight: FontWeight.w500),
         ),
         onChanged: widget.onTextChanged,
         onSubmitted: (_) => _commit(),
