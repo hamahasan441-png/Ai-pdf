@@ -64,6 +64,9 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback? onRedact;
   final VoidCallback? onOutline;
   final VoidCallback? onPageOps;
+
+  /// Writes a real page number on every page. Hidden when null.
+  final VoidCallback? onNumberPages;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -108,6 +111,7 @@ class EditorToolbar extends StatelessWidget {
     this.onRedact,
     this.onOutline,
     this.onPageOps,
+    this.onNumberPages,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -252,6 +256,7 @@ class EditorToolbar extends StatelessWidget {
         items = [
           _action(Icons.rotate_right, l10n.rotate, onRotatePage, palette),
           if (onPageOps != null) _action(Icons.auto_stories_outlined, l10n.toolPages, onPageOps, palette),
+          if (onNumberPages != null) _action(Icons.pin_outlined, l10n.addPageNumbers, onNumberPages, palette),
           if (onOutline != null) _action(Icons.menu_book_outlined, l10n.toolOutline, onOutline, palette),
         ];
     }
