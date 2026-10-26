@@ -158,7 +158,8 @@ class _InlineTextEditorState extends State<InlineTextEditor> {
         textInputAction: widget.singleLine ? TextInputAction.done : TextInputAction.newline,
         style: box.style,
         textAlign: box.align,
-        keyboardType: widget.keyboardType,
+        // A newline action is only legal with the multiline keyboard.
+        keyboardType: widget.singleLine ? widget.keyboardType : TextInputType.multiline,
         textDirection: t.textDirection ??
             (_rtl.isRtl(_controller.text.isEmpty ? (widget.hint ?? '') : _controller.text)
                 ? TextDirection.rtl

@@ -40,6 +40,7 @@ void main() {
         annotation: box('sara@example.com'),
         canvasSize: const Size(400, 600),
         hint: 'ئیمەیڵ',
+        keyboardType: TextInputType.multiline,
         onDone: () {},
         onTextChanged: (_) {},
       ),
