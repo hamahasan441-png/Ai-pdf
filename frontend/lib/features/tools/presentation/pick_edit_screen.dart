@@ -40,6 +40,7 @@ import 'package:ai_pdf/features/editor/data/text_markup_factory.dart';
 import 'package:ai_pdf/features/editor/domain/services/text_selection_service.dart';
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
+import 'package:ai_pdf/features/editor/data/page_number_badge.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
@@ -1812,6 +1813,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       }
       _current = PageSourceMap.movedIndex(_current, from, to);
       _hasUnsavedChanges = true;
+      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
       _selected = null;
       _multi.clear();
       _syncSearchPages();
@@ -1837,6 +1839,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _applyShift(PageSourceMap.afterDelete, index, oldCount);
       _pageCount = newCount;
       if (_current >= _pageCount) _current = _pageCount - 1;
+      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
       _hasUnsavedChanges = true;
       _selected = null;
       _multi.clear();
@@ -1868,6 +1871,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (aspect != null) _pageAspect[index + 1] = aspect;
       final height = _pageHeightPt[index];
       if (height != null) _pageHeightPt[index + 1] = height;
+      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
     });
   }
 
@@ -1887,8 +1891,24 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       final at = index.clamp(0, _sourcePages.length);
       _sourcePages = List<int>.of(_sourcePages)..insert(at, -1);
       _applyShift(PageSourceMap.afterInsert, index, oldCount);
+      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
     });
     _goToPage(index);
+  }
+
+  /// Puts "1 / n" on every page as real text, and replaces an older set
+  /// instead of stacking a second badge. Moving or deleting a page rewrites
+  /// the numbers that are already there.
+  void _numberPages() {
+    setState(() {
+      syncPageNumbers(_layers, _pageCount);
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.pageNumbersAdded), duration: const Duration(seconds: 2)),
+    );
   }
 
   void _applyShift(
@@ -4294,6 +4314,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onRedact: _toggleRedaction,
           onOutline: _toggleOutline,
           onPageOps: _showPageOps,
+          onNumberPages: _numberPages,
           onColorChanged: (c) => setState(() {
             _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c;
           }),
