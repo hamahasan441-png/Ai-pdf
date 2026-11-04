@@ -694,26 +694,27 @@ class EditorExportService {
     // width when the box has one.
     final box = AnnotationTextLayout.of(t, Size(pageW, pageH));
     final fontSize = t.size * pageH;
+    final text = pw.ConstrainedBox(
+      constraints: pw.BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
+      child: pw.Text(
+        t.text,
+        textAlign: _pwAlign(align),
+        textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+        style: pw.TextStyle(
+          font: font,
+          fontSize: fontSize,
+          color: PdfColor.fromInt(t.color.toARGB32()),
+          decoration:
+              t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
+          letterSpacing: t.charSpacing != 0 ? t.charSpacing : null,
+          lineSpacing: t.lineHeight > 1 ? (t.lineHeight - 1) * fontSize : null,
+        ),
+      ),
+    );
     return pw.Positioned(
       left: t.pos.dx * pageW,
       top: t.pos.dy * pageH,
-      child: pw.ConstrainedBox(
-        constraints: pw.BoxConstraints(minWidth: box.minWidth, maxWidth: box.maxWidth),
-        child: pw.Text(
-          t.text,
-          textAlign: _pwAlign(align),
-          textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
-          style: pw.TextStyle(
-            font: font,
-            fontSize: fontSize,
-            color: PdfColor.fromInt(t.color.toARGB32()),
-            decoration:
-                t.underline ? pw.TextDecoration.underline : pw.TextDecoration.none,
-            letterSpacing: t.charSpacing != 0 ? t.charSpacing : null,
-            lineSpacing: t.lineHeight > 1 ? (t.lineHeight - 1) * fontSize : null,
-          ),
-        ),
-      ),
+      child: t.opacity >= 0.999 ? text : pw.Opacity(opacity: t.opacity.clamp(0.0, 1.0), child: text),
     );
   }
 

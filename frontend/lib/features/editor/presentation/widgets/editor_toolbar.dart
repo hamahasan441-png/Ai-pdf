@@ -67,6 +67,12 @@ class EditorToolbar extends StatelessWidget {
 
   /// Writes a real page number on every page. Hidden when null.
   final VoidCallback? onNumberPages;
+
+  /// Faint searchable text across every page. Hidden when null.
+  final VoidCallback? onAddWatermark;
+
+  /// A running header on every page. Hidden when null.
+  final VoidCallback? onAddHeader;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -112,6 +118,8 @@ class EditorToolbar extends StatelessWidget {
     this.onOutline,
     this.onPageOps,
     this.onNumberPages,
+    this.onAddWatermark,
+    this.onAddHeader,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -257,6 +265,9 @@ class EditorToolbar extends StatelessWidget {
           _action(Icons.rotate_right, l10n.rotate, onRotatePage, palette),
           if (onPageOps != null) _action(Icons.auto_stories_outlined, l10n.toolPages, onPageOps, palette),
           if (onNumberPages != null) _action(Icons.pin_outlined, l10n.addPageNumbers, onNumberPages, palette),
+          if (onAddHeader != null) _action(Icons.vertical_align_top, l10n.addHeader, onAddHeader, palette),
+          if (onAddWatermark != null)
+            _action(Icons.branding_watermark_outlined, l10n.addWatermark, onAddWatermark, palette),
           if (onOutline != null) _action(Icons.menu_book_outlined, l10n.toolOutline, onOutline, palette),
         ];
     }

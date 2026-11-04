@@ -22,6 +22,11 @@ Future<void> showEditorShortcutsSheet(BuildContext context) {
         EditorShortcut.save => l10n.export,
         EditorShortcut.fitPage => l10n.shortcutFitPage,
         EditorShortcut.help => l10n.shortcutHelp,
+        EditorShortcut.nudgeLeft ||
+        EditorShortcut.nudgeRight ||
+        EditorShortcut.nudgeUp ||
+        EditorShortcut.nudgeDown =>
+          l10n.nudge,
       };
   return showModalBottomSheet<void>(
     context: context,

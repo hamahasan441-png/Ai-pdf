@@ -17,6 +17,11 @@ void main() {
     expect(k(LogicalKeyboardKey.backspace), EditorShortcut.delete);
     expect(k(LogicalKeyboardKey.pageDown), EditorShortcut.nextPage);
     expect(k(LogicalKeyboardKey.escape), EditorShortcut.deselect);
+    expect(k(LogicalKeyboardKey.arrowLeft), EditorShortcut.nudgeLeft);
+    expect(k(LogicalKeyboardKey.arrowRight, shift: true), EditorShortcut.nudgeRight);
+    expect(k(LogicalKeyboardKey.arrowUp), EditorShortcut.nudgeUp);
+    expect(k(LogicalKeyboardKey.arrowDown), EditorShortcut.nudgeDown);
+    expect(k(LogicalKeyboardKey.arrowLeft, ctrl: true), isNull);
   });
 
   test('plain letters and shifted keys are never shortcuts', () {

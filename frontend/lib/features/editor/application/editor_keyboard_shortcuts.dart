@@ -18,6 +18,10 @@ enum EditorShortcut {
   save,
   fitPage,
   help,
+  nudgeLeft,
+  nudgeRight,
+  nudgeUp,
+  nudgeDown,
 }
 
 /// The shortcut for a key press, or null. [control] is Ctrl, or ⌘ on Apple
@@ -39,6 +43,16 @@ EditorShortcut? editorShortcutFor(LogicalKeyboardKey key, {required bool control
       _ => null,
     };
   }
+  // Arrows nudge the selection. Shift is the longer step. They are not
+  // letters, so a text field still receives them when one is focused.
+  final nudge = switch (key) {
+    LogicalKeyboardKey.arrowLeft => EditorShortcut.nudgeLeft,
+    LogicalKeyboardKey.arrowRight => EditorShortcut.nudgeRight,
+    LogicalKeyboardKey.arrowUp => EditorShortcut.nudgeUp,
+    LogicalKeyboardKey.arrowDown => EditorShortcut.nudgeDown,
+    _ => null,
+  };
+  if (nudge != null) return nudge;
   if (shift) return null;
   return switch (key) {
     LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace => EditorShortcut.delete,
@@ -77,4 +91,8 @@ const editorShortcutKeys = <EditorShortcut, String>{
   EditorShortcut.save: 'Ctrl+S',
   EditorShortcut.fitPage: 'Ctrl+0',
   EditorShortcut.help: 'Ctrl+/',
+  EditorShortcut.nudgeLeft: '←  /  Shift+←',
+  EditorShortcut.nudgeRight: '→  /  Shift+→',
+  EditorShortcut.nudgeUp: '↑  /  Shift+↑',
+  EditorShortcut.nudgeDown: '↓  /  Shift+↓',
 };
