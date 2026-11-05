@@ -240,7 +240,6 @@
   "runningLeft": "يسار",
   "runningCenter": "وسط",
   "runningRight": "يمين",
-  "runningTokens": "{page}   {pages}   {bates}",
   "nudge": "تحريك دقيق",
   "centerOnPage": "توسيط في الصفحة",
   "bottomCenterEveryPage": "أسفل وسط كل صفحة",

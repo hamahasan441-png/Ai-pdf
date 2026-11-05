@@ -437,7 +437,6 @@
   "runningLeft": "Left",
   "runningCenter": "Center",
   "runningRight": "Right",
-  "runningTokens": "{page}   {pages}   {bates}",
   "nudge": "Nudge",
   "centerOnPage": "Center on page",
   "bottomCenterEveryPage": "Bottom-center of every page",

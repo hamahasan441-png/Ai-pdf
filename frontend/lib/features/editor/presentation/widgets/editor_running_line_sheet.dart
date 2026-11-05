@@ -92,7 +92,8 @@ class _RunningLineSheetState extends State<_RunningLineSheet> {
           children: [
             Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text(l10n.runningTokens, style: Theme.of(context).textTheme.bodySmall),
+            // Tokens are syntax, not a sentence, so they stay as written.
+            Text('{page}    {pages}    {bates}', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 12),
             _field(l10n.runningLeft, _left),
             _field(l10n.runningCenter, _center),

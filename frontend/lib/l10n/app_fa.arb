@@ -387,7 +387,6 @@
   "runningLeft": "چپ",
   "runningCenter": "وسط",
   "runningRight": "راست",
-  "runningTokens": "{page}   {pages}   {bates}",
   "nudge": "جابه‌جایی دقیق",
   "centerOnPage": "وسط صفحه",
   "bottomCenterEveryPage": "پایین وسط همهٔ صفحه‌ها",

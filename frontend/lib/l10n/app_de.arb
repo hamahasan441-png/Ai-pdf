@@ -240,7 +240,6 @@
   "runningLeft": "Links",
   "runningCenter": "Mitte",
   "runningRight": "Rechts",
-  "runningTokens": "{page}   {pages}   {bates}",
   "nudge": "Verschieben",
   "centerOnPage": "Auf der Seite zentrieren",
   "bottomCenterEveryPage": "Unten mittig auf jeder Seite",
