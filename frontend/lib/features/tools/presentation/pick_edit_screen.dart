@@ -41,6 +41,8 @@ import 'package:ai_pdf/features/editor/domain/services/text_selection_service.da
 import 'package:ai_pdf/features/editor/data/annotation_persistence_service.dart';
 import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_number_badge.dart';
+import 'package:ai_pdf/features/editor/data/page_dressing.dart';
+import 'package:ai_pdf/features/editor/data/object_arrange.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
@@ -744,6 +746,14 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         _viewTransform.value = Matrix4.identity();
       case EditorShortcut.help:
         showEditorShortcutsSheet(context);
+      case EditorShortcut.nudgeLeft:
+        if (!_nudgeBy(const Offset(-1, 0), coarse: keys.isShiftPressed)) return KeyEventResult.ignored;
+      case EditorShortcut.nudgeRight:
+        if (!_nudgeBy(const Offset(1, 0), coarse: keys.isShiftPressed)) return KeyEventResult.ignored;
+      case EditorShortcut.nudgeUp:
+        if (!_nudgeBy(const Offset(0, -1), coarse: keys.isShiftPressed)) return KeyEventResult.ignored;
+      case EditorShortcut.nudgeDown:
+        if (!_nudgeBy(const Offset(0, 1), coarse: keys.isShiftPressed)) return KeyEventResult.ignored;
     }
     return KeyEventResult.handled;
   }
@@ -1813,7 +1823,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       }
       _current = PageSourceMap.movedIndex(_current, from, to);
       _hasUnsavedChanges = true;
-      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
+      _refreshFurniture();
       _selected = null;
       _multi.clear();
       _syncSearchPages();
@@ -1839,7 +1849,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       _applyShift(PageSourceMap.afterDelete, index, oldCount);
       _pageCount = newCount;
       if (_current >= _pageCount) _current = _pageCount - 1;
-      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
+      _refreshFurniture();
       _hasUnsavedChanges = true;
       _selected = null;
       _multi.clear();
@@ -1871,7 +1881,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       if (aspect != null) _pageAspect[index + 1] = aspect;
       final height = _pageHeightPt[index];
       if (height != null) _pageHeightPt[index + 1] = height;
-      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
+      _refreshFurniture();
     });
   }
 
@@ -1891,9 +1901,17 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       final at = index.clamp(0, _sourcePages.length);
       _sourcePages = List<int>.of(_sourcePages)..insert(at, -1);
       _applyShift(PageSourceMap.afterInsert, index, oldCount);
-      if (refreshPageNumbers(_layers, _pageCount) > 0) _syncSearchPages();
+      _refreshFurniture();
     });
     _goToPage(index);
+  }
+
+  /// Page numbers, the header and the watermark are document furniture.
+  /// A structural change rewrites whichever of them is already there.
+  void _refreshFurniture() {
+    final numbers = refreshPageNumbers(_layers, _pageCount) > 0;
+    final dressing = refreshPageDressing(_layers, _pageCount);
+    if (numbers || dressing) _syncSearchPages();
   }
 
   /// Puts "1 / n" on every page as real text, and replaces an older set
@@ -1909,6 +1927,69 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppLocalizations.of(context)!.pageNumbersAdded), duration: const Duration(seconds: 2)),
     );
+  }
+
+  /// Faint text across every page, or a running header. Both stay real
+  /// searchable text. An empty answer takes that furniture back off.
+  Future<void> _dressPages({required bool header}) async {
+    final l10n = AppLocalizations.of(context)!;
+    final text = await showEditorValuePromptDialog(
+      context,
+      label: header ? l10n.headerText : l10n.watermarkText,
+      keyboardType: TextInputType.text,
+      leading: Icon(header ? Icons.vertical_align_top : Icons.branding_watermark_outlined),
+    );
+    if (!mounted || text == null) return;
+    final trimmed = text.trim();
+    setState(() {
+      if (header) {
+        syncHeaders(_layers, _pageCount, trimmed);
+      } else {
+        syncWatermarks(_layers, _pageCount, trimmed);
+      }
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    final message = trimmed.isEmpty ? l10n.remove : (header ? l10n.headerAdded : l10n.watermarkAdded);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  /// One undoable step. Arrow keys use the coarse step with Shift.
+  /// The overflow menu always uses the fine step. Returns false when
+  /// nothing selected can move, so the key is left alone.
+  bool _nudgeBy(Offset unit, {bool coarse = false}) {
+    final targets = _multi.isNotEmpty
+        ? _multi.where((a) => a.visible && !a.locked).toList()
+        : (_selected != null && _selected!.visible && !_selected!.locked)
+            ? <EditorAnnotation>[_selected!]
+            : <EditorAnnotation>[];
+    if (targets.isEmpty || unit == Offset.zero) return false;
+    final delta = unit * (coarse ? coarseNudge : fineNudge);
+    _editorController.beginEdit(targets, label: 'Nudge');
+    setState(() {
+      for (final item in targets) {
+        nudgeAnnotation(item, delta);
+      }
+      _hasUnsavedChanges = true;
+    });
+    _editorController.commitEdit(_layer);
+    _schedulePersist();
+    return true;
+  }
+
+  void _centerOnPage() {
+    final sel = _selected;
+    if (sel == null || sel.locked || !sel.visible) return;
+    _editorController.beginEdit([sel], label: 'Center');
+    setState(() {
+      centerAnnotationOnPage(sel);
+      _hasUnsavedChanges = true;
+    });
+    _editorController.commitEdit(_layer);
+    _schedulePersist();
   }
 
   void _applyShift(
@@ -4244,6 +4325,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             onSendToBack: _sendToBack,
             onDeleteSelected: _deleteSelected,
             onDeselectSelected: () => setState(() => _selected = null),
+            onCenterOnPage: _centerOnPage,
+            onNudge: (unit) => _nudgeBy(unit),
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
             onEditField: _editField,
@@ -4315,6 +4398,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onOutline: _toggleOutline,
           onPageOps: _showPageOps,
           onNumberPages: _numberPages,
+          onAddHeader: () => _dressPages(header: true),
+          onAddWatermark: () => _dressPages(header: false),
           onColorChanged: (c) => setState(() {
             _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c;
           }),

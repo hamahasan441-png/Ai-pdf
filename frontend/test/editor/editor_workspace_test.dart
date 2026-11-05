@@ -67,6 +67,9 @@ EditorToolbar toolbar(
     onRedact: act('redact'),
     onOutline: act('outline'),
     onPageOps: act('pageOps'),
+    onNumberPages: act('numbers'),
+    onAddHeader: act('header'),
+    onAddWatermark: act('watermark'),
     onColorChanged: (_) => calls.actions.add('color'),
     onStrokeChanged: (_) => calls.actions.add('stroke'),
     onTextSizeChanged: (_) => calls.actions.add('textSize'),
@@ -194,7 +197,9 @@ void main() {
       )));
       expect(find.byKey(const Key('strip')), findsOneWidget);
       await tester.tap(find.byTooltip('Rotate'));
-      expect(calls.actions, ['rotate']);
+      await tester.tap(find.byTooltip('Add header'));
+      await tester.tap(find.byTooltip('Add Watermark'));
+      expect(calls.actions, ['rotate', 'header', 'watermark']);
 
       await tester.pumpWidget(app(Align(
         alignment: Alignment.bottomCenter,

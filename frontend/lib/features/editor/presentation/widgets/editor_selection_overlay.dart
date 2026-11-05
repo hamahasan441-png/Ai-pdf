@@ -265,6 +265,12 @@ class EditorSelectionActionBar extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onDeselect;
 
+  /// Centres this one object on the page. Hidden when null.
+  final VoidCallback? onCenterOnPage;
+
+  /// Nudges by one fine step. The offset is a unit vector. Hidden when null.
+  final void Function(Offset unit)? onNudge;
+
   /// Toggles the explicit Move/Resize (transform) mode — the only state in
   /// which handles and the bounding box are shown.
   final bool transformMode;
@@ -286,6 +292,8 @@ class EditorSelectionActionBar extends StatelessWidget {
     required this.onSendToBack,
     required this.onDelete,
     required this.onDeselect,
+    this.onCenterOnPage,
+    this.onNudge,
     this.transformMode = false,
     this.onToggleTransform,
   });
@@ -348,6 +356,14 @@ class EditorSelectionActionBar extends StatelessWidget {
                 _OverflowItem(icon: Icons.content_copy, label: l10n.copy, onTap: onCopy),
                 _OverflowItem(icon: Icons.flip_to_front, label: l10n.bringToFront, onTap: onBringToFront),
                 _OverflowItem(icon: Icons.flip_to_back, label: l10n.sendToBack, onTap: onSendToBack),
+                if (onCenterOnPage != null)
+                  _OverflowItem(icon: Icons.filter_center_focus, label: l10n.centerOnPage, onTap: onCenterOnPage!),
+                if (onNudge != null) ...[
+                  _OverflowItem(icon: Icons.west, label: '←', onTap: () => onNudge!(const Offset(-1, 0))),
+                  _OverflowItem(icon: Icons.east, label: '→', onTap: () => onNudge!(const Offset(1, 0))),
+                  _OverflowItem(icon: Icons.north, label: '↑', onTap: () => onNudge!(const Offset(0, -1))),
+                  _OverflowItem(icon: Icons.south, label: '↓', onTap: () => onNudge!(const Offset(0, 1))),
+                ],
                 if (showTextActions) ...[
                   _OverflowItem(icon: Icons.text_decrease, label: 'A\u2212', onTap: onTextDecrease!),
                   _OverflowItem(icon: Icons.text_increase, label: 'A+', onTap: onTextIncrease!),
