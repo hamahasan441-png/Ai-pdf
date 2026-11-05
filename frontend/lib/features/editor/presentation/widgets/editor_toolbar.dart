@@ -73,6 +73,12 @@ class EditorToolbar extends StatelessWidget {
 
   /// A running header on every page. Hidden when null.
   final VoidCallback? onAddHeader;
+
+  /// A running footer on every page. Hidden when null.
+  final VoidCallback? onAddFooter;
+
+  /// Bates numbers in the footer. Hidden when null.
+  final VoidCallback? onAddBates;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -120,6 +126,8 @@ class EditorToolbar extends StatelessWidget {
     this.onNumberPages,
     this.onAddWatermark,
     this.onAddHeader,
+    this.onAddFooter,
+    this.onAddBates,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -266,6 +274,8 @@ class EditorToolbar extends StatelessWidget {
           if (onPageOps != null) _action(Icons.auto_stories_outlined, l10n.toolPages, onPageOps, palette),
           if (onNumberPages != null) _action(Icons.pin_outlined, l10n.addPageNumbers, onNumberPages, palette),
           if (onAddHeader != null) _action(Icons.vertical_align_top, l10n.addHeader, onAddHeader, palette),
+          if (onAddFooter != null) _action(Icons.vertical_align_bottom, l10n.addFooter, onAddFooter, palette),
+          if (onAddBates != null) _action(Icons.tag, l10n.bates, onAddBates, palette),
           if (onAddWatermark != null)
             _action(Icons.branding_watermark_outlined, l10n.addWatermark, onAddWatermark, palette),
           if (onOutline != null) _action(Icons.menu_book_outlined, l10n.toolOutline, onOutline, palette),

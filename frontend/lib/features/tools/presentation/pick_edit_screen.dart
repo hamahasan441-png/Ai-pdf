@@ -103,6 +103,7 @@ import 'package:ai_pdf/features/editor/presentation/widgets/editor_mark_choice_s
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_guided_fill_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_signature_picker_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_smart_fill_review_sheet.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_running_line_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_value_prompt_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_shape_style_dialog.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_selection_bar.dart';
@@ -1929,31 +1930,74 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     );
   }
 
-  /// Faint text across every page, or a running header. Both stay real
-  /// searchable text. An empty answer takes that furniture back off.
-  Future<void> _dressPages({required bool header}) async {
+  /// Faint text across every page. An empty answer takes it back off.
+  Future<void> _addWatermark() async {
     final l10n = AppLocalizations.of(context)!;
     final text = await showEditorValuePromptDialog(
       context,
-      label: header ? l10n.headerText : l10n.watermarkText,
+      label: l10n.watermarkText,
       keyboardType: TextInputType.text,
-      leading: Icon(header ? Icons.vertical_align_top : Icons.branding_watermark_outlined),
+      leading: const Icon(Icons.branding_watermark_outlined),
     );
     if (!mounted || text == null) return;
     final trimmed = text.trim();
     setState(() {
-      if (header) {
-        syncHeaders(_layers, _pageCount, trimmed);
-      } else {
-        syncWatermarks(_layers, _pageCount, trimmed);
-      }
+      syncWatermarks(_layers, _pageCount, trimmed);
       _hasUnsavedChanges = true;
       _syncSearchPages();
     });
     _schedulePersist();
-    final message = trimmed.isEmpty ? l10n.remove : (header ? l10n.headerAdded : l10n.watermarkAdded);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(trimmed.isEmpty ? l10n.remove : l10n.watermarkAdded),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Three-zone header or footer. `{page}`, `{pages}` and `{bates}` are
+  /// filled in per page. The first page can be left blank.
+  Future<void> _editRunning(RunningEdge edge) async {
+    final l10n = AppLocalizations.of(context)!;
+    final draft = await showRunningLineSheet(
+      context,
+      edge: edge,
+      initial: readRunningEdge(_layers, edge),
+    );
+    if (!mounted || draft == null) return;
+    setState(() {
+      if (edge == RunningEdge.header) clearMarkedText(_layers, pageHeaderKey);
+      applyRunningEdge(_layers, _pageCount, edge, draft);
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    final message = draft.isEmpty
+        ? l10n.remove
+        : (edge == RunningEdge.header ? l10n.headerAdded : l10n.footerAdded);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  /// Bates in the bottom-right of every page. The prefix may be empty.
+  Future<void> _addBates() async {
+    final l10n = AppLocalizations.of(context)!;
+    final prefix = await showEditorValuePromptDialog(
+      context,
+      label: l10n.batesPrefix,
+      keyboardType: TextInputType.text,
+      leading: const Icon(Icons.tag),
+    );
+    if (!mounted || prefix == null) return;
+    setState(() {
+      syncRunningLine(_layers, _pageCount, batesLine(prefix.trim()));
+      _hasUnsavedChanges = true;
+      _syncSearchPages();
+    });
+    _schedulePersist();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.batesAdded), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -4398,8 +4442,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onOutline: _toggleOutline,
           onPageOps: _showPageOps,
           onNumberPages: _numberPages,
-          onAddHeader: () => _dressPages(header: true),
-          onAddWatermark: () => _dressPages(header: false),
+          onAddHeader: () => _editRunning(RunningEdge.header),
+          onAddFooter: () => _editRunning(RunningEdge.footer),
+          onAddBates: _addBates,
+          onAddWatermark: _addWatermark,
           onColorChanged: (c) => setState(() {
             _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c;
           }),
