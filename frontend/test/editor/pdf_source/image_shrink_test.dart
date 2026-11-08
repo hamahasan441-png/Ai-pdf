@@ -89,7 +89,7 @@ Uint8List _flateImage({required int width, required int height}) {
     state = (state * 1664525 + 1013904223) & 0x7fffffff;
     raw[i] = (state >> 8) & 0xFF;
   }
-  final encoded = Uint8List.fromList(ZLibEncoder().encode(raw));
+  final encoded = Uint8List.fromList(ZLibCodec().encode(raw));
   return _streamObject(
     '<< /Type /XObject /Subtype /Image /Width $width /Height $height '
     '/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${encoded.length} >>',
@@ -165,7 +165,7 @@ Uint8List _pdf({required Uint8List image, required String extra}) {
 Uint8List _flateMask() {
   final raw = Uint8List(8 * 8);
   raw.fillRange(0, raw.length, 255);
-  final encoded = Uint8List.fromList(ZLibEncoder().encode(raw));
+  final encoded = Uint8List.fromList(ZLibCodec().encode(raw));
   return _streamObject(
     '<< /Type /XObject /Subtype /Image /Width 8 /Height 8 '
     '/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${encoded.length} >>',
