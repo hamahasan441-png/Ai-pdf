@@ -108,6 +108,15 @@ class PdfObjectStore {
     return obj;
   }
 
+  /// Replaces a cached object. The preserving writer then saves the new
+  /// stream instead of the one read from the file. Used to swap a smaller
+  /// image into an existing XObject without touching the page content.
+  void replaceObject(int num, PdfValue value, Uint8List? stream) {
+    final existing = object(num);
+    if (existing == null) return;
+    _cache[num] = PdfIndirect(num, existing.gen, value, stream);
+  }
+
   /// Follow [v] if it is a reference. Missing objects resolve to null.
   PdfValue? resolve(PdfValue? v) {
     var current = v;
