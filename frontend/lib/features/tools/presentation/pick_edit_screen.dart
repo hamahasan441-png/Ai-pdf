@@ -49,6 +49,8 @@ import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
+import 'package:ai_pdf/features/editor/data/format_painter.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_link.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_canvas_interaction_service.dart';
@@ -222,6 +224,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   set _hasUnsavedChanges(bool value) => _editorController.setUnsavedChanges(value);
 
   EditTool _tool = EditTool.pan;
+  CopiedStyle? _copiedStyle;
 
   /// The workspace shown: reading, or one job's tools.
   EditorMode _mode = EditorMode.view;
@@ -2073,7 +2076,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   bool get _isMarkup => _markupFactory.isMarkupTool(_tool);
   bool get _isShape =>
       _tool == EditTool.line || _tool == EditTool.arrow || _tool == EditTool.rect ||
-      _tool == EditTool.oval || _tool == EditTool.whiteout;
+      _tool == EditTool.oval || _tool == EditTool.whiteout || _tool == EditTool.link ||
+      _tool == EditTool.measure;
 
   void _onPanStart(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
@@ -2086,6 +2090,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
     if (_tool == EditTool.eraser) {
       _eraseAt(n);
+      return;
+    }
+    if (_tool == EditTool.formatPainter) {
+      final hit = _hitTest(n);
+      if (hit != null) _paintStyle(hit);
       return;
     }
     if (_tool == EditTool.select) {
@@ -2297,6 +2306,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         : null;
     if (stroke != null) {
       _pushItem(stroke);
+    } else if (shape != null && shape.type == ShapeType.link) {
+      unawaited(_finishLink(shape));
     } else if (shape != null) {
       _pushItem(shape);
     }
@@ -2304,6 +2315,98 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _shapeStart = null;
     _shapeEnd = null;
     setState(() {});
+  }
+
+  /// Copies the selected look. The next taps, while the painter stays on,
+  /// put that look on other objects. The page itself is not changed.
+  void _armFormatPainter() {
+    final l10n = AppLocalizations.of(context)!;
+    final sel = _selected;
+    final style = sel == null ? null : copyStyle(sel);
+    if (style == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.nothingToCopy), duration: const Duration(seconds: 2)),
+      );
+      return;
+    }
+    setState(() {
+      _copiedStyle = style;
+      _tool = EditTool.formatPainter;
+      _mode = EditorMode.annotate;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.styleCopied), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _paintStyle(EditorAnnotation hit) {
+    final style = _copiedStyle;
+    if (style == null || hit.locked) return;
+    _editorController.beginEdit([hit], label: 'Style');
+    if (!applyStyle(hit, style)) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer);
+    setState(() => _hasUnsavedChanges = true);
+    _schedulePersist();
+  }
+
+  Future<void> _finishLink(ShapeAnnotation shape) async {
+    final target = await _askLink();
+    if (!mounted || target == null) return;
+    if (target.uri != null) shape.metadata[linkUriKey] = target.uri;
+    if (target.page != null) shape.metadata[linkPageKey] = target.page;
+    setState(() => _pushItem(shape));
+  }
+
+  /// A web address, or a page of this file. Null when the user cancels
+  /// or the address is not one this editor can store.
+  Future<({String? uri, int? page})?> _askLink() async {
+    final address = TextEditingController();
+    final page = TextEditingController();
+    final answer = await showDialog<({String? uri, int? page})>(
+      context: context,
+      builder: (ctx) {
+        final l10n = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(l10n.toolLink),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: address,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(labelText: l10n.linkAddress, hintText: l10n.linkHint),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: page,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: l10n.linkPage),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.discard)),
+            FilledButton(
+              onPressed: () {
+                final uri = normalizeLinkUri(address.text);
+                final n = int.tryParse(page.text.trim());
+                final pageIndex = n != null && n >= 1 && n <= _pageCount ? n - 1 : null;
+                if (uri == null && pageIndex == null) return;
+                Navigator.pop(ctx, (uri: uri, page: uri != null ? null : pageIndex));
+              },
+              child: Text(l10n.saveAndExit),
+            ),
+          ],
+        );
+      },
+    );
+    address.dispose();
+    page.dispose();
+    return answer;
   }
 
   Future<String?> _promptNote(String initial) async {
@@ -2371,6 +2474,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   void _onTapUp(Offset local, Size canvas) {
     final n = _canvasInteraction.normalize(local, canvas);
     if (n == null) return;
+    if (_tool == EditTool.formatPainter) {
+      final hit = _hitTest(n);
+      if (hit != null) _paintStyle(hit);
+      return;
+    }
     if (_tapTools.isTextTool(_tool)) {
       final hit = _hitTest(n);
       if (hit is TextAnnotation && !hit.locked) {
@@ -4303,6 +4411,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             color: _ink(_tool),
             stroke: _stroke,
             highlightPreview: false,
+            pageWidthPt: (_pageHeightPt[_current] ?? 0) * _aspectFor(_current),
+            pageHeightPt: _pageHeightPt[_current] ?? 0,
             securePreview: _redactionController.current.active,
             markupPreview: _markupPreview,
             markupKind: _markupFactory.kindFor(_tool),
@@ -4439,6 +4549,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onRotatePage: _rotatePage,
           onSearch: _toggleSearch,
           onRedact: _toggleRedaction,
+          onFormatPainter: _armFormatPainter,
           onOutline: _toggleOutline,
           onPageOps: _showPageOps,
           onNumberPages: _numberPages,

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_link.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
 
@@ -75,13 +76,16 @@ class SearchableRun {
 
 /// One page of the output document.
 sealed class OutputPageSpec {
-  const OutputPageSpec({this.newFields = const [], this.searchable = const []});
+  const OutputPageSpec({this.newFields = const [], this.searchable = const [], this.links = const []});
 
   /// Form fields to add on this page (see [NewFormField]).
   final List<NewFormField> newFields;
 
   /// Invisible Unicode text added on top of this page.
   final List<SearchableRun> searchable;
+
+  /// Real link annotations. They are not painted into the page.
+  final List<PdfLinkSpec> links;
 }
 
 /// Keep a page of the source PDF: its text, vectors, images, links,
@@ -99,6 +103,7 @@ final class SourcePageSpec extends OutputPageSpec {
     this.eraseRegions = const [],
     super.newFields,
     super.searchable,
+    super.links,
   });
 
   /// Boxes (0..1 from the displayed top left) whose glyphs are removed from
@@ -116,7 +121,7 @@ final class GeneratedPageSpec extends OutputPageSpec {
   /// links that pointed at that page then point here.
   final int? replacesSource;
 
-  const GeneratedPageSpec(this.generatedPage, {this.replacesSource, super.newFields, super.searchable});
+  const GeneratedPageSpec(this.generatedPage, {this.replacesSource, super.newFields, super.searchable, super.links});
 }
 
 /// What the writer kept and dropped, for the caller to report.
@@ -239,6 +244,7 @@ class PreservingPdfWriter {
     final kids = <PdfValue>[];
     final seen = <int>{};
     var generatedCount = 0;
+    final pendingLinks = <({int page, List<double> crop, int rotate, List<PdfLinkSpec> links})>[];
     for (final spec in pages) {
       switch (spec) {
         case SourcePageSpec():
@@ -249,18 +255,26 @@ class PreservingPdfWriter {
           if (!first) dict = _withCopiedAnnots(dict, info, num);
           final rotate = (info.rotate + 90 * (spec.quarterTurns % 4)) % 360;
           dict = _withNewFields(dict, spec.newFields, num, info.cropBox, rotate);
+          if (spec.links.isNotEmpty) {
+            pendingLinks.add((page: num, crop: info.cropBox, rotate: rotate, links: spec.links));
+          }
           _overrides[num] = dict;
           kids.add(PdfRef(num, first ? info.ref.gen : 0));
         case GeneratedPageSpec():
           generatedCount++;
           final num = _alloc();
+          final box = _generatedBox(spec.generatedPage);
+          final rotate = generated!.pages[spec.generatedPage].rotate;
           _overrides[num] = _withNewFields(
             _generatedPageDict(spec.generatedPage, pagesRoot, spec.searchable),
             spec.newFields,
             num,
-            _generatedBox(spec.generatedPage),
-            generated!.pages[spec.generatedPage].rotate,
+            box,
+            rotate,
           );
+          if (spec.links.isNotEmpty) {
+            pendingLinks.add((page: num, crop: box, rotate: rotate, links: spec.links));
+          }
           kids.add(PdfRef(num, 0));
           final replaced = spec.replacesSource;
           if (replaced != null && replaced >= 0 && replaced < source.pages.length) {
@@ -268,6 +282,9 @@ class PreservingPdfWriter {
             if (_removed.contains(pageNum)) _replacement.putIfAbsent(pageNum, () => num);
           }
       }
+    }
+    for (final pending in pendingLinks) {
+      _attachLinks(pending.page, pending.crop, pending.rotate, pending.links, kids);
     }
     _overrides[pagesRoot] = PdfDict({
       '/Type': const PdfName('/Pages'),
@@ -911,6 +928,35 @@ class PreservingPdfWriter {
       _newFieldRefs.add(ref);
     }
     return PdfDict({...page.entries, '/Annots': PdfArray(annots)});
+  }
+
+  /// Adds link annotations after every page object exists, so a link can
+  /// point at a later page. The page content is not touched.
+  void _attachLinks(int pageNum, List<double> crop, int rotate, List<PdfLinkSpec> links, List<PdfValue> kids) {
+    final page = _overrides[pageNum];
+    if (page is! PdfDict || links.isEmpty) return;
+    final annots = <PdfValue>[];
+    final existing = page['/Annots'];
+    if (existing is PdfArray) annots.addAll(existing.items);
+    var added = false;
+    for (final link in links) {
+      final action = linkAction(link, kids);
+      if (action == null || link.rect.length != 4) continue;
+      final num = _alloc();
+      final rect = userRectOf(link.rect, crop, rotate);
+      _overrides[num] = PdfDict({
+        '/Type': const PdfName('/Annot'),
+        '/Subtype': const PdfName('/Link'),
+        '/Rect': PdfArray([for (final n in rect) PdfNum.of(n)]),
+        '/Border': PdfArray([PdfNum.of(0), PdfNum.of(0), PdfNum.of(1)]),
+        '/C': PdfArray([PdfNum.of(0), PdfNum.of(0.2), PdfNum.of(0.8)]),
+        '/A': action,
+      });
+      annots.add(PdfRef(num, 0));
+      added = true;
+    }
+    if (!added) return;
+    _overrides[pageNum] = PdfDict({...page.entries, '/Annots': PdfArray(annots)});
   }
 
   PdfDict _newFieldDict(NewFormField f, int pageNum, List<double> crop, int rotate) {

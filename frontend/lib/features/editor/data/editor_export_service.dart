@@ -16,6 +16,7 @@ import 'package:ai_pdf/features/editor/data/editor_pdf_fonts.dart';
 import 'package:ai_pdf/features/editor/data/page_cache_policy.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/form_field_builder.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_link.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/preserving_pdf_writer.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_text_eraser.dart';
@@ -150,6 +151,39 @@ List<NewFormField> newFieldsOf(PageLayer? layer) => [
             fillColor: f.fillColor.alpha8 == 0 ? null : _onWhite(f.fillColor),
           ),
     ];
+
+/// Real links on [layer]. A link is an annotation, not a mark, so it does
+/// not flatten the page and it does not cover what is underneath.
+List<PdfLinkSpec> linksOf(PageLayer? layer) {
+  final out = <PdfLinkSpec>[];
+  for (final shape in layer?.shapes ?? const <ShapeAnnotation>[]) {
+    if (!shape.visible || shape.type != ShapeType.link) continue;
+    final left = math.min(shape.start.dx, shape.end.dx);
+    final top = math.min(shape.start.dy, shape.end.dy);
+    final right = math.max(shape.start.dx, shape.end.dx);
+    final bottom = math.max(shape.start.dy, shape.end.dy);
+    final uri = shape.metadata[linkUriKey];
+    final page = shape.metadata[linkPageKey];
+    if (uri is String && uri.trim().isNotEmpty) {
+      final normal = normalizeLinkUri(uri);
+      if (normal == null) continue;
+      out.add(PdfLinkSpec(rect: [left, top, right, bottom], uri: normal));
+    } else if (page is num) {
+      out.add(PdfLinkSpec(rect: [left, top, right, bottom], page: page.toInt()));
+    }
+  }
+  return out;
+}
+
+/// True when [item] has to be drawn on top of the page. A link does not:
+/// it is a PDF annotation, and an empty overlay page would paint white
+/// over the document.
+bool markNeedsOverlay(EditorAnnotation item) {
+  if (!item.visible) return false;
+  if (item is FormFieldAnnotation) return false;
+  if (item is ShapeAnnotation && item.type == ShapeType.link) return false;
+  return true;
+}
 
 /// [c] painted over white, as an opaque 0xRRGGBB (PDF field colours have no
 /// alpha).
@@ -365,6 +399,7 @@ class EditorExportService {
           generatedCount++,
           replacesSource: source < 0 ? null : source,
           newFields: newFieldsOf(layers[i]),
+          links: linksOf(layers[i]),
           searchable: _searchRuns(pageLayers[i], uni, size.height),
         ));
         await Future<void>.delayed(Duration.zero);
@@ -373,12 +408,13 @@ class EditorExportService {
 
       final layer = layers[i];
       // Form fields become widgets, not part of the overlay.
-      if (layer == null || !layer.items.any((a) => a.visible && a is! FormFieldAnnotation)) {
+      if (layer == null || !layer.items.any(markNeedsOverlay)) {
         specs.add(SourcePageSpec(
           source,
           quarterTurns: turns,
           eraseRegions: eraseJobs[i]?.$2 ?? const [],
           newFields: newFieldsOf(layer),
+          links: linksOf(layer),
         ));
         continue;
       }
@@ -400,6 +436,8 @@ class EditorExportService {
           layers: layers,
           uni: uni,
           marksOnlySize: Size((pageW * scale).roundToDouble(), (pageH * scale).roundToDouble()),
+          pageWidthPt: pageW,
+          pageHeightPt: pageH,
         );
         if (marks == null) throw ExportPageException(i, 'the marks could not be drawn');
         marksImage = pw.MemoryImage(marks.bytes);
@@ -422,6 +460,7 @@ class EditorExportService {
         overlayPage: generatedCount++,
         eraseRegions: eraseJobs[i]?.$2 ?? const [],
         newFields: newFieldsOf(layer),
+        links: linksOf(layer),
         searchable: _searchRuns(layer, uni, pageH),
       ));
       await Future<void>.delayed(Duration.zero);
@@ -498,7 +537,8 @@ class EditorExportService {
   bool _exportsAsVector(EditorAnnotation a, PdfUnicodeFonts uni) {
     if (a is FormFieldAnnotation) return true; // a widget, not a mark
     if (a is ShapeAnnotation) {
-      return !a.burnsBlackCover && (a.type == ShapeType.rect || a.type == ShapeType.whiteout);
+      return !a.burnsBlackCover &&
+          (a.type == ShapeType.rect || a.type == ShapeType.whiteout || a.type == ShapeType.link);
     }
     if (a is TextAnnotation) return _canVectorize(a, uni);
     return false;
@@ -864,6 +904,8 @@ class EditorExportService {
     int quarterTurns = 0,
     int? sourcePage,
     Size? marksOnlySize,
+    double? pageWidthPt,
+    double? pageHeightPt,
   }) async {
     if (marksOnlySize != null) {
       final recorder = ui.PictureRecorder();
@@ -871,7 +913,14 @@ class EditorExportService {
       final blank = await recorder
           .endRecording()
           .toImage(marksOnlySize.width.toInt(), marksOnlySize.height.toInt());
-      return _paintMarks(index: index, base: blank, layers: layers, uni: uni);
+      return _paintMarks(
+        index: index,
+        base: blank,
+        layers: layers,
+        uni: uni,
+        sourceWidth: pageWidthPt,
+        sourceHeight: pageHeightPt,
+      );
     }
     Uint8List? baseBytes;
     double? sourceWidth;
@@ -973,10 +1022,22 @@ class EditorExportService {
             AnnotationDraw.secureCover(canvas, size, s.start, s.end);
             continue;
           }
-          if (s.type == ShapeType.rect || s.type == ShapeType.whiteout) {
+          if (s.type == ShapeType.rect || s.type == ShapeType.whiteout || s.type == ShapeType.link) {
             continue;
           }
-          AnnotationDraw.shape(canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
+          AnnotationDraw.shape(
+            canvas,
+            size,
+            s.type,
+            s.start,
+            s.end,
+            s.color,
+            s.width,
+            s.filled,
+            s.opacity,
+            sourceWidth ?? 0,
+            sourceHeight ?? 0,
+          );
         }
         // Stamps (bordered label boxes) sit above shapes, matching the preview.
         for (final st in layer.stamps) {

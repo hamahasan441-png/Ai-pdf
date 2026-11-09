@@ -62,6 +62,9 @@ class EditorToolbar extends StatelessWidget {
   final VoidCallback onAddImage;
   final VoidCallback? onSearch;
   final VoidCallback? onRedact;
+
+  /// Copies the selected object's look, then applies it to whatever is tapped.
+  final VoidCallback? onFormatPainter;
   final VoidCallback? onOutline;
   final VoidCallback? onPageOps;
 
@@ -121,6 +124,7 @@ class EditorToolbar extends StatelessWidget {
     required this.onAddImage,
     this.onSearch,
     this.onRedact,
+    this.onFormatPainter,
     this.onOutline,
     this.onPageOps,
     this.onNumberPages,
@@ -210,6 +214,8 @@ class EditorToolbar extends StatelessWidget {
               _Entry(Icons.circle_outlined, l10n.toolOval, () => onToolChanged(EditTool.oval), tool == EditTool.oval),
               _Entry(Icons.format_color_fill, l10n.toolWhiteout, () => onToolChanged(EditTool.whiteout),
                   tool == EditTool.whiteout),
+              _Entry(Icons.link, l10n.toolLink, () => onToolChanged(EditTool.link), tool == EditTool.link),
+              _Entry(Icons.straighten, l10n.toolMeasure, () => onToolChanged(EditTool.measure), tool == EditTool.measure),
             ],
           ),
           _tool(Icons.sticky_note_2_outlined, l10n.toolNote, EditTool.note, palette),
@@ -219,7 +225,10 @@ class EditorToolbar extends StatelessWidget {
             palette,
             icon: Icons.more_horiz,
             tooltip: l10n.toolMore,
-            active: tool == EditTool.squiggly || tool == EditTool.dot || tool == EditTool.dash,
+            active: tool == EditTool.squiggly ||
+                tool == EditTool.dot ||
+                tool == EditTool.dash ||
+                tool == EditTool.formatPainter,
             entries: [
               _Entry(Icons.waves, l10n.toolSquiggly, () => onToolChanged(EditTool.squiggly), tool == EditTool.squiggly),
               _Entry(Icons.approval_outlined, l10n.toolStamp, onAddStamp),
@@ -227,6 +236,8 @@ class EditorToolbar extends StatelessWidget {
               _Entry(Icons.fiber_manual_record_outlined, l10n.markDot, () => onToolChanged(EditTool.dot),
                   tool == EditTool.dot),
               _Entry(Icons.remove, l10n.markDash, () => onToolChanged(EditTool.dash), tool == EditTool.dash),
+              if (onFormatPainter != null)
+                _Entry(Icons.format_paint, l10n.toolFormatPainter, onFormatPainter!, tool == EditTool.formatPainter),
               if (onRedact != null) _Entry(Icons.remove_red_eye_outlined, l10n.toolRedact, onRedact!),
             ],
           ),
@@ -294,6 +305,8 @@ class EditorToolbar extends StatelessWidget {
         EditTool.rect => Icons.crop_square,
         EditTool.oval => Icons.circle_outlined,
         EditTool.whiteout => Icons.format_color_fill,
+        EditTool.link => Icons.link,
+        EditTool.measure => Icons.straighten,
         _ => null,
       };
 

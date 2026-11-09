@@ -33,6 +33,10 @@ class EditorCanvas extends StatelessWidget {
   final Color color;
   final double stroke;
   final bool highlightPreview;
+
+  /// PDF page size in points, for the measurement label.
+  final double pageWidthPt;
+  final double pageHeightPt;
   final bool securePreview;
   final List<Rect> markupPreview;
   final TextMarkupKind? markupKind;
@@ -124,6 +128,8 @@ class EditorCanvas extends StatelessWidget {
     required this.color,
     required this.stroke,
     required this.highlightPreview,
+    this.pageWidthPt = 0,
+    this.pageHeightPt = 0,
     this.securePreview = false,
     this.markupPreview = const [],
     this.markupKind,
@@ -270,6 +276,8 @@ class EditorCanvas extends StatelessWidget {
                     findRects: findRects,
                     activeFind: activeFind,
                     wordSelection: wordSelection,
+                    pageWidthPt: pageWidthPt,
+                    pageHeightPt: pageHeightPt,
                     revision: canvasRevision,
                   ),
                 ),

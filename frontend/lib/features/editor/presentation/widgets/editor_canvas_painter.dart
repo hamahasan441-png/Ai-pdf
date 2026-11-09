@@ -36,6 +36,11 @@ class EditorCanvasPainter extends CustomPainter {
   final List<Rect> wordSelection;
   final bool securePreview;
 
+  /// PDF page size in points, so a measurement reads in millimetres
+  /// rather than in screen pixels. Zero until the page size is known.
+  final double pageWidthPt;
+  final double pageHeightPt;
+
   /// Bumped by the screen whenever an async image decode completes, so the
   /// canvas repaints even though the annotation list length is unchanged.
   final int revision;
@@ -61,6 +66,8 @@ class EditorCanvasPainter extends CustomPainter {
     this.activeFind = -1,
     this.wordSelection = const [],
     this.securePreview = false,
+    this.pageWidthPt = 0,
+    this.pageHeightPt = 0,
     this.revision = 0,
   });
 
@@ -86,7 +93,7 @@ class EditorCanvasPainter extends CustomPainter {
         AnnotationDraw.secureCover(canvas, size, s.start, s.end);
       } else {
         AnnotationDraw.shape(
-            canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity);
+            canvas, size, s.type, s.start, s.end, s.color, s.width, s.filled, s.opacity, pageWidthPt, pageHeightPt);
       }
     }
     for (final st in stamps) {
@@ -108,7 +115,7 @@ class EditorCanvasPainter extends CustomPainter {
         AnnotationDraw.secureCover(canvas, size, shapeStart!, shapeEnd!);
       } else {
         AnnotationDraw.shape(
-            canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth);
+            canvas, size, shapeType!, shapeStart!, shapeEnd!, curColor, curWidth, false, 1, pageWidthPt, pageHeightPt);
       }
     }
     if (markupKind != null && markupPreview.isNotEmpty) {
@@ -188,6 +195,8 @@ class EditorCanvasPainter extends CustomPainter {
         !_sameRects(old.findRects, findRects) ||
         !_sameRects(old.wordSelection, wordSelection) ||
         old.securePreview != securePreview ||
+        old.pageWidthPt != pageWidthPt ||
+        old.pageHeightPt != pageHeightPt ||
         _markupSig(old.markups) != _markupSig(markups) ||
         old.revision != revision) {
       return true;
