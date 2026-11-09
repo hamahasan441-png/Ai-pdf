@@ -79,6 +79,9 @@ class EditorToolbar extends StatelessWidget {
 
   /// Bates numbers in the footer. Hidden when null.
   final VoidCallback? onAddBates;
+
+  /// Shrinks pictures inside the file without turning pages into images.
+  final VoidCallback? onShrinkImages;
   final ValueChanged<Color> onColorChanged;
 
   /// Opens the full colour picker. The button is hidden when null.
@@ -128,6 +131,7 @@ class EditorToolbar extends StatelessWidget {
     this.onAddHeader,
     this.onAddFooter,
     this.onAddBates,
+    this.onShrinkImages,
     required this.onColorChanged,
     this.onPickColor,
     this.recentColors = const [],
@@ -276,6 +280,8 @@ class EditorToolbar extends StatelessWidget {
           if (onAddHeader != null) _action(Icons.vertical_align_top, l10n.addHeader, onAddHeader, palette),
           if (onAddFooter != null) _action(Icons.vertical_align_bottom, l10n.addFooter, onAddFooter, palette),
           if (onAddBates != null) _action(Icons.tag, l10n.bates, onAddBates, palette),
+          if (onShrinkImages != null)
+            _action(Icons.photo_size_select_small, l10n.shrinkImages, onShrinkImages, palette),
           if (onAddWatermark != null)
             _action(Icons.branding_watermark_outlined, l10n.addWatermark, onAddWatermark, palette),
           if (onOutline != null) _action(Icons.menu_book_outlined, l10n.toolOutline, onOutline, palette),

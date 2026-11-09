@@ -16,6 +16,7 @@ import '../../ai/presentation/ai_chat_screen.dart';
 import '../services/pdf_print_service.dart';
 import '../../../core/services/ocr_service.dart';
 import 'package:ai_pdf/features/editor/application/editor_controller.dart';
+import 'package:ai_pdf/features/editor/data/pdf_source/pdf_image_shrinker.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_object_store.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/pdf_outline_reader.dart';
 import 'package:ai_pdf/features/editor/data/pdf_source/acro_form.dart';
@@ -1999,6 +2000,64 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.batesAdded), duration: const Duration(seconds: 2)),
     );
+  }
+
+  /// Shrinks pictures that are already in the file. The page stays a page:
+  /// the words, the vectors and the marks are not turned into an image.
+  /// A masked picture is skipped, because a smaller copy would lose it.
+  Future<void> _shrinkImages() async {
+    final l10n = AppLocalizations.of(context)!;
+    final sourcePath = _editorController.filePath;
+    if (_doc == null || sourcePath == null || !sourcePath.toLowerCase().endsWith('.pdf')) {
+      _showError(l10n.exportErrUnreadable);
+      return;
+    }
+    _editorController.beginExport();
+    setState(() {});
+    try {
+      final bytes = await File(sourcePath).readAsBytes();
+      final report = await Isolate.run(() => shrinkPdfImages(bytes));
+      if (!mounted) {
+        _editorController.finishExport();
+        return;
+      }
+      if (report.shrunk == 0) {
+        _editorController.finishExport();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.noLargeImages), duration: const Duration(seconds: 2)),
+        );
+        return;
+      }
+      final out = File('${Directory.systemTemp.path}/pdoczy-shrink-${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await out.writeAsBytes(report.bytes, flush: true);
+      final swapped = await _replaceSourceDocument(out.path);
+      if (!mounted) {
+        _editorController.finishExport();
+        return;
+      }
+      if (!swapped) {
+        _editorController.finishExport();
+        _showError(l10n.exportErrWriteFailed);
+        return;
+      }
+      setState(() => _hasUnsavedChanges = true);
+      _editorController.markDirty();
+      _editorController.finishExport();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.imagesShrunk(report.shrunk, formatByteSize(bytes.length), formatByteSize(report.bytes.length))),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } on PdfSourceException catch (e) {
+      _editorController.finishExport();
+      if (mounted) _showError(e.encrypted ? l10n.exportErrEncrypted : l10n.exportErrDamaged);
+    } catch (e) {
+      _editorController.finishExport();
+      if (mounted) _showError(l10n.errExport(describeError(e, l10n)));
+    } finally {
+      if (mounted) setState(() {});
+    }
   }
 
   /// One undoable step. Arrow keys use the coarse step with Shift.
@@ -4445,6 +4504,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onAddHeader: () => _editRunning(RunningEdge.header),
           onAddFooter: () => _editRunning(RunningEdge.footer),
           onAddBates: _addBates,
+          onShrinkImages: _shrinkImages,
           onAddWatermark: _addWatermark,
           onColorChanged: (c) => setState(() {
             _color = _tool == EditTool.highlight ? visibleHighlightColor(c) : c;

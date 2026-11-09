@@ -71,6 +71,7 @@ EditorToolbar toolbar(
     onAddHeader: act('header'),
     onAddFooter: act('footer'),
     onAddBates: act('bates'),
+    onShrinkImages: act('shrink'),
     onAddWatermark: act('watermark'),
     onColorChanged: (_) => calls.actions.add('color'),
     onStrokeChanged: (_) => calls.actions.add('stroke'),
@@ -202,8 +203,9 @@ void main() {
       await tester.tap(find.byTooltip('Add header'));
       await tester.tap(find.byTooltip('Add footer'));
       await tester.tap(find.byTooltip('Bates'));
+      await tester.tap(find.byTooltip('Shrink images'));
       await tester.tap(find.byTooltip('Add Watermark'));
-      expect(calls.actions, ['rotate', 'header', 'footer', 'bates', 'watermark']);
+      expect(calls.actions, ['rotate', 'header', 'footer', 'bates', 'shrink', 'watermark']);
 
       await tester.pumpWidget(app(Align(
         alignment: Alignment.bottomCenter,

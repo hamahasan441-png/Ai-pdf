@@ -433,6 +433,16 @@
   "bates": "Bates",
   "batesPrefix": "Bates prefix",
   "batesAdded": "Bates numbers added",
+  "shrinkImages": "Shrink images",
+  "noLargeImages": "No large images to shrink",
+  "imagesShrunk": "{count} images made smaller · {before} → {after}",
+  "@imagesShrunk": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "before": {"type": "String"},
+      "after": {"type": "String"}
+    }
+  },
   "skipFirstPage": "Skip the first page",
   "runningLeft": "Left",
   "runningCenter": "Center",
