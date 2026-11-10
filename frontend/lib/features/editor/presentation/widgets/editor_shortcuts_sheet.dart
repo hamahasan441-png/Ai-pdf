@@ -13,7 +13,10 @@ Future<void> showEditorShortcutsSheet(BuildContext context) {
         EditorShortcut.paste => l10n.shortcutPaste,
         EditorShortcut.duplicate => l10n.duplicate,
         EditorShortcut.delete => l10n.delete,
+        EditorShortcut.selectAll => l10n.shortcutSelectAll,
         EditorShortcut.deselect => l10n.shortcutDeselect,
+        EditorShortcut.nextObject => l10n.shortcutNextObject,
+        EditorShortcut.previousObject => l10n.shortcutPreviousObject,
         EditorShortcut.previousPage => l10n.shortcutPreviousPage,
         EditorShortcut.nextPage => l10n.shortcutNextPage,
         EditorShortcut.firstPage => l10n.shortcutFirstPage,
@@ -21,6 +24,8 @@ Future<void> showEditorShortcutsSheet(BuildContext context) {
         EditorShortcut.find => l10n.shortcutFind,
         EditorShortcut.save => l10n.export,
         EditorShortcut.fitPage => l10n.shortcutFitPage,
+        EditorShortcut.zoomIn => l10n.zoomIn,
+        EditorShortcut.zoomOut => l10n.zoomOut,
         EditorShortcut.help => l10n.shortcutHelp,
         EditorShortcut.nudgeLeft ||
         EditorShortcut.nudgeRight ||

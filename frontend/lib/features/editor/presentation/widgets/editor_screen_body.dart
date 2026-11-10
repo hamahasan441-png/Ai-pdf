@@ -20,6 +20,9 @@ class EditorScreenBody extends StatelessWidget {
   final Widget documentViewport;
   final Widget toolbar;
 
+  /// Page, size and zoom. Hidden with the bars. Omitted when null.
+  final Widget? statusBar;
+
   /// Full-screen reading: the bars are folded away.
   final bool chromeHidden;
 
@@ -51,6 +54,7 @@ class EditorScreenBody extends StatelessWidget {
     required this.topBar,
     required this.documentViewport,
     required this.toolbar,
+    this.statusBar,
     this.chromeHidden = false,
     this.pageLabel,
     this.showPageLabel = false,
@@ -112,6 +116,8 @@ class EditorScreenBody extends StatelessWidget {
           children: [
             _Fold(visible: !chromeHidden, duration: duration, alignment: Alignment.bottomCenter, child: topBar),
             Expanded(child: page),
+            if (statusBar != null)
+              _Fold(visible: !chromeHidden, duration: duration, alignment: Alignment.topCenter, child: statusBar!),
             _Fold(visible: !chromeHidden, duration: duration, alignment: Alignment.topCenter, child: toolbar),
           ],
         ),

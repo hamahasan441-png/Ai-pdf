@@ -9,7 +9,10 @@ enum EditorShortcut {
   paste,
   duplicate,
   delete,
+  selectAll,
   deselect,
+  nextObject,
+  previousObject,
   previousPage,
   nextPage,
   firstPage,
@@ -17,6 +20,8 @@ enum EditorShortcut {
   find,
   save,
   fitPage,
+  zoomIn,
+  zoomOut,
   help,
   nudgeLeft,
   nudgeRight,
@@ -27,6 +32,9 @@ enum EditorShortcut {
 /// The shortcut for a key press, or null. [control] is Ctrl, or ⌘ on Apple
 /// keyboards. Plain letters are never shortcuts, so typing is never taken.
 EditorShortcut? editorShortcutFor(LogicalKeyboardKey key, {required bool control, required bool shift}) {
+  if (!control && key == LogicalKeyboardKey.tab) {
+    return shift ? EditorShortcut.previousObject : EditorShortcut.nextObject;
+  }
   if (control) {
     return switch (key) {
       LogicalKeyboardKey.keyZ => shift ? EditorShortcut.redo : EditorShortcut.undo,
@@ -34,9 +42,12 @@ EditorShortcut? editorShortcutFor(LogicalKeyboardKey key, {required bool control
       LogicalKeyboardKey.keyC => EditorShortcut.copy,
       LogicalKeyboardKey.keyV => EditorShortcut.paste,
       LogicalKeyboardKey.keyD => EditorShortcut.duplicate,
+      LogicalKeyboardKey.keyA => EditorShortcut.selectAll,
       LogicalKeyboardKey.keyF => EditorShortcut.find,
       LogicalKeyboardKey.keyS => EditorShortcut.save,
       LogicalKeyboardKey.digit0 || LogicalKeyboardKey.numpad0 => EditorShortcut.fitPage,
+      LogicalKeyboardKey.equal || LogicalKeyboardKey.numpadAdd => EditorShortcut.zoomIn,
+      LogicalKeyboardKey.minus || LogicalKeyboardKey.numpadSubtract => EditorShortcut.zoomOut,
       LogicalKeyboardKey.slash => EditorShortcut.help,
       LogicalKeyboardKey.home => EditorShortcut.firstPage,
       LogicalKeyboardKey.end => EditorShortcut.lastPage,
@@ -82,7 +93,10 @@ const editorShortcutKeys = <EditorShortcut, String>{
   EditorShortcut.paste: 'Ctrl+V',
   EditorShortcut.duplicate: 'Ctrl+D',
   EditorShortcut.delete: 'Delete',
+  EditorShortcut.selectAll: 'Ctrl+A',
   EditorShortcut.deselect: 'Esc',
+  EditorShortcut.nextObject: 'Tab',
+  EditorShortcut.previousObject: 'Shift+Tab',
   EditorShortcut.previousPage: 'Page Up',
   EditorShortcut.nextPage: 'Page Down',
   EditorShortcut.firstPage: 'Home',
@@ -90,6 +104,8 @@ const editorShortcutKeys = <EditorShortcut, String>{
   EditorShortcut.find: 'Ctrl+F',
   EditorShortcut.save: 'Ctrl+S',
   EditorShortcut.fitPage: 'Ctrl+0',
+  EditorShortcut.zoomIn: 'Ctrl++',
+  EditorShortcut.zoomOut: 'Ctrl+−',
   EditorShortcut.help: 'Ctrl+/',
   EditorShortcut.nudgeLeft: '←  /  Shift+←',
   EditorShortcut.nudgeRight: '→  /  Shift+→',

@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math_64.dart' show Vector3;
 import 'package:flutter/services.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
@@ -50,6 +51,9 @@ import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
 import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
+import 'package:ai_pdf/features/editor/data/editor_status.dart';
+import 'package:ai_pdf/features/editor/data/workspace_commands.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_geometry_dialog.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_canvas_interaction_service.dart';
@@ -95,6 +99,7 @@ import 'package:ai_pdf/features/editor/domain/services/selection_service.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_canvas.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/signature_pad_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_screen_body.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_status_bar.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_document_viewport.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_profile_field_picker_sheet.dart';
 import 'package:ai_pdf/features/editor/presentation/widgets/editor_text_color_picker_sheet.dart';
@@ -175,6 +180,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
   final Map<int, int> _pageQuarterTurns = {};
   List<int> _sourcePages = const [];
   final TransformationController _viewTransform = TransformationController();
+  int _zoomShown = 100;
   final GlobalKey _viewerKey = GlobalKey();
 
   // --- Filling the PDF's form in place ---
@@ -718,6 +724,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         } else if (_selected != null) {
           _duplicateSelected();
         }
+      case EditorShortcut.selectAll:
+        if (!hasDoc || !_selectAllOnPage()) return KeyEventResult.ignored;
       case EditorShortcut.delete:
         if (_multi.isNotEmpty) {
           _deleteMulti();
@@ -732,6 +740,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           _selected = null;
           _multi.clear();
         });
+      case EditorShortcut.nextObject:
+        if (!_cycleSelection(backward: false)) return KeyEventResult.ignored;
+      case EditorShortcut.previousObject:
+        if (!_cycleSelection(backward: true)) return KeyEventResult.ignored;
       case EditorShortcut.previousPage:
         if (_current > 0) _goToPage(_current - 1);
       case EditorShortcut.nextPage:
@@ -745,7 +757,11 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
       case EditorShortcut.save:
         if (hasDoc && !_editorController.isExporting) _export();
       case EditorShortcut.fitPage:
-        _viewTransform.value = Matrix4.identity();
+        _fitPage();
+      case EditorShortcut.zoomIn:
+        _zoomBy(zoomIn: true);
+      case EditorShortcut.zoomOut:
+        _zoomBy(zoomIn: false);
       case EditorShortcut.help:
         showEditorShortcutsSheet(context);
       case EditorShortcut.nudgeLeft:
@@ -1111,8 +1127,133 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     }
   }
 
+  String _statusDetail() {
+    final height = _pageHeightPt[_current] ?? 0;
+    final width = height * _aspectFor(_current);
+    final sel = _selected;
+    if (sel != null) {
+      final box = selectionMillimetres(_boundsOf(sel), pageWidthPt: width, pageHeightPt: height);
+      if (box.isNotEmpty) return box;
+    }
+    return paperSize(width, height).label;
+  }
+
   void _onViewTransform() {
+    final next = zoomPercent(_viewTransform.value.getMaxScaleOnAxis());
+    if (next != _zoomShown && mounted) {
+      setState(() => _zoomShown = next);
+      return;
+    }
     if (_inlineEditing != null && mounted) setState(() {});
+  }
+
+  void _fitPage() {
+    _viewTransform.value = Matrix4.identity();
+  }
+
+  /// Zooms about the middle of the screen, so the page does not jump away.
+  void _zoomBy({required bool zoomIn}) {
+    final current = _viewTransform.value.getMaxScaleOnAxis();
+    final target = nextZoom(current, zoomIn: zoomIn);
+    if (current <= 0 || (target - current).abs() < 0.001) return;
+    final ratio = target / current;
+    final m = _viewTransform.value.clone();
+    final size = _viewerKey.currentContext?.size;
+    if (size == null || size.width <= 0 || size.height <= 0) {
+      m.scale(ratio);
+    } else {
+      final inverse = Matrix4.inverted(m);
+      final scene = inverse.transform3(Vector3(size.width / 2, size.height / 2, 0));
+      m.translate(scene.x, scene.y);
+      m.scale(ratio);
+      m.translate(-scene.x, -scene.y);
+    }
+    _viewTransform.value = m;
+  }
+
+  void _toggleLockSelected() {
+    final sel = _selected;
+    if (sel == null) return;
+    _editorController.beginEdit([sel], label: 'Lock');
+    sel.locked = !sel.locked;
+    _editorController.commitEdit(_layer);
+    setState(() => _hasUnsavedChanges = true);
+    _schedulePersist();
+  }
+
+  void _quarterTurnSelected() {
+    final sel = _selected;
+    if (sel == null || !canQuarterTurn(sel)) return;
+    _editorController.beginEdit([sel], label: 'Rotate');
+    quarterTurn(sel);
+    _editorController.commitEdit(_layer);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
+    _schedulePersist();
+  }
+
+  /// Every visible mark on this page. One mark becomes the selection;
+  /// several become the multi-selection the align tools already use.
+  bool _selectAllOnPage() {
+    final all = selectableMarks(_layer.items);
+    if (all.isEmpty) return false;
+    setState(() {
+      _multi.clear();
+      if (all.length == 1) {
+        _selected = all.first;
+      } else {
+        _selected = null;
+        _multi.addAll(all);
+      }
+    });
+    return true;
+  }
+
+  /// Tab / Shift+Tab. Hidden marks are skipped.
+  bool _cycleSelection({required bool backward}) {
+    EditorAnnotation? anchor = _selected;
+    if (anchor == null) {
+      for (final item in _layer.items) {
+        if (_multi.contains(item)) {
+          anchor = item;
+          break;
+        }
+      }
+    }
+    final next = cycleMark(_layer.items, anchor, backward: backward);
+    if (next == null) return false;
+    setState(() {
+      _selected = next;
+      _multi.clear();
+    });
+    return true;
+  }
+
+  Future<void> _placeSelected() async {
+    final sel = _selected;
+    if (sel == null || sel.locked || !sel.visible) return;
+    final height = _pageHeightPt[_current] ?? 0;
+    final width = height * _aspectFor(_current);
+    final box = millimetreBoxOf(_boundsOf(sel), pageWidthPt: width, pageHeightPt: height);
+    if (box == null || !mounted) return;
+    final next = await showEditorGeometryDialog(context, initial: box);
+    if (next == null || !mounted) return;
+    final live = _selected;
+    if (live == null || !identical(live, sel) || live.locked) return;
+    _editorController.beginEdit([live], label: 'Place');
+    final moved = placeByMillimetres(live, next, pageWidthPt: width, pageHeightPt: height);
+    if (!moved) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
+    _schedulePersist();
   }
 
   double _aspectFor(int index) {
@@ -4197,6 +4338,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           onDone: () => _setMode(EditorMode.view),
           menu: _topBarMenu(l10n),
         ),
+        statusBar: bytes == null || _pageCount <= 0
+            ? null
+            : EditorStatusBar(
+                page: '${_current + 1} / $_pageCount',
+                detail: _statusDetail(),
+                zoom: _zoomShown,
+                onZoomIn: () => _zoomBy(zoomIn: true),
+                onZoomOut: () => _zoomBy(zoomIn: false),
+                onFit: _fitPage,
+                locked: _selected?.locked ?? false,
+                onToggleLock: _selected == null ? null : _toggleLockSelected,
+                onRotate: _selected != null && canQuarterTurn(_selected!) ? _quarterTurnSelected : null,
+                onDetail: _selected != null && !_selected!.locked ? _placeSelected : null,
+              ),
         chromeHidden: _chromeHidden,
         pageLabel: _pageCount > 0 ? '${_current + 1} / $_pageCount' : null,
         showPageLabel: _showPagePill,
@@ -4430,6 +4585,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             onDeselectSelected: () => setState(() => _selected = null),
             onCenterOnPage: _centerOnPage,
             onNudge: (unit) => _nudgeBy(unit),
+            onPlace: _selected != null && !_selected!.locked ? _placeSelected : null,
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
             onEditField: _editField,
