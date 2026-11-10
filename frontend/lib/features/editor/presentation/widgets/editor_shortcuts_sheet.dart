@@ -21,6 +21,8 @@ Future<void> showEditorShortcutsSheet(BuildContext context) {
         EditorShortcut.find => l10n.shortcutFind,
         EditorShortcut.save => l10n.export,
         EditorShortcut.fitPage => l10n.shortcutFitPage,
+        EditorShortcut.zoomIn => l10n.zoomIn,
+        EditorShortcut.zoomOut => l10n.zoomOut,
         EditorShortcut.help => l10n.shortcutHelp,
         EditorShortcut.nudgeLeft ||
         EditorShortcut.nudgeRight ||
