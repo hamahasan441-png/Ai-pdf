@@ -40,6 +40,10 @@ class EditorCanvasPainter extends CustomPainter {
   /// canvas repaints even though the annotation list length is unchanged.
   final int revision;
 
+  /// Taken in the constructor. The old painter and the new one share the
+  /// same annotation objects, so reading them later would both see the move.
+  late final int _captured;
+
   EditorCanvasPainter(
     this.strokes,
     this.shapes,
@@ -62,7 +66,9 @@ class EditorCanvasPainter extends CustomPainter {
     this.wordSelection = const [],
     this.securePreview = false,
     this.revision = 0,
-  });
+  }) {
+    _captured = _paintSignature();
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -187,7 +193,7 @@ class EditorCanvasPainter extends CustomPainter {
         !_sameRects(old.wordSelection, wordSelection) ||
         old.securePreview != securePreview ||
         old.revision != revision ||
-        old._paintSignature() != _paintSignature()) {
+        old._captured != _captured) {
       return true;
     }
     return false;
