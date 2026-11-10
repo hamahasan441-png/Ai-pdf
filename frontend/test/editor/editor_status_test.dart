@@ -86,4 +86,25 @@ void main() {
     await tester.tap(find.byTooltip('Rotate'));
     expect(actions, ['in', 'out', 'fit', 'lock', 'turn']);
   });
+
+  testWidgets('the size in the status bar opens placement when it is tappable', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: const [...AppLocalizations.localizationsDelegates, ...kurdishFallbackDelegates],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: EditorStatusBar(
+          page: '1 / 1',
+          detail: '40.0 × 20.0 mm',
+          zoom: 100,
+          onZoomIn: () {},
+          onZoomOut: () {},
+          onFit: () {},
+          onDetail: () => opened++,
+        ),
+      ),
+    ));
+    await tester.tap(find.byTooltip('Place by millimetres'));
+    expect(opened, 1);
+  });
 }

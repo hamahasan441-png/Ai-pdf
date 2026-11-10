@@ -9,7 +9,10 @@ enum EditorShortcut {
   paste,
   duplicate,
   delete,
+  selectAll,
   deselect,
+  nextObject,
+  previousObject,
   previousPage,
   nextPage,
   firstPage,
@@ -29,6 +32,9 @@ enum EditorShortcut {
 /// The shortcut for a key press, or null. [control] is Ctrl, or ⌘ on Apple
 /// keyboards. Plain letters are never shortcuts, so typing is never taken.
 EditorShortcut? editorShortcutFor(LogicalKeyboardKey key, {required bool control, required bool shift}) {
+  if (!control && key == LogicalKeyboardKey.tab) {
+    return shift ? EditorShortcut.previousObject : EditorShortcut.nextObject;
+  }
   if (control) {
     return switch (key) {
       LogicalKeyboardKey.keyZ => shift ? EditorShortcut.redo : EditorShortcut.undo,
@@ -36,6 +42,7 @@ EditorShortcut? editorShortcutFor(LogicalKeyboardKey key, {required bool control
       LogicalKeyboardKey.keyC => EditorShortcut.copy,
       LogicalKeyboardKey.keyV => EditorShortcut.paste,
       LogicalKeyboardKey.keyD => EditorShortcut.duplicate,
+      LogicalKeyboardKey.keyA => EditorShortcut.selectAll,
       LogicalKeyboardKey.keyF => EditorShortcut.find,
       LogicalKeyboardKey.keyS => EditorShortcut.save,
       LogicalKeyboardKey.digit0 || LogicalKeyboardKey.numpad0 => EditorShortcut.fitPage,
@@ -86,7 +93,10 @@ const editorShortcutKeys = <EditorShortcut, String>{
   EditorShortcut.paste: 'Ctrl+V',
   EditorShortcut.duplicate: 'Ctrl+D',
   EditorShortcut.delete: 'Delete',
+  EditorShortcut.selectAll: 'Ctrl+A',
   EditorShortcut.deselect: 'Esc',
+  EditorShortcut.nextObject: 'Tab',
+  EditorShortcut.previousObject: 'Shift+Tab',
   EditorShortcut.previousPage: 'Page Up',
   EditorShortcut.nextPage: 'Page Down',
   EditorShortcut.firstPage: 'Home',

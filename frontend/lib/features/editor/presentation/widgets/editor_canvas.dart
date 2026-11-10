@@ -100,6 +100,7 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDeselectSelected;
   final VoidCallback? onCenterOnPage;
   final void Function(Offset unit)? onNudge;
+  final VoidCallback? onPlace;
   final void Function(String how) onAlignMulti;
   final void Function(Axis axis) onDistributeMulti;
   final VoidCallback onDuplicateMulti;
@@ -177,6 +178,7 @@ class EditorCanvas extends StatelessWidget {
     required this.onDeselectSelected,
     this.onCenterOnPage,
     this.onNudge,
+    this.onPlace,
     required this.onAlignMulti,
     required this.onDistributeMulti,
     required this.onDuplicateMulti,
@@ -474,6 +476,7 @@ class EditorCanvas extends StatelessWidget {
                   onDeselect: onDeselectSelected,
                   onCenterOnPage: onCenterOnPage,
                   onNudge: onNudge,
+                  onPlace: onPlace,
                 ),
               if (multi.isNotEmpty)
                 EditorMultiSelectionActionBar(

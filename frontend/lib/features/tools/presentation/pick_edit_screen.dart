@@ -52,6 +52,8 @@ import 'package:ai_pdf/features/editor/data/form_profile_service.dart';
 import 'package:ai_pdf/features/editor/data/cross_field_logic_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_export_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_status.dart';
+import 'package:ai_pdf/features/editor/data/workspace_commands.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_geometry_dialog.dart';
 import 'package:ai_pdf/features/editor/data/editor_field_input_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_annotation_factory_service.dart';
 import 'package:ai_pdf/features/editor/data/editor_canvas_interaction_service.dart';
@@ -722,6 +724,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
         } else if (_selected != null) {
           _duplicateSelected();
         }
+      case EditorShortcut.selectAll:
+        if (!hasDoc || !_selectAllOnPage()) return KeyEventResult.ignored;
       case EditorShortcut.delete:
         if (_multi.isNotEmpty) {
           _deleteMulti();
@@ -736,6 +740,10 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
           _selected = null;
           _multi.clear();
         });
+      case EditorShortcut.nextObject:
+        if (!_cycleSelection(backward: false)) return KeyEventResult.ignored;
+      case EditorShortcut.previousObject:
+        if (!_cycleSelection(backward: true)) return KeyEventResult.ignored;
       case EditorShortcut.previousPage:
         if (_current > 0) _goToPage(_current - 1);
       case EditorShortcut.nextPage:
@@ -1173,13 +1181,78 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     _schedulePersist();
   }
 
-  void _rotateSelected() {
+  void _quarterTurnSelected() {
     final sel = _selected;
     if (sel == null || !canQuarterTurn(sel)) return;
     _editorController.beginEdit([sel], label: 'Rotate');
     quarterTurn(sel);
     _editorController.commitEdit(_layer);
-    setState(() => _hasUnsavedChanges = true);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
+    _schedulePersist();
+  }
+
+  /// Every visible mark on this page. One mark becomes the selection;
+  /// several become the multi-selection the align tools already use.
+  bool _selectAllOnPage() {
+    final all = selectableMarks(_layer.items);
+    if (all.isEmpty) return false;
+    setState(() {
+      _multi.clear();
+      if (all.length == 1) {
+        _selected = all.first;
+      } else {
+        _selected = null;
+        _multi.addAll(all);
+      }
+    });
+    return true;
+  }
+
+  /// Tab / Shift+Tab. Hidden marks are skipped.
+  bool _cycleSelection({required bool backward}) {
+    EditorAnnotation? anchor = _selected;
+    if (anchor == null) {
+      for (final item in _layer.items) {
+        if (_multi.contains(item)) {
+          anchor = item;
+          break;
+        }
+      }
+    }
+    final next = cycleMark(_layer.items, anchor, backward: backward);
+    if (next == null) return false;
+    setState(() {
+      _selected = next;
+      _multi.clear();
+    });
+    return true;
+  }
+
+  Future<void> _placeSelected() async {
+    final sel = _selected;
+    if (sel == null || sel.locked || !sel.visible) return;
+    final height = _pageHeightPt[_current] ?? 0;
+    final width = height * _aspectFor(_current);
+    final box = millimetreBoxOf(_boundsOf(sel), pageWidthPt: width, pageHeightPt: height);
+    if (box == null || !mounted) return;
+    final next = await showEditorGeometryDialog(context, initial: box);
+    if (next == null || !mounted) return;
+    final live = _selected;
+    if (live == null || !identical(live, sel) || live.locked) return;
+    _editorController.beginEdit([live], label: 'Place');
+    final moved = placeByMillimetres(live, next, pageWidthPt: width, pageHeightPt: height);
+    if (!moved) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
     _schedulePersist();
   }
 
@@ -4276,7 +4349,8 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
                 onFit: _fitPage,
                 locked: _selected?.locked ?? false,
                 onToggleLock: _selected == null ? null : _toggleLockSelected,
-                onRotate: _selected != null && canQuarterTurn(_selected!) ? _rotateSelected : null,
+                onRotate: _selected != null && canQuarterTurn(_selected!) ? _quarterTurnSelected : null,
+                onDetail: _selected != null && !_selected!.locked ? _placeSelected : null,
               ),
         chromeHidden: _chromeHidden,
         pageLabel: _pageCount > 0 ? '${_current + 1} / $_pageCount' : null,
@@ -4511,6 +4585,7 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             onDeselectSelected: () => setState(() => _selected = null),
             onCenterOnPage: _centerOnPage,
             onNudge: (unit) => _nudgeBy(unit),
+            onPlace: _selected != null && !_selected!.locked ? _placeSelected : null,
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
             onEditField: _editField,

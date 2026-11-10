@@ -168,6 +168,9 @@ class EditorCanvasPainter extends CustomPainter {
   /// actually changes. Returning `true` unconditionally caused the canvas to
   /// repaint on every frame — even during scroll, zoom, and unrelated state
   /// updates — wasting GPU budget and hurting 60 FPS targets.
+  ///
+  /// List length is not enough: moving or recolouring a mark keeps the count
+  /// and would otherwise leave the old picture on screen.
   @override
   bool shouldRepaint(covariant EditorCanvasPainter old) {
     if (old.curColor != curColor ||
@@ -177,22 +180,77 @@ class EditorCanvasPainter extends CustomPainter {
         old.shapeEnd != shapeEnd ||
         old.shapeType != shapeType ||
         old.current.length != current.length ||
-        old.strokes.length != strokes.length ||
-        old.shapes.length != shapes.length ||
-        old.images.length != images.length ||
-        old.stamps.length != stamps.length ||
-        old.markups.length != markups.length ||
         old.markupKind != markupKind ||
         old.activeFind != activeFind ||
         !_sameRects(old.markupPreview, markupPreview) ||
         !_sameRects(old.findRects, findRects) ||
         !_sameRects(old.wordSelection, wordSelection) ||
         old.securePreview != securePreview ||
-        _markupSig(old.markups) != _markupSig(markups) ||
-        old.revision != revision) {
+        old.revision != revision ||
+        old._paintSignature() != _paintSignature()) {
       return true;
     }
     return false;
+  }
+
+  /// Order, place, size and colour of everything this painter draws.
+  /// Doubles are quantised so a sub-pixel wobble does not repaint.
+  int _paintSignature() {
+    var h = 0;
+    void mix(Object? value) => h = Object.hash(h, value);
+    void q(double value) => mix((value * 10000).round());
+    for (final s in strokes) {
+      mix(s.id);
+      mix(s.visible);
+      mix(s.opacity);
+      mix(s.color);
+      mix(s.width);
+      mix(s.highlight);
+      mix(s.points.length);
+      final b = s.bounds;
+      q(b.left);
+      q(b.top);
+      q(b.right);
+      q(b.bottom);
+    }
+    for (final s in shapes) {
+      mix(s.id);
+      mix(s.visible);
+      mix(s.opacity);
+      mix(s.color);
+      mix(s.width);
+      mix(s.filled);
+      mix(s.type);
+      q(s.start.dx);
+      q(s.start.dy);
+      q(s.end.dx);
+      q(s.end.dy);
+    }
+    for (final image in images) {
+      mix(image.id);
+      mix(image.visible);
+      mix(image.opacity);
+      q(image.pos.dx);
+      q(image.pos.dy);
+      q(image.width);
+      q(image.height);
+      q(image.rotation);
+    }
+    for (final stamp in stamps) {
+      mix(stamp.id);
+      mix(stamp.visible);
+      mix(stamp.opacity);
+      mix(stamp.color);
+      mix(stamp.kind);
+      mix(stamp.customText);
+      q(stamp.pos.dx);
+      q(stamp.pos.dy);
+      q(stamp.width);
+      q(stamp.height);
+      q(stamp.rotation);
+    }
+    mix(_markupSig(markups));
+    return h;
   }
 }
 

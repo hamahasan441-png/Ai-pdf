@@ -22,6 +22,9 @@ class EditorStatusBar extends StatelessWidget {
   /// Turns the selection. Hidden when null.
   final VoidCallback? onRotate;
 
+  /// Opens the millimetre place dialog. The detail is tappable when set.
+  final VoidCallback? onDetail;
+
   const EditorStatusBar({
     super.key,
     required this.page,
@@ -33,6 +36,7 @@ class EditorStatusBar extends StatelessWidget {
     this.onToggleLock,
     this.locked = false,
     this.onRotate,
+    this.onDetail,
   });
 
   @override
@@ -55,9 +59,7 @@ class EditorStatusBar extends StatelessWidget {
                 Text(page, style: style),
                 if (detail.isNotEmpty) ...[
                   Text('  ·  ', style: quiet),
-                  Expanded(
-                    child: Text(detail, style: quiet, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
+                  Expanded(child: _detail(detail, quiet, palette, l10n)),
                 ] else
                   const Spacer(),
                 if (onToggleLock != null)
@@ -80,6 +82,25 @@ class EditorStatusBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _detail(String detail, TextStyle quiet, EditorPalette palette, AppLocalizations l10n) {
+    final text = Text(
+      detail,
+      style: onDetail == null
+          ? quiet
+          : quiet.copyWith(
+              decoration: TextDecoration.underline,
+              decorationColor: palette.barForeground.withValues(alpha: 0.45),
+            ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (onDetail == null) return text;
+    return Tooltip(
+      message: l10n.placeBySize,
+      child: InkWell(onTap: onDetail, child: text),
     );
   }
 

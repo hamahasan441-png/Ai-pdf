@@ -271,6 +271,9 @@ class EditorSelectionActionBar extends StatelessWidget {
   /// Nudges by one fine step. The offset is a unit vector. Hidden when null.
   final void Function(Offset unit)? onNudge;
 
+  /// Opens the millimetre place dialog. Hidden when null.
+  final VoidCallback? onPlace;
+
   /// Toggles the explicit Move/Resize (transform) mode — the only state in
   /// which handles and the bounding box are shown.
   final bool transformMode;
@@ -294,6 +297,7 @@ class EditorSelectionActionBar extends StatelessWidget {
     required this.onDeselect,
     this.onCenterOnPage,
     this.onNudge,
+    this.onPlace,
     this.transformMode = false,
     this.onToggleTransform,
   });
@@ -358,6 +362,8 @@ class EditorSelectionActionBar extends StatelessWidget {
                 _OverflowItem(icon: Icons.flip_to_back, label: l10n.sendToBack, onTap: onSendToBack),
                 if (onCenterOnPage != null)
                   _OverflowItem(icon: Icons.filter_center_focus, label: l10n.centerOnPage, onTap: onCenterOnPage!),
+                if (onPlace != null)
+                  _OverflowItem(icon: Icons.straighten, label: l10n.placeBySize, onTap: onPlace!),
                 if (onNudge != null) ...[
                   _OverflowItem(icon: Icons.west, label: '←', onTap: () => onNudge!(const Offset(-1, 0))),
                   _OverflowItem(icon: Icons.east, label: '→', onTap: () => onNudge!(const Offset(1, 0))),

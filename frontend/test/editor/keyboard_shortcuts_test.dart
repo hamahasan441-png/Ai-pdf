@@ -13,6 +13,11 @@ void main() {
     expect(k(LogicalKeyboardKey.keyZ, ctrl: true, shift: true), EditorShortcut.redo);
     expect(k(LogicalKeyboardKey.keyY, ctrl: true), EditorShortcut.redo);
     expect(k(LogicalKeyboardKey.keyS, ctrl: true), EditorShortcut.save);
+    expect(k(LogicalKeyboardKey.keyA, ctrl: true), EditorShortcut.selectAll);
+    expect(k(LogicalKeyboardKey.keyA), isNull);
+    expect(k(LogicalKeyboardKey.tab), EditorShortcut.nextObject);
+    expect(k(LogicalKeyboardKey.tab, shift: true), EditorShortcut.previousObject);
+    expect(k(LogicalKeyboardKey.tab, ctrl: true), isNull);
     expect(k(LogicalKeyboardKey.delete), EditorShortcut.delete);
     expect(k(LogicalKeyboardKey.backspace), EditorShortcut.delete);
     expect(k(LogicalKeyboardKey.pageDown), EditorShortcut.nextPage);
