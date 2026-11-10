@@ -877,9 +877,10 @@ class EditorExportService {
       size.height * 0.12,
     );
     final fade = note.opacity.clamp(0.0, 1.0);
+    final paper = note.color.value;
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-      Paint()..color = note.color.withValues(alpha: (note.color.a * fade).clamp(0.0, 1.0)),
+      Paint()..color = paper.withValues(alpha: (paper.a * fade).clamp(0.0, 1.0)),
     );
     final rtl = const RtlDetectionService().isRtl(note.text);
     final painter = TextPainter(
