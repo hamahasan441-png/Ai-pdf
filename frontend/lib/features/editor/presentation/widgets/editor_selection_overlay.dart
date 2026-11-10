@@ -268,6 +268,12 @@ class EditorSelectionActionBar extends StatelessWidget {
   /// Centres this one object on the page. Hidden when null.
   final VoidCallback? onCenterOnPage;
 
+  /// Fades the selection. Hidden when null (a form field, or nothing selected).
+  final VoidCallback? onOpacity;
+
+  /// Opens the page-edge align dialog. Hidden when null.
+  final VoidCallback? onAlignToPage;
+
   /// Nudges by one fine step. The offset is a unit vector. Hidden when null.
   final void Function(Offset unit)? onNudge;
 
@@ -293,6 +299,8 @@ class EditorSelectionActionBar extends StatelessWidget {
     required this.onDelete,
     required this.onDeselect,
     this.onCenterOnPage,
+    this.onOpacity,
+    this.onAlignToPage,
     this.onNudge,
     this.transformMode = false,
     this.onToggleTransform,
@@ -356,6 +364,10 @@ class EditorSelectionActionBar extends StatelessWidget {
                 _OverflowItem(icon: Icons.content_copy, label: l10n.copy, onTap: onCopy),
                 _OverflowItem(icon: Icons.flip_to_front, label: l10n.bringToFront, onTap: onBringToFront),
                 _OverflowItem(icon: Icons.flip_to_back, label: l10n.sendToBack, onTap: onSendToBack),
+                if (onOpacity != null)
+                  _OverflowItem(icon: Icons.opacity, label: l10n.opacity, onTap: onOpacity!),
+                if (onAlignToPage != null)
+                  _OverflowItem(icon: Icons.align_horizontal_left, label: l10n.alignToPage, onTap: onAlignToPage!),
                 if (onCenterOnPage != null)
                   _OverflowItem(icon: Icons.filter_center_focus, label: l10n.centerOnPage, onTap: onCenterOnPage!),
                 if (onNudge != null) ...[
@@ -444,6 +456,8 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
   final VoidCallback onAlignBottom;
   final VoidCallback onDistributeH;
   final VoidCallback onDistributeV;
+  final VoidCallback? onMatchWidth;
+  final VoidCallback? onMatchHeight;
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
   final VoidCallback onDeselect;
@@ -459,6 +473,8 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
     required this.onAlignBottom,
     required this.onDistributeH,
     required this.onDistributeV,
+    this.onMatchWidth,
+    this.onMatchHeight,
     required this.onDuplicate,
     required this.onDelete,
     required this.onDeselect,
@@ -507,6 +523,10 @@ class EditorMultiSelectionActionBar extends StatelessWidget {
                   _alignItem(palette.barForeground, 'top', Icons.align_vertical_top, l10n.alignTop, onAlignTop),
                   _alignItem(palette.barForeground, 'middle', Icons.align_vertical_center, l10n.alignMiddle, onAlignMiddle),
                   _alignItem(palette.barForeground, 'bottom', Icons.align_vertical_bottom, l10n.alignBottom, onAlignBottom),
+                  if (onMatchWidth != null)
+                    _alignItem(palette.barForeground, 'mw', Icons.swap_horiz, l10n.matchWidth, onMatchWidth!),
+                  if (onMatchHeight != null)
+                    _alignItem(palette.barForeground, 'mh', Icons.swap_vert, l10n.matchHeight, onMatchHeight!),
                 ],
               ),
               _divider(palette),

@@ -69,7 +69,14 @@ class EditorCanvasPainter extends CustomPainter {
     this.pageWidthPt = 0,
     this.pageHeightPt = 0,
     this.revision = 0,
-  });
+  }) {
+    _captured = _paintSignature();
+  }
+
+  /// Taken when the painter is built. The old painter and the new one share
+  /// the same annotation objects, so reading them inside [shouldRepaint]
+  /// would hide a move, a recolour, or a new opacity.
+  late final int _captured;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -175,6 +182,10 @@ class EditorCanvasPainter extends CustomPainter {
   /// actually changes. Returning `true` unconditionally caused the canvas to
   /// repaint on every frame — even during scroll, zoom, and unrelated state
   /// updates — wasting GPU budget and hurting 60 FPS targets.
+  ///
+  /// List length is not enough: moving or fading a mark keeps the count, and
+  /// the old painter still points at the live objects. [_captured] is the
+  /// place and colour at the moment this painter was built.
   @override
   bool shouldRepaint(covariant EditorCanvasPainter old) {
     if (old.curColor != curColor ||
@@ -184,11 +195,6 @@ class EditorCanvasPainter extends CustomPainter {
         old.shapeEnd != shapeEnd ||
         old.shapeType != shapeType ||
         old.current.length != current.length ||
-        old.strokes.length != strokes.length ||
-        old.shapes.length != shapes.length ||
-        old.images.length != images.length ||
-        old.stamps.length != stamps.length ||
-        old.markups.length != markups.length ||
         old.markupKind != markupKind ||
         old.activeFind != activeFind ||
         !_sameRects(old.markupPreview, markupPreview) ||
@@ -197,11 +203,70 @@ class EditorCanvasPainter extends CustomPainter {
         old.securePreview != securePreview ||
         old.pageWidthPt != pageWidthPt ||
         old.pageHeightPt != pageHeightPt ||
-        _markupSig(old.markups) != _markupSig(markups) ||
-        old.revision != revision) {
+        old.revision != revision ||
+        old._captured != _captured) {
       return true;
     }
     return false;
+  }
+
+  /// Order, place, size, colour and opacity of everything this painter draws.
+  int _paintSignature() {
+    var h = 0;
+    void mix(Object? value) => h = Object.hash(h, value);
+    void q(double value) => mix((value * 10000).round());
+    for (final s in strokes) {
+      mix(s.id);
+      mix(s.visible);
+      mix(s.opacity);
+      mix(s.color);
+      mix(s.width);
+      mix(s.highlight);
+      mix(s.points.length);
+      final b = s.bounds;
+      q(b.left);
+      q(b.top);
+      q(b.right);
+      q(b.bottom);
+    }
+    for (final s in shapes) {
+      mix(s.id);
+      mix(s.visible);
+      mix(s.opacity);
+      mix(s.color);
+      mix(s.width);
+      mix(s.filled);
+      mix(s.type);
+      q(s.start.dx);
+      q(s.start.dy);
+      q(s.end.dx);
+      q(s.end.dy);
+    }
+    for (final image in images) {
+      mix(image.id);
+      mix(image.visible);
+      mix(image.opacity);
+      q(image.pos.dx);
+      q(image.pos.dy);
+      q(image.width);
+      q(image.height);
+      q(image.rotation);
+    }
+    for (final stamp in stamps) {
+      mix(stamp.id);
+      mix(stamp.visible);
+      mix(stamp.opacity);
+      mix(stamp.color);
+      mix(stamp.kind);
+      mix(stamp.customText);
+      q(stamp.pos.dx);
+      q(stamp.pos.dy);
+      q(stamp.width);
+      q(stamp.height);
+      q(stamp.rotation);
+    }
+    mix(_markupSig(markups));
+    return h;
   }
 }
 

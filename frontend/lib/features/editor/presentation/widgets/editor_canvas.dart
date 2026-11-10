@@ -103,9 +103,13 @@ class EditorCanvas extends StatelessWidget {
   final VoidCallback onDeleteSelected;
   final VoidCallback onDeselectSelected;
   final VoidCallback? onCenterOnPage;
+  final VoidCallback? onOpacity;
+  final VoidCallback? onAlignToPage;
   final void Function(Offset unit)? onNudge;
   final void Function(String how) onAlignMulti;
   final void Function(Axis axis) onDistributeMulti;
+  final VoidCallback? onMatchWidth;
+  final VoidCallback? onMatchHeight;
   final VoidCallback onDuplicateMulti;
   final VoidCallback onDeleteMulti;
   final VoidCallback onDeselectMulti;
@@ -182,9 +186,13 @@ class EditorCanvas extends StatelessWidget {
     required this.onDeleteSelected,
     required this.onDeselectSelected,
     this.onCenterOnPage,
+    this.onOpacity,
+    this.onAlignToPage,
     this.onNudge,
     required this.onAlignMulti,
     required this.onDistributeMulti,
+    this.onMatchWidth,
+    this.onMatchHeight,
     required this.onDuplicateMulti,
     required this.onDeleteMulti,
     required this.onDeselectMulti,
@@ -295,11 +303,20 @@ class EditorCanvas extends StatelessWidget {
                       return Positioned(
                         left: (note.pos.dx * size.width).clamp(0.0, maxX).toDouble(),
                         top: (note.pos.dy * size.height).clamp(0.0, maxY).toDouble(),
-                        child: StickyNoteWidget(
-                          note: note,
-                          onTap: () => onNoteTap?.call(note),
-                          onDelete: onNoteDelete == null ? null : () => onNoteDelete!(note),
-                        ),
+                        child: note.opacity >= 0.999
+                            ? StickyNoteWidget(
+                                note: note,
+                                onTap: () => onNoteTap?.call(note),
+                                onDelete: onNoteDelete == null ? null : () => onNoteDelete!(note),
+                              )
+                            : Opacity(
+                                opacity: note.opacity.clamp(0.0, 1.0),
+                                child: StickyNoteWidget(
+                                  note: note,
+                                  onTap: () => onNoteTap?.call(note),
+                                  onDelete: onNoteDelete == null ? null : () => onNoteDelete!(note),
+                                ),
+                              ),
                       );
                     },
                   ),
@@ -481,6 +498,8 @@ class EditorCanvas extends StatelessWidget {
                   onDelete: onDeleteSelected,
                   onDeselect: onDeselectSelected,
                   onCenterOnPage: onCenterOnPage,
+                  onOpacity: onOpacity,
+                  onAlignToPage: onAlignToPage,
                   onNudge: onNudge,
                 ),
               if (multi.isNotEmpty)
@@ -494,6 +513,8 @@ class EditorCanvas extends StatelessWidget {
                   onAlignBottom: () => onAlignMulti('bottom'),
                   onDistributeH: () => onDistributeMulti(Axis.horizontal),
                   onDistributeV: () => onDistributeMulti(Axis.vertical),
+                  onMatchWidth: onMatchWidth,
+                  onMatchHeight: onMatchHeight,
                   onDuplicate: onDuplicateMulti,
                   onDelete: onDeleteMulti,
                   onDeselect: onDeselectMulti,
