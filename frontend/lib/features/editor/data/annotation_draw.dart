@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:ai_pdf/features/editor/data/page_measure.dart';
+
 import 'package:ai_pdf/features/editor/data/editor_text_runs.dart';
 import 'package:ai_pdf/features/editor/domain/entities/annotation.dart';
 import 'package:ai_pdf/features/editor/domain/entities/text_markup_annotation.dart';
@@ -121,6 +123,8 @@ class AnnotationDraw {
     double width, [
     bool filled = false,
     double opacity = 1.0,
+    double pageWidthPt = 0,
+    double pageHeightPt = 0,
   ]) {
     final k = size.height / _refHeight;
     final p1 = Offset(a.dx * size.width, a.dy * size.height);
@@ -163,6 +167,26 @@ class AnnotationDraw {
           ..style = PaintingStyle.stroke;
         canvas.drawRect(Rect.fromPoints(p1, p2), border);
         break;
+      case ShapeType.link:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(Rect.fromPoints(p1, p2), Radius.circular(3 * k)),
+          paint,
+        );
+        break;
+      case ShapeType.measure:
+        canvas.drawLine(p1, p2, paint);
+        _endTick(canvas, p1, p2, paint, k);
+        _endTick(canvas, p2, p1, paint, k);
+        if (pageWidthPt > 0 && pageHeightPt > 0) {
+          _measureLabel(
+            canvas,
+            (p1 + p2) / 2,
+            measureLabel(a, b, pageWidthPt: pageWidthPt, pageHeightPt: pageHeightPt),
+            effColor,
+            k,
+          );
+        }
+        break;
     }
   }
 
@@ -194,6 +218,32 @@ class AnnotationDraw {
     );
     canvas.drawLine(to, p1, paint);
     canvas.drawLine(to, p2, paint);
+  }
+
+  static void _endTick(Canvas canvas, Offset at, Offset toward, Paint paint, double k) {
+    final angle = math.atan2(toward.dy - at.dy, toward.dx - at.dx) + math.pi / 2;
+    final len = 7.0 * k;
+    canvas.drawLine(
+      Offset(at.dx - math.cos(angle) * len, at.dy - math.sin(angle) * len),
+      Offset(at.dx + math.cos(angle) * len, at.dy + math.sin(angle) * len),
+      paint,
+    );
+  }
+
+  static void _measureLabel(Canvas canvas, Offset at, String text, Color color, double k) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: (12 * k).clamp(8.0, 22.0),
+          backgroundColor: const Color(0xF2FFFFFF),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(canvas, at + Offset(-painter.width / 2, -painter.height - 2));
+    painter.dispose();
   }
 
   static void text(Canvas canvas, Size size, TextAnnotation t) {

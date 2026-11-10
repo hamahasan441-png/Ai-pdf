@@ -102,6 +102,9 @@ void main() {
       EditTool.whiteout,
       EditTool.note,
       EditTool.eraser,
+      EditTool.link,
+      EditTool.measure,
+      EditTool.formatPainter,
       EditTool.dot,
       EditTool.dash,
     ]) {

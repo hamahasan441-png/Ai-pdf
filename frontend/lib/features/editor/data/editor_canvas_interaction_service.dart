@@ -39,6 +39,10 @@ class EditorCanvasInteractionService {
         return ShapeType.oval;
       case EditTool.whiteout:
         return ShapeType.whiteout;
+      case EditTool.link:
+        return ShapeType.link;
+      case EditTool.measure:
+        return ShapeType.measure;
       default:
         return null;
     }

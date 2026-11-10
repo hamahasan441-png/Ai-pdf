@@ -24,6 +24,7 @@ enum EditorMode {
         EditTool.pan => EditorMode.view,
         EditTool.text => EditorMode.text,
         EditTool.check || EditTool.cross || EditTool.checkbox => EditorMode.sign,
+        EditTool.link || EditTool.measure || EditTool.formatPainter => EditorMode.annotate,
         _ => EditorMode.annotate,
       };
 }

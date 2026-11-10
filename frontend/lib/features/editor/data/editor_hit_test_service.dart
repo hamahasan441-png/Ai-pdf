@@ -29,7 +29,7 @@ class EditorHitTestService {
 
   bool _hits(EditorAnnotation item, Offset n) {
     if (item is ShapeAnnotation) {
-      if (item.type == ShapeType.line || item.type == ShapeType.arrow) {
+      if (item.type == ShapeType.line || item.type == ShapeType.arrow || item.type == ShapeType.measure) {
         return _distanceToSegment(n, item.start, item.end) <= lineSlop;
       }
       return item.bounds.inflate(lineSlop).contains(n);

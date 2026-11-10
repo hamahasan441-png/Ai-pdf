@@ -15,7 +15,7 @@ Offset clampOffset01(Offset o, [double max = 1.0]) =>
     Offset(o.dx.clamp(0.0, max), o.dy.clamp(0.0, max));
 
 /// Shape kinds for the vector shape tools.
-enum ShapeType { line, arrow, rect, oval, whiteout }
+enum ShapeType { line, arrow, rect, oval, whiteout, link, measure }
 
 /// Legacy metadata key. A true value only means "paint a black cover".
 /// It does not mean PDF content, images, or metadata were deleted.
@@ -31,6 +31,12 @@ const String visualCoverKey = 'visualCover';
 /// the file and the page keeps its vector content. When that cannot be done
 /// cleanly the page is flattened, as for any whiteout.
 const String eraseTextKey = 'eraseText';
+
+/// A web address or a page of this file, on a [ShapeType.link].
+const String linkUriKey = 'linkUri';
+
+/// 0-based page the link opens. Ignored when [linkUriKey] is set.
+const String linkPageKey = 'linkPage';
 
 /// The content under this box was removed from the working PDF by the
 /// server's PyMuPDF redaction, and the server's re-check of the output

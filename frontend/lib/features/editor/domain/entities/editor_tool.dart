@@ -21,4 +21,13 @@ enum EditTool {
   dot,
   dash,
   checkbox,
+
+  /// A rectangle that becomes a real link in the PDF.
+  link,
+
+  /// A dimension line, labelled in millimetres.
+  measure,
+
+  /// Applies the copied look to whatever is tapped.
+  formatPainter,
 }
