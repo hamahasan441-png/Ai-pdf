@@ -847,7 +847,9 @@ class EditorExportService {
         ann.height * size.height,
       );
       final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
-      final paint = Paint()..filterQuality = FilterQuality.high;
+      final paint = Paint()
+        ..filterQuality = FilterQuality.high
+        ..color = Color.fromRGBO(255, 255, 255, ann.opacity.clamp(0.0, 1.0));
       canvas.save();
       if (ann.rotation != 0) {
         canvas.translate(rect.center.dx, rect.center.dy);
@@ -874,15 +876,21 @@ class EditorExportService {
       size.width * 0.22,
       size.height * 0.12,
     );
+    final fade = note.opacity.clamp(0.0, 1.0);
+    final paper = note.color.value;
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(6)),
-      Paint()..color = note.color.value,
+      Paint()..color = paper.withValues(alpha: (paper.a * fade).clamp(0.0, 1.0)),
     );
     final rtl = const RtlDetectionService().isRtl(note.text);
     final painter = TextPainter(
       text: TextSpan(
         text: note.text,
-        style: TextStyle(color: Colors.black87, fontSize: size.height * 0.018, height: 1.25),
+        style: TextStyle(
+          color: Colors.black87.withValues(alpha: (Colors.black87.a * fade).clamp(0.0, 1.0)),
+          fontSize: size.height * 0.018,
+          height: 1.25,
+        ),
       ),
       textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
       textAlign: rtl ? TextAlign.right : TextAlign.left,

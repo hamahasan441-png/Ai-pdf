@@ -44,6 +44,7 @@ import 'package:ai_pdf/features/editor/data/page_preloader_service.dart';
 import 'package:ai_pdf/features/editor/data/page_number_badge.dart';
 import 'package:ai_pdf/features/editor/data/page_dressing.dart';
 import 'package:ai_pdf/features/editor/data/object_arrange.dart';
+import 'package:ai_pdf/features/editor/presentation/widgets/editor_object_finish_dialog.dart';
 import 'package:ai_pdf/features/editor/data/page_reorder_service.dart';
 import 'package:ai_pdf/features/editor/data/page_structure.dart';
 import 'package:ai_pdf/features/editor/data/revision_history_service.dart';
@@ -2093,8 +2094,70 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
     setState(() {
       centerAnnotationOnPage(sel);
       _hasUnsavedChanges = true;
+      _canvasRevision++;
     });
     _editorController.commitEdit(_layer);
+    _schedulePersist();
+  }
+
+  Future<void> _alignSelectedToPage() async {
+    final sel = _selected;
+    if (sel == null || sel.locked || !sel.visible) return;
+    final edge = await showEditorPageAlignDialog(context);
+    if (edge == null || !mounted) return;
+    final live = _selected;
+    if (live == null || !identical(live, sel) || live.locked) return;
+    _editorController.beginEdit([live], label: 'Align');
+    final moved = alignAnnotationToPage(live, edge);
+    if (!moved) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
+    _schedulePersist();
+  }
+
+  Future<void> _editSelectedOpacity() async {
+    final sel = _selected;
+    if (sel == null || sel.locked || !sel.visible || !supportsOpacity(sel)) return;
+    final next = await showEditorOpacityDialog(context, opacity: sel.opacity);
+    if (next == null || !mounted) return;
+    final live = _selected;
+    if (live == null || !identical(live, sel) || live.locked) return;
+    _editorController.beginEdit([live], label: 'Opacity');
+    final changed = setAnnotationOpacity(live, next);
+    if (!changed) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer, force: true);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
+    _schedulePersist();
+  }
+
+  /// The front-most selected mark is the size the others copy.
+  void _matchMulti({required bool width, required bool height}) {
+    final ordered = [for (final item in _layer.items) if (_multi.contains(item)) item];
+    final editable = ordered.where((item) => item.visible && !item.locked).toList();
+    if (editable.length < 2) return;
+    _editorController.beginEdit(editable, label: 'Match size');
+    final count = matchAnnotationSize(ordered, width: width, height: height);
+    if (count == 0) {
+      _editorController.cancelEdit();
+      return;
+    }
+    _editorController.commitEdit(_layer);
+    setState(() {
+      _hasUnsavedChanges = true;
+      _canvasRevision++;
+    });
     _schedulePersist();
   }
 
@@ -4539,12 +4602,20 @@ class _PickEditScreenState extends State<PickEditScreen> with TickerProviderStat
             onDeleteSelected: _deleteSelected,
             onDeselectSelected: () => setState(() => _selected = null),
             onCenterOnPage: _centerOnPage,
+            onOpacity: _selected != null && supportsOpacity(_selected!) && !_selected!.locked
+                ? _editSelectedOpacity
+                : null,
+            onAlignToPage: _selected != null && !_selected!.locked && _selected!.visible
+                ? _alignSelectedToPage
+                : null,
             onNudge: (unit) => _nudgeBy(unit),
             onNoteTap: _editNote,
             onNoteDelete: _deleteNote,
             onEditField: _editField,
             onAlignMulti: _alignMulti,
             onDistributeMulti: _distributeMulti,
+            onMatchWidth: () => _matchMulti(width: true, height: false),
+            onMatchHeight: () => _matchMulti(width: false, height: true),
             onDuplicateMulti: _duplicateMulti,
             onDeleteMulti: _deleteMulti,
             onDeselectMulti: () => setState(() => _multi.clear()),
